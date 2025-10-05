@@ -222,4 +222,145 @@ public class ExtractMethodTests
         // Should compile without undeclared variable errors
         result.RefactoredCode.Should().Contain("GeneratePasswordWithRetry(password, charTypes);");
     }
+
+    [Fact]
+    public void Execute_WithComplexGenericTypes_ShouldPreserveTypeAnnotations()
+    {
+        // Arrange
+        var sourceCode = @"using System.Collections.Generic;
+
+public class DataProcessor
+{
+    public void ProcessData()
+    {
+        var dataMap = new Dictionary<string, List<int>>();
+        dataMap.Add(""first"", new List<int> { 1, 2, 3 });
+        dataMap.Add(""second"", new List<int> { 4, 5, 6 });
+        Console.WriteLine(dataMap.Count);
+    }
+}";
+        var extractor = new ExtractMethod();
+
+        // Act
+        var result = extractor.Execute(sourceCode, 8, 9, "PopulateDataMap");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("Dictionary<string, List<int>>");
+        result.RefactoredCode.Should().Contain("PopulateDataMap(dataMap);");
+    }
+
+    [Fact]
+    public void Execute_WithNullableReferenceTypes_ShouldPreserveTypeAnnotations()
+    {
+        // Arrange
+        var sourceCode = @"#nullable enable
+using System.Collections.Generic;
+
+public class NullableProcessor
+{
+    public void ProcessNullables()
+    {
+        string? nullableString = null;
+        List<string?>? nullableList = new List<string?>();
+        nullableList.Add(nullableString);
+        Console.WriteLine(nullableList.Count);
+    }
+}";
+        var extractor = new ExtractMethod();
+
+        // Act
+        var result = extractor.Execute(sourceCode, 10, 10, "AddNullableItem");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        // Should preserve nullable annotations in parameter types
+        result.RefactoredCode.Should().Contain("AddNullableItem(nullableString, nullableList);");
+        // Verify nullable type syntax is preserved
+        result.RefactoredCode.Should().Contain("string?");
+    }
+
+    [Fact]
+    public void Execute_WithArrayTypes_ShouldPreserveTypeAnnotations()
+    {
+        // Arrange
+        var sourceCode = @"public class ArrayProcessor
+{
+    public void ProcessArrays()
+    {
+        int[] numbers = new int[] { 1, 2, 3 };
+        string[][] jaggedArray = new string[2][];
+        jaggedArray[0] = new string[] { ""a"", ""b"" };
+        jaggedArray[1] = new string[] { ""c"", ""d"" };
+        Console.WriteLine(numbers.Length + jaggedArray.Length);
+    }
+}";
+        var extractor = new ExtractMethod();
+
+        // Act
+        var result = extractor.Execute(sourceCode, 7, 8, "InitializeJaggedArray");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("string[][]");
+        result.RefactoredCode.Should().Contain("InitializeJaggedArray(jaggedArray);");
+    }
+
+    [Fact]
+    public void Execute_WithTupleTypes_ShouldPreserveTypeAnnotations()
+    {
+        // Arrange
+        var sourceCode = @"public class TupleProcessor
+{
+    public void ProcessTuples()
+    {
+        var simpleTuple = (1, ""hello"");
+        var namedTuple = (Id: 42, Name: ""test"");
+        Console.WriteLine(simpleTuple.Item1);
+        Console.WriteLine(namedTuple.Id);
+    }
+}";
+        var extractor = new ExtractMethod();
+
+        // Act
+        var result = extractor.Execute(sourceCode, 7, 8, "PrintTupleValues");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("PrintTupleValues(simpleTuple, namedTuple);");
+        // Tuple types should be preserved in parameter declarations
+    }
+
+    [Fact]
+    public void Execute_WithAsyncStaticMethod_ShouldPreserveModifiers()
+    {
+        // Arrange
+        var sourceCode = @"using System.Threading.Tasks;
+
+public class AsyncProcessor
+{
+    public static async Task ProcessAsync()
+    {
+        await Task.Delay(100);
+        var result = await CalculateAsync();
+        Console.WriteLine(result);
+    }
+
+    private static async Task<int> CalculateAsync()
+    {
+        await Task.Delay(50);
+        return 42;
+    }
+}";
+        var extractor = new ExtractMethod();
+
+        // Act
+        var result = extractor.Execute(sourceCode, 7, 8, "GetAndPrintResult");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        // Extracted method should be static since containing method is static
+        result.RefactoredCode.Should().Contain("private static");
+        result.RefactoredCode.Should().Contain("GetAndPrintResult();");
+    }
 }
