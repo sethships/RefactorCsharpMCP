@@ -12,6 +12,7 @@ Automated deployment, security scanning, and validation scripts for Docker conta
 | `security-scan.sh` | Security vulnerability scanning | Linux/Mac (Bash) |
 | `test-deployment.ps1` | Post-deployment validation | Windows (PowerShell) |
 | `test-deployment.sh` | Post-deployment validation | Linux/Mac (Bash) |
+| `toggle-mcp.ps1` | Enable/disable MCP server in Claude Code | Windows (PowerShell) |
 
 ## Quick Start
 
@@ -197,6 +198,29 @@ wget https://github.com/aquasecurity/trivy/releases/download/v0.55.0/trivy_0.55.
 tar zxvf trivy_0.55.0_Linux-64bit.tar.gz
 sudo mv trivy /usr/local/bin/
 ```
+
+## Managing MCP Server in Claude Code
+
+The MCP server runs continuously when Claude Code is active. You can toggle it on/off as needed:
+
+### Check Status
+```powershell
+.\scripts\toggle-mcp.ps1 status
+```
+
+### Enable MCP Server
+```powershell
+.\scripts\toggle-mcp.ps1 on
+# Then restart Claude Code to load it
+```
+
+### Disable MCP Server
+```powershell
+.\scripts\toggle-mcp.ps1 off
+# Then restart Claude Code to unload it
+```
+
+**Note**: Changes require a Claude Code restart to take effect. This is useful when you want the MCP server available only for specific sessions.
 
 ## Workflow Recommendations
 
