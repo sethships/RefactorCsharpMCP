@@ -191,8 +191,10 @@ public class ExtractMethod
             }
 
             // Variables that flow into the selection (need to be parameters)
+            // Exclude instance members (fields, properties) - they're accessible from the new method
             dataFlow.Parameters = analysis.DataFlowsIn
                 .Where(symbol => !analysis.VariablesDeclared.Contains(symbol))
+                .Where(symbol => symbol is ILocalSymbol or IParameterSymbol) // Only locals and parameters
                 .Select(symbol => new ParameterInfo
                 {
                     Name = symbol.Name,
@@ -200,9 +202,22 @@ public class ExtractMethod
                 })
                 .ToList();
 
-            // Variables that flow out (might need return value)
+            // Variables that flow out (might need return value or out parameter)
+            // Include variables that are assigned within the region but declared outside
             dataFlow.OutputVariables = analysis.DataFlowsOut
+                .Where(symbol => symbol is ILocalSymbol) // Only local variables can flow out
                 .Select(symbol => symbol.Name)
+                .ToList();
+
+            // Variables declared outside but assigned inside need to be captured
+            dataFlow.AssignedOutsideVariables = analysis.WrittenInside
+                .Where(symbol => !analysis.VariablesDeclared.Contains(symbol))
+                .Where(symbol => symbol is ILocalSymbol)
+                .Select(symbol => new ParameterInfo
+                {
+                    Name = symbol.Name,
+                    Type = GetSymbolType(symbol)
+                })
                 .ToList();
         }
         catch
@@ -243,8 +258,21 @@ public class ExtractMethod
         // For now, use void return type (enhancement: detect return type from data flow)
         var returnType = SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.VoidKeyword));
 
+        // Add local variable declarations for variables assigned inside but declared outside
+        var localDeclarations = dataFlowInfo.AssignedOutsideVariables
+            .Select(v => SyntaxFactory.LocalDeclarationStatement(
+                SyntaxFactory.VariableDeclaration(SyntaxFactory.ParseTypeName(v.Type))
+                    .WithVariables(SyntaxFactory.SingletonSeparatedList(
+                        SyntaxFactory.VariableDeclarator(SyntaxFactory.Identifier(v.Name))
+                    ))
+            ))
+            .ToList<StatementSyntax>();
+
+        // Combine local declarations with extracted statements
+        var allStatements = localDeclarations.Concat(statements).ToList();
+
         // Build method body with the extracted statements
-        var body = SyntaxFactory.Block(statements);
+        var body = SyntaxFactory.Block(allStatements);
 
         return SyntaxFactory.MethodDeclaration(returnType, methodName)
             .WithModifiers(SyntaxFactory.TokenList(
@@ -309,6 +337,7 @@ public class ExtractMethod
     {
         public List<ParameterInfo> Parameters { get; set; } = new();
         public List<string> OutputVariables { get; set; } = new();
+        public List<ParameterInfo> AssignedOutsideVariables { get; set; } = new();
     }
 
     private class ParameterInfo
