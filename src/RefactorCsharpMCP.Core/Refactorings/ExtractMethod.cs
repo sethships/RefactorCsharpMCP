@@ -71,9 +71,13 @@ public class ExtractMethod
                 return RefactoringResult.Failure($"No statements found in line range {startLine}-{endLine}.");
             }
 
-            // Create compilation for semantic analysis
+            // Create compilation for semantic analysis with common assembly references
             var compilation = CSharpCompilation.Create("temp")
-                .AddReferences(MetadataReference.CreateFromFile(typeof(object).Assembly.Location))
+                .AddReferences(
+                    MetadataReference.CreateFromFile(typeof(object).Assembly.Location), // mscorlib/System.Private.CoreLib
+                    MetadataReference.CreateFromFile(typeof(System.Collections.Generic.List<>).Assembly.Location), // System.Collections
+                    MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location) // System.Linq
+                )
                 .AddSyntaxTrees(syntaxTree);
 
             var semanticModel = compilation.GetSemanticModel(syntaxTree);
@@ -85,7 +89,8 @@ public class ExtractMethod
             var extractedMethod = BuildExtractedMethod(
                 newMethodName,
                 statementsToExtract,
-                dataFlowAnalysis
+                dataFlowAnalysis,
+                containingMethod
             );
 
             // Build the method call to replace the extracted statements
@@ -236,20 +241,34 @@ public class ExtractMethod
 
     private string GetSymbolType(ISymbol symbol)
     {
-        return symbol switch
+        // Use FullyQualifiedFormat to ensure we get complete type information
+        // This includes namespace and generic type parameters
+        var format = new SymbolDisplayFormat(
+            typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
+            genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
+            memberOptions: SymbolDisplayMemberOptions.None,
+            parameterOptions: SymbolDisplayParameterOptions.None,
+            miscellaneousOptions: SymbolDisplayMiscellaneousOptions.UseSpecialTypes
+        );
+
+        var typeString = symbol switch
         {
-            ILocalSymbol local => local.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),
-            IParameterSymbol param => param.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),
-            IFieldSymbol field => field.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),
-            IPropertySymbol prop => prop.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),
+            ILocalSymbol local => local.Type.ToDisplayString(format),
+            IParameterSymbol param => param.Type.ToDisplayString(format),
+            IFieldSymbol field => field.Type.ToDisplayString(format),
+            IPropertySymbol prop => prop.Type.ToDisplayString(format),
             _ => "object"
         };
+
+        // Fallback to "object" if we got an empty string
+        return string.IsNullOrWhiteSpace(typeString) ? "object" : typeString;
     }
 
     private MethodDeclarationSyntax BuildExtractedMethod(
         string methodName,
         List<StatementSyntax> statements,
-        DataFlowInfo dataFlowInfo)
+        DataFlowInfo dataFlowInfo,
+        MethodDeclarationSyntax containingMethod)
     {
         // Build parameter list
         var parameters = SyntaxFactory.ParameterList(
@@ -263,6 +282,9 @@ public class ExtractMethod
 
         // For now, use void return type (enhancement: detect return type from data flow)
         var returnType = SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.VoidKeyword));
+
+        // Check if containing method is static
+        bool isStatic = containingMethod.Modifiers.Any(m => m.IsKind(SyntaxKind.StaticKeyword));
 
         // Add local variable declarations for variables assigned inside but declared outside
         var localDeclarations = dataFlowInfo.AssignedOutsideVariables
@@ -280,12 +302,25 @@ public class ExtractMethod
         // Build method body with the extracted statements
         var body = SyntaxFactory.Block(allStatements);
 
+        // Build modifiers list (private, and static if needed)
+        var modifiers = new List<SyntaxToken>
+        {
+            SyntaxFactory.Token(
+                SyntaxFactory.TriviaList(),
+                SyntaxKind.PrivateKeyword,
+                SyntaxFactory.TriviaList(SyntaxFactory.Space))
+        };
+
+        if (isStatic)
+        {
+            modifiers.Add(SyntaxFactory.Token(
+                SyntaxFactory.TriviaList(),
+                SyntaxKind.StaticKeyword,
+                SyntaxFactory.TriviaList(SyntaxFactory.Space)));
+        }
+
         return SyntaxFactory.MethodDeclaration(returnType, methodName)
-            .WithModifiers(SyntaxFactory.TokenList(
-                SyntaxFactory.Token(
-                    SyntaxFactory.TriviaList(),
-                    SyntaxKind.PrivateKeyword,
-                    SyntaxFactory.TriviaList(SyntaxFactory.Space))))
+            .WithModifiers(SyntaxFactory.TokenList(modifiers))
             .WithParameterList(parameters)
             .WithBody(body)
             .WithLeadingTrivia(SyntaxFactory.CarriageReturnLineFeed)
