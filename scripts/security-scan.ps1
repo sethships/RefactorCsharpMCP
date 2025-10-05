@@ -153,8 +153,23 @@ try {
             Write-Header "Generating SBOM"
             $sbomFile = Join-Path $OutputDir "sbom-$ReportTime.json"
             Write-Info "Generating Software Bill of Materials..."
-            trivy image --format cyclonedx --output $sbomFile $ImageName 2>&1 | Out-Null
-            Write-Success "SBOM generated: $sbomFile"
+
+            # Use SPDX format for broader compatibility, with CycloneDX as fallback
+            $sbomFormat = "spdx-json"
+            Write-Info "Attempting SPDX format for wider tool compatibility..."
+            trivy image --format $sbomFormat --output $sbomFile $ImageName 2>&1 | Out-Null
+
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "SPDX format failed, trying CycloneDX..."
+                $sbomFormat = "cyclonedx"
+                trivy image --format $sbomFormat --output $sbomFile $ImageName 2>&1 | Out-Null
+            }
+
+            if ($LASTEXITCODE -eq 0) {
+                Write-Success "SBOM generated ($sbomFormat): $sbomFile"
+            } else {
+                Write-Warning "SBOM generation failed"
+            }
         }
     } else {
         Write-Warning-Custom "Trivy not installed"

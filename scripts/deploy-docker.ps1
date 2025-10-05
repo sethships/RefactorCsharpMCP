@@ -74,6 +74,13 @@ param(
     [string]$Registry = ""
 )
 
+# Check execution policy
+$executionPolicy = Get-ExecutionPolicy
+if ($executionPolicy -in @('Restricted', 'AllSigned')) {
+    Write-Warning "Current execution policy: $executionPolicy"
+    Write-Warning "Script may not run. Consider: Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser"
+}
+
 # Configuration
 $ErrorActionPreference = "Stop"
 $ImageName = "refactor-csharp-mcp"
@@ -233,8 +240,16 @@ try {
     Write-Info "Test container cleaned up"
 
     # Step 7: Security scanning
-    if ($SecurityScan -and -not $SkipSecurity) {
+    # Force security scan for production versions
+    $isProduction = $Version -match '^\d+\.\d+\.\d+$' -and $Version -ne "latest"
+    if (($SecurityScan -or $isProduction) -and -not $SkipSecurity) {
+        if ($isProduction -and $SkipSecurity) {
+            throw "Cannot skip security scanning for production version ($Version)"
+        }
         Write-Header "Security Scanning"
+        if ($isProduction) {
+            Write-Info "Production version detected - security scanning is mandatory"
+        }
 
         # Check for Docker Scout
         Write-Info "Checking for Docker Scout..."
@@ -313,18 +328,6 @@ try {
     Write-Host "Deployment completed successfully!" -ForegroundColor Green
     Write-Host "To run the container:" -ForegroundColor Cyan
     Write-Host "  docker run --rm -i ${ImageName}:${Version}" -ForegroundColor White
-    Write-Host "`nTo use with Claude Code, add to MCP configuration:" -ForegroundColor Cyan
-    Write-Host @"
-{
-  "mcpServers": {
-    "refactor-csharp-mcp": {
-      "command": "docker",
-      "args": ["run", "--rm", "-i", "${ImageName}:${Version}"],
-      "type": "stdio"
-    }
-  }
-}
-"@ -ForegroundColor White
 
 } catch {
     Write-Header "Deployment Failed"

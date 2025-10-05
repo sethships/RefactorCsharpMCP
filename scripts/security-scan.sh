@@ -97,8 +97,21 @@ if command -v trivy &> /dev/null; then
     if [ "$GENERATE_SBOM" = true ]; then
         header "Generating SBOM"
         SBOM_FILE="$OUTPUT_DIR/sbom-$REPORT_TIME.json"
-        trivy image --format cyclonedx --output "$SBOM_FILE" "$IMAGE_NAME" 2>&1
-        success "SBOM generated: $SBOM_FILE"
+
+        # Use SPDX format for broader compatibility, with CycloneDX as fallback
+        SBOM_FORMAT="spdx-json"
+        info "Attempting SPDX format for wider tool compatibility..."
+        if ! trivy image --format "$SBOM_FORMAT" --output "$SBOM_FILE" "$IMAGE_NAME" 2>&1; then
+            warning "SPDX format failed, trying CycloneDX..."
+            SBOM_FORMAT="cyclonedx"
+            trivy image --format "$SBOM_FORMAT" --output "$SBOM_FILE" "$IMAGE_NAME" 2>&1
+        fi
+
+        if [ -f "$SBOM_FILE" ]; then
+            success "SBOM generated ($SBOM_FORMAT): $SBOM_FILE"
+        else
+            warning "SBOM generation failed"
+        fi
     fi
 
     success "Trivy scan completed: $TRIVY_REPORT"

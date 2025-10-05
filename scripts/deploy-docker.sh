@@ -22,6 +22,12 @@
 #   ./deploy-docker.sh -v 0.4.0 -p -r myregistry.io/myuser
 #
 
+# Require Bash 4.0+ for associative arrays and other features
+if [ "${BASH_VERSION%%.*}" -lt 4 ]; then
+    echo "Error: Bash 4.0 or higher required (found: $BASH_VERSION)" >&2
+    exit 1
+fi
+
 set -e  # Exit on error
 
 # Default values
@@ -230,8 +236,21 @@ docker rm "$CONTAINER_ID" 2>&1 | tee -a "$LOG_FILE" > /dev/null
 info "Test container cleaned up"
 
 # Step 7: Security scanning
-if [ "$SECURITY_SCAN" = true ] && [ "$SKIP_SECURITY" = false ]; then
+# Force security scan for production versions
+IS_PRODUCTION=false
+if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && [ "$VERSION" != "latest" ]; then
+    IS_PRODUCTION=true
+fi
+
+if ([ "$SECURITY_SCAN" = true ] || [ "$IS_PRODUCTION" = true ]) && [ "$SKIP_SECURITY" = false ]; then
+    if [ "$IS_PRODUCTION" = true ] && [ "$SKIP_SECURITY" = true ]; then
+        error "Cannot skip security scanning for production version ($VERSION)"
+        exit 1
+    fi
     header "Security Scanning"
+    if [ "$IS_PRODUCTION" = true ]; then
+        info "Production version detected - security scanning is mandatory"
+    fi
 
     # Check for Docker Scout
     info "Checking for Docker Scout..."

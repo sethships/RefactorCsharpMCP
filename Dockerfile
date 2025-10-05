@@ -1,5 +1,8 @@
 # Multi-stage Dockerfile for RefactorCsharpMCP Server
 # Optimized for Model Context Protocol (MCP) with stdio transport
+#
+# Security: SHA256 pinning ensures image integrity. Consider implementing Docker Content Trust (DCT)
+# for signature verification in production environments: export DOCKER_CONTENT_TRUST=1
 
 # Stage 1: Build
 FROM mcr.microsoft.com/dotnet/sdk:8.0@sha256:ff8311847c54c04d1a14c488362807997d59b61372da5095a95f89cbcda7f9b7 AS build
