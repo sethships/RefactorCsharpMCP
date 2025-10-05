@@ -1,0 +1,10 @@
+services:
+  refactor-csharp-mcp:
+    image: refactor-csharp-mcp:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    stdin_open: true
+    tty: false
+    # MCP servers use stdio transport - no ports needed
+    # Connect via: docker compose run --rm refactor-csharp-mcp

@@ -1,0 +1,58 @@
+# Git files
+.git/
+.gitignore
+.gitattributes
+
+# Build outputs
+**/bin/
+**/obj/
+**/publish/
+
+# IDE and editor files
+.vs/
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+.idea/
+*.swp
+*.swo
+*~
+
+# Test results
+TestResults/
+*.trx
+*.coverage
+
+# Documentation (not needed in container)
+docs/
+*.md
+!README.md
+
+# Examples (not needed in container)
+examples/
+
+# Docker files (avoid recursive copy)
+Dockerfile*
+.dockerignore
+docker-compose*.yml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+
+# User-specific files
+*.user
+*.suo
+*.userosscache
+
+# Logs
+*.log
+logs/
