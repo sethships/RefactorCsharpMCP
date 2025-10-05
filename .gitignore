@@ -120,3 +120,12 @@ node_modules/
 # JetBrains Rider
 *.sln.iml
 coverage-report/
+
+# Deployment and Security Scanning Outputs
+deployment.log
+security-scout*.txt
+security-trivy*.txt
+security-recommendations*.txt
+image-layers*.txt
+sbom*.json
+sbom*.xml
