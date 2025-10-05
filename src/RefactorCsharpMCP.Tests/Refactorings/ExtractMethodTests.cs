@@ -142,4 +142,84 @@ public class ExtractMethodTests
         result.Message.Should().Contain("Refactoring failed");
         result.RefactoredCode.Should().BeNull();
     }
+
+    [Fact]
+    public void Execute_WithInstanceFieldAccess_ShouldNotGenerateThisParameter()
+    {
+        // Arrange - Regression test for issue #60
+        var sourceCode = @"public class PasswordGenerator
+{
+    private int _length;
+    private char[] _charSet;
+
+    public void GeneratePassword()
+    {
+        var password = new StringBuilder();
+        for (int i = 0; i < _length; ++i)
+        {
+            password.Append(_charSet[i % _charSet.Length]);
+        }
+        Console.WriteLine(password.ToString());
+    }
+}";
+        var extractor = new ExtractMethod();
+
+        // Act - Extract the loop that uses instance fields _length and _charSet
+        var result = extractor.Execute(sourceCode, 9, 12, "BuildPasswordString");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        // Should NOT contain invalid 'this' parameter syntax
+        result.RefactoredCode.Should().NotContain("PasswordGenerator this");
+        result.RefactoredCode.Should().NotContain("(this,");
+        result.RefactoredCode.Should().NotContain("(this)");
+        // Should be a valid instance method that can access _length and _charSet directly
+        result.RefactoredCode.Should().Contain("BuildPasswordString(password);");
+        result.RefactoredCode.Should().Contain("private void BuildPasswordString(StringBuilder password)");
+        // Should still use the instance fields
+        result.RefactoredCode.Should().Contain("_length");
+        result.RefactoredCode.Should().Contain("_charSet");
+    }
+
+    [Fact]
+    public void Execute_WithVariableDeclaredOutsideButAssignedInside_ShouldDeclareLocally()
+    {
+        // Arrange - Regression test for issue #60 (flags variable case)
+        var sourceCode = @"public class PasswordGenerator
+{
+    private int _length;
+
+    public void GeneratePassword()
+    {
+        var password = new StringBuilder();
+        var charTypes = new List<char[]> { new[] { 'a', 'b' }, new[] { '1', '2' } };
+        bool[] flags;
+        do
+        {
+            password.Clear();
+            flags = new bool[charTypes.Count];
+            for (int i = 0; i < _length; ++i)
+            {
+                password.Append('x');
+                flags[i % flags.Length] = true;
+            }
+        }
+        while (Array.Exists(flags, f => !f));
+        Console.WriteLine(password);
+    }
+}";
+        var extractor = new ExtractMethod();
+
+        // Act - Extract the do-while loop where flags is assigned but declared outside
+        var result = extractor.Execute(sourceCode, 10, 20, "GeneratePasswordWithRetry");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        // The extracted method should declare flags locally since it's assigned in the extracted region
+        result.RefactoredCode.Should().Contain("bool[] flags;");
+        // Should NOT have 'flags' as a parameter since it's declared locally
+        result.RefactoredCode.Should().NotContain("GeneratePasswordWithRetry(StringBuilder password, List<char[]> charTypes, bool[] flags)");
+        // Should compile without undeclared variable errors
+        result.RefactoredCode.Should().Contain("GeneratePasswordWithRetry(password, charTypes);");
+    }
 }

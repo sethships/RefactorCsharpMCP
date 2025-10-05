@@ -192,9 +192,11 @@ public class ExtractMethod
 
             // Variables that flow into the selection (need to be parameters)
             // Exclude instance members (fields, properties) - they're accessible from the new method
+            // Exclude 'this' parameter - instance methods have access to instance members
             dataFlow.Parameters = analysis.DataFlowsIn
                 .Where(symbol => !analysis.VariablesDeclared.Contains(symbol))
                 .Where(symbol => symbol is ILocalSymbol or IParameterSymbol) // Only locals and parameters
+                .Where(symbol => symbol is not IParameterSymbol param || !param.IsThis) // Exclude 'this'
                 .Select(symbol => new ParameterInfo
                 {
                     Name = symbol.Name,
@@ -210,8 +212,10 @@ public class ExtractMethod
                 .ToList();
 
             // Variables declared outside but assigned inside need to be captured
+            // Exclude variables already in the parameter list to avoid duplicates
             dataFlow.AssignedOutsideVariables = analysis.WrittenInside
                 .Where(symbol => !analysis.VariablesDeclared.Contains(symbol))
+                .Where(symbol => !analysis.DataFlowsIn.Contains(symbol)) // Exclude parameters
                 .Where(symbol => symbol is ILocalSymbol)
                 .Select(symbol => new ParameterInfo
                 {
@@ -220,9 +224,11 @@ public class ExtractMethod
                 })
                 .ToList();
         }
-        catch
+        catch (Exception ex)
         {
-            // Data flow analysis failed, continue with no parameters
+            // Data flow analysis failed - log for debugging but continue with best effort
+            // In production, consider returning an error instead of degraded behavior
+            System.Diagnostics.Debug.WriteLine($"Data flow analysis failed: {ex.Message}");
         }
 
         return dataFlow;
