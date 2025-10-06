@@ -18,14 +18,41 @@ Add comprehensive .NET framework version detection and C# language version enfor
 - Clear contract between caller and tool
 - Caller responsibility to know their framework version
 
-### Non-Goals (Explicitly Out of Scope)
-- ❌ Framework version upgrading (e.g., .NET Framework 4.6.2 → .NET 8)
-- ❌ Code modernization suggestions
-- ❌ Support for end-of-life .NET versions (e.g., .NET Core 2.x, .NET 5-7, .NET Framework 4.5.2-4.6.1)
-- ❌ Migration tooling or recommendations
-- ❌ Breaking change detection between frameworks
-- ❌ Automatic framework detection from project files (may be added as separate future enhancement)
-- ❌ Smart defaults or fallback framework versions
+### Target Users
+
+**Primary User: AI Coding Agents (via MCP Protocol)**
+- Claude Code, Cursor, Continue, and other AI development tools
+- Agents request refactoring operations on behalf of human developers
+- **Important:** While agents are the direct consumers of this tool, they work hand-in-hand with human developers who know their codebase and can help direct the agents
+- Agents have access to project context (e.g., .csproj files) to determine target framework
+- Human developers can guide agents to specify the correct framework version
+- Need reliable, framework-compatible code generation
+
+**Secondary User: CLI/Direct Integration Users**
+- Developers using RefactorCsharpMCP directly via command line or custom integrations
+- Have full context of their project's framework version
+- Need predictable, reproducible refactoring results
+- May integrate RefactorCsharpMCP into custom build/refactoring pipelines
+
+**User Workflow Assumptions:**
+1. Agent or user has access to project file (.csproj) or build configuration
+2. Human developer can provide framework version when agent asks
+3. Agent or user is responsible for specifying correct framework version
+4. Human developer reviews and approves refactoring results (agent-assisted workflow)
+
+### Future Enhancements (Post-v1.0.0)
+- 🔮 **Automatic framework detection from project files** - Parse .csproj to auto-populate targetFramework parameter (would reduce caller burden but adds complexity)
+- 🔮 **End-of-life framework support** - Support EOL versions with warnings (requires considered support strategy and resource commitment)
+- 🔮 **Request throttling** - Rate limiting per client/agent to prevent abuse and ensure fair resource usage
+- 🔮 **Response caching** - Cache refactoring results for identical inputs to improve performance and reduce compute costs
+- 🔮 Framework version upgrading (e.g., .NET Framework 4.6.2 → .NET 8)
+- 🔮 Code modernization suggestions
+- 🔮 Migration tooling or recommendations
+- 🔮 Breaking change detection between frameworks
+
+### Non-Goals (Explicitly Out of Scope for v1.0.0)
+- ❌ Smart defaults or fallback framework versions (eliminates ambiguity)
+- ❌ Framework detection via heuristics or code analysis (unreliable)
 
 ### Success Criteria
 - All MCP tools accept required `targetFramework` parameter
@@ -74,315 +101,567 @@ Based on official Microsoft support policy as of January 2025:
 
 **Note:** .NET Standard is not receiving new versions, but remains supported through implementing .NET versions. Use netstandard2.0 for cross-platform code targeting .NET Framework.
 
-### 2.4 End-of-Life Versions (NOT Supported)
+### 2.4 End-of-Life Versions (NOT Supported - Future Enhancement)
 
-The following versions are **explicitly excluded** from this implementation:
+The following versions are **explicitly NOT supported** in the initial implementation:
 
 | Version | EOL Date | Reason |
 |---------|----------|--------|
-| .NET 7 | May 14, 2024 | Out of support |
-| .NET 6 | Nov 12, 2024 | Out of support |
-| .NET 5 | May 10, 2022 | Out of support |
-| .NET Core 3.1 | Dec 13, 2022 | Out of support |
-| .NET Core 3.0 | Mar 3, 2020 | Out of support |
-| .NET Core 2.2 | Dec 23, 2019 | Out of support |
-| .NET Core 2.1 | Aug 21, 2021 | Out of support |
-| .NET Core 2.0 | Oct 1, 2018 | Out of support |
-| .NET Framework 4.6.1 | Apr 26, 2022 | Out of support |
-| .NET Framework 4.6 | Apr 26, 2022 | Out of support |
-| .NET Framework 4.5.2 | Apr 26, 2022 | Out of support |
+| .NET 7 | May 14, 2024 | Out of support - security risk |
+| .NET 6 | Nov 12, 2024 | Out of support - security risk |
+| .NET 5 | May 10, 2022 | Out of support - security risk |
+| .NET Core 3.1 | Dec 13, 2022 | Out of support - security risk |
+| .NET Core 3.0 | Mar 3, 2020 | Out of support - security risk |
+| .NET Core 2.2 | Dec 23, 2019 | Out of support - security risk |
+| .NET Core 2.1 | Aug 21, 2021 | Out of support - security risk |
+| .NET Core 2.0 | Oct 1, 2018 | Out of support - security risk |
+| .NET Framework 4.6.1 | Apr 26, 2022 | Out of support - security risk |
+| .NET Framework 4.6 | Apr 26, 2022 | Out of support - security risk |
+| .NET Framework 4.5.2 | Apr 26, 2022 | Out of support - security risk |
 
-**Implementation:** Tool should **detect but warn** when these versions are encountered, defaulting to a conservative supported version.
+**Implementation:** Tool will **reject EOL frameworks** with clear error messages.
+
+**Rationale:**
+- Supporting EOL frameworks requires significant ongoing maintenance without a considered support strategy
+- EOL frameworks pose security risks that we should not soft-endorse by providing tooling support
+- Users can work around this limitation (see workaround below)
+- EOL support may be added as a **future enhancement** with proper planning and resource allocation
+
+**Workaround for Legacy Projects:**
+Users needing to refactor legacy code on EOL frameworks can specify the **nearest supported framework version** as a parameter. For example:
+- `.NET Framework 4.5.2` project → specify `"net462"` (C# 7.3)
+- `.NET 6` project → specify `"net8.0"` (C# 12)
+
+The tool will generate code compatible with the specified framework's C# version. Users should review generated code to ensure compatibility with their actual runtime.
 
 ### 2.5 DevTools Repository Impact
 
 **Current DevTools Projects vs Support Status:**
 
-| Project | Current Framework | Support Status | Recommended Action |
-|---------|------------------|----------------|-------------------|
-| BackupTool | .NET Framework 4.5.2 | ❌ EOL (Apr 2022) | **Warn user**, fallback to 4.6.2 behavior |
-| LineCounter | .NET Framework 4.5.2 | ❌ EOL (Apr 2022) | **Warn user**, fallback to 4.6.2 behavior |
-| Logging | .NET Framework 4.5.2 | ❌ EOL (Apr 2022) | **Warn user**, fallback to 4.6.2 behavior |
-| passgen | .NET 8 | ✅ Supported | Fully supported |
-| RefactorCsharpMCP | .NET 8 | ✅ Supported | Fully supported |
+| Project | Current Framework | Support Status | Refactoring Approach |
+|---------|------------------|----------------|---------------------|
+| BackupTool | .NET Framework 4.5.2 | ❌ EOL (Apr 2022) | **Workaround:** Specify `"net462"` to refactor |
+| LineCounter | .NET Framework 4.5.2 | ❌ EOL (Apr 2022) | **Workaround:** Specify `"net462"` to refactor |
+| Logging | .NET Framework 4.5.2 | ❌ EOL (Apr 2022) | **Workaround:** Specify `"net462"` to refactor |
+| passgen | .NET 8 | ✅ Supported | Fully supported - specify `"net8.0"` |
+| RefactorCsharpMCP | .NET 8 | ✅ Supported | Fully supported - specify `"net8.0"` |
 
-**Important:** While we won't actively support .NET Framework 4.5.2, we'll handle it gracefully by treating it as 4.6.2 (C# 7.3) and issuing a warning.
+**Important:** Legacy DevTools projects on .NET Framework 4.5.2 cannot directly specify their actual framework version. Users must specify `"net462"` (the nearest supported version) and manually verify generated code is compatible with 4.5.2 runtime. This encourages migration to supported frameworks while providing a practical workaround.
 
 ## 3. Technical Design
 
+> **📄 Implementation Details:** Complete C# code, class definitions, and API signatures are documented in [SDD-Framework-Version-Awareness.md](SDD-Framework-Version-Awareness.md)
+
 ### 3.1 Framework to C# Language Version Mapping
 
-**Definitive Mapping Table (Microsoft-Supported Only):**
+**Conceptual Mapping:**
 
-```csharp
-private static readonly Dictionary<string, LanguageVersion> FrameworkLanguageMap = new()
+The system maintains a mapping from Target Framework Moniker (TFM) to C# Language Version:
+
+**Supported Frameworks:**
+- Modern .NET (net9.0, net8.0) → C# 13, C# 12
+- .NET Framework (net481 through net462) → C# 7.3
+- .NET Framework 3.5 SP1 (net35) → C# 3.0
+- .NET Standard (netstandard2.1, netstandard2.0) → C# 8, C# 7.3
+
+**EOL Frameworks (NOT Supported):**
+- .NET Framework EOL (net461, net46, net452, net451, net45) → **Rejected** with error
+- Modern .NET EOL (net7.0, net6.0, net5.0) → **Rejected** with error
+- .NET Core EOL (netcoreapp3.1, netcoreapp3.0, netcoreapp2.x) → **Rejected** with error
+
+Users must specify the nearest supported framework version as a workaround.
+
+See [SDD Section 3](SDD-Framework-Version-Awareness.md#3-framework-mapping-implementation) for complete mapping tables.
+
+### 3.2 Error Handling and Message Taxonomy
+
+**Validation Result Structure:**
+
+The framework validator returns a structured result containing:
+- **IsValid**: Whether the framework moniker is properly formatted
+- **IsSupported**: Whether Microsoft currently supports this framework
+- **IsEOL**: Whether this is an end-of-life framework
+- **ErrorMessage**: Human-readable error description
+- **SuggestedFramework**: Nearest supported framework (for EOL cases)
+
+**Error Code Taxonomy:**
+
+All errors include a standardized `errorCode` field for programmatic handling:
+
+| Error Code | Category | HTTP Analogy | Description |
+|------------|----------|--------------|-------------|
+| `EOL_FRAMEWORK` | ValidationError | 400 Bad Request | End-of-life framework specified |
+| `INVALID_TFM_FORMAT` | ValidationError | 400 Bad Request | Malformed TFM string |
+| `MISSING_PARAMETER` | ValidationError | 400 Bad Request | Required parameter not provided |
+| `UNKNOWN_FRAMEWORK` | ValidationError | 400 Bad Request | Valid format but unrecognized version |
+| `REFACTORING_FAILED` | ExecutionError | 422 Unprocessable | Framework valid but refactoring failed |
+| `SYNTAX_ERROR` | ExecutionError | 422 Unprocessable | Source code has syntax errors |
+| `NO_METHOD_FOUND` | ExecutionError | 404 Not Found | Target method/code not found |
+
+**Complete Error Taxonomy:**
+
+#### 1. EOL Framework Errors
+**Error Code:** `EOL_FRAMEWORK`
+**Trigger:** User specifies end-of-life framework (net452, net6.0, netcoreapp3.1, etc.)
+```
 {
-    // Modern .NET (Supported)
-    ["net9.0"] = LanguageVersion.CSharp13,
-    ["net8.0"] = LanguageVersion.CSharp12,
-
-    // .NET Framework (Supported)
-    ["net481"] = LanguageVersion.CSharp7_3,
-    ["net48"] = LanguageVersion.CSharp7_3,
-    ["net472"] = LanguageVersion.CSharp7_3,
-    ["net471"] = LanguageVersion.CSharp7_3,
-    ["net47"] = LanguageVersion.CSharp7_3,
-    ["net462"] = LanguageVersion.CSharp7_3,
-    ["net35"] = LanguageVersion.CSharp3,  // .NET Framework 3.5 SP1
-
-    // .NET Standard (Actively Used)
-    ["netstandard2.1"] = LanguageVersion.CSharp8,
-    ["netstandard2.0"] = LanguageVersion.CSharp7_3,
-};
-
-// EOL versions - detect and warn, fallback to nearest supported version
-private static readonly Dictionary<string, string> EOLFrameworkFallbacks = new()
-{
-    // .NET Framework EOL → Fallback to 4.6.2
-    ["net461"] = "net462",
-    ["net46"] = "net462",
-    ["net452"] = "net462",
-    ["net451"] = "net462",
-    ["net45"] = "net462",
-
-    // Modern .NET EOL → Fallback to .NET 8
-    ["net7.0"] = "net8.0",
-    ["net6.0"] = "net8.0",
-    ["net5.0"] = "net8.0",
-
-    // .NET Core EOL → Fallback to .NET 8
-    ["netcoreapp3.1"] = "net8.0",
-    ["netcoreapp3.0"] = "net8.0",
-    ["netcoreapp2.2"] = "net8.0",
-    ["netcoreapp2.1"] = "net8.0",
-    ["netcoreapp2.0"] = "net8.0",
-};
+  "success": false,
+  "errorCode": "EOL_FRAMEWORK",
+  "category": "ValidationError",
+  "error": "Unsupported framework: .NET Framework 4.5.2 reached end-of-life on April 26, 2022. This version is not supported due to security risks and maintenance burden.",
+  "suggestedFramework": "net462",
+  "workaround": "Specify 'net462' (C# 7.3) as targetFramework parameter and manually verify generated code compatibility.",
+  "frameworkInfo": {
+    "requested": "net452",
+    "isEOL": true,
+    "eolDate": "2022-04-26"
+  },
+  "help": "Use the 'list_supported_frameworks' tool to see all supported framework monikers."
+}
 ```
 
-### 3.2 Error Handling for EOL and Invalid Frameworks
-
-When an unsupported framework is specified:
-
-```csharp
-public class FrameworkValidationResult
+#### 2. Invalid Format Errors
+**Error Code:** `INVALID_TFM_FORMAT`
+**Trigger:** Malformed TFM (netfx5.0, dotnet8, framework48, etc.)
+```
 {
-    public bool IsValid { get; init; }
-    public bool IsSupported { get; init; }
-    public bool IsEOL { get; init; }
-    public FrameworkInfo? FrameworkInfo { get; init; }
-    public string? ErrorMessage { get; init; }
-    public string? WarningMessage { get; init; }
-    public string? SuggestedFramework { get; init; }
-}
-
-// Example error for EOL framework:
-{
-    IsValid = false,
-    IsSupported = false,
-    IsEOL = true,
-    ErrorMessage = "Unsupported framework: .NET Framework 4.5.2 reached end-of-life on April 26, 2022.",
-    SuggestedFramework = "net462",
-    WarningMessage = "Consider specifying 'net462' (C# 7.3) or upgrading your project."
-}
-
-// Example error for invalid framework:
-{
-    IsValid = false,
-    IsSupported = false,
-    IsEOL = false,
-    ErrorMessage = "Invalid framework moniker: 'netfx5.0'. Must be valid TFM like 'net8.0', 'net48', 'netstandard2.0'.",
-    SuggestedFramework = null
+  "success": false,
+  "errorCode": "INVALID_TFM_FORMAT",
+  "category": "ValidationError",
+  "error": "Invalid framework moniker: 'netfx5.0'. Must be valid TFM like 'net8.0', 'net48', 'netstandard2.0'.",
+  "suggestedFramework": null,
+  "validExamples": ["net8.0", "net48", "net462", "netstandard2.0"],
+  "help": "Use the 'list_supported_frameworks' tool to see all valid framework monikers and accepted formats."
 }
 ```
+
+#### 3. Empty/Null Parameter Errors
+**Error Code:** `MISSING_PARAMETER`
+**Trigger:** Missing or empty targetFramework parameter
+```
+{
+  "success": false,
+  "errorCode": "MISSING_PARAMETER",
+  "category": "ValidationError",
+  "error": "Missing required parameter: 'targetFramework'. Specify the target .NET framework moniker (e.g., 'net8.0', 'net48').",
+  "parameterName": "targetFramework",
+  "help": "Use the 'list_supported_frameworks' tool to see all supported framework monikers."
+}
+```
+
+#### 4. Unknown Framework Errors
+**Error Code:** `UNKNOWN_FRAMEWORK`
+**Trigger:** Valid format but unrecognized version (net10.0, net99.0, etc.)
+```
+{
+  "success": false,
+  "errorCode": "UNKNOWN_FRAMEWORK",
+  "category": "ValidationError",
+  "error": "Unrecognized framework: 'net10.0'. Supported frameworks: .NET 8-9, .NET Framework 4.6.2-4.8.1, .NET Standard 2.0-2.1.",
+  "suggestedFramework": "net9.0",
+  "supportedFrameworks": ["net9.0", "net8.0", "net481", "net48", ...],
+  "help": "Use the 'list_supported_frameworks' tool for the complete list of supported frameworks with support dates."
+}
+```
+
+#### 5. Refactoring Execution Errors
+**Error Code:** `REFACTORING_FAILED` (or more specific codes like `NO_METHOD_FOUND`, `SYNTAX_ERROR`)
+**Trigger:** Framework validation succeeds but refactoring fails
+```
+{
+  "success": false,
+  "errorCode": "NO_METHOD_FOUND",
+  "category": "ExecutionError",
+  "error": "Refactoring failed: No method found containing lines 100-200.",
+  "frameworkInfo": {
+    "targetFramework": "net8.0",
+    "languageVersion": "CSharp12"
+  }
+}
+```
+
+**Validation Strategy:**
+
+1. **Fail Fast with Guidance** - Reject invalid input immediately with actionable error
+2. **Guide to Discovery Tool** - Every validation error includes `help` field pointing to `list_supported_frameworks`
+3. **Progressive Error Detail**:
+   - Invalid format → Show examples + discovery tool
+   - Unknown version → Show supported list + discovery tool
+   - EOL framework → Show workaround + suggested framework
+4. **Self-Service First** - Agents can call `list_supported_frameworks` proactively to avoid errors
+5. **Human-in-Loop** - Clear messages allow agents to ask humans for framework version
 
 **Tool Behavior:**
-- Tool **rejects** the request with clear error message
+- **Rejects** EOL and invalid frameworks with clear error message
+- **Always includes** `help` field directing to `list_supported_frameworks` tool
+- Provides workaround guidance for EOL frameworks (use nearest supported version)
 - Suggests nearest supported framework when EOL detected
+- Lists valid examples for format errors
 - Does NOT automatically fallback or assume frameworks
-- Returns error in standardized format for client handling
+- Returns errors in standardized JSON format for client handling
+
+See [SDD Section 7](SDD-Framework-Version-Awareness.md#7-error-handling) for implementation details.
 
 ### 3.3 New Components
 
+**Three core components enable framework-aware refactoring:**
+
 #### Component 1: FrameworkValidator
-**Location:** `RefactorCsharpMCP.Core/Analysis/FrameworkValidator.cs`
+**Purpose:** Validates framework monikers and detects EOL/invalid frameworks
 
-**Responsibilities:**
-- Validate framework moniker format (TFM)
+**Key Responsibilities:**
+- Validate TFM format (e.g., "net8.0", "net48", "netstandard2.0")
 - Detect Microsoft-supported vs EOL frameworks
-- Map framework monikers to standardized format
-- Provide clear error messages for invalid/unsupported frameworks
-- Suggest alternatives for EOL frameworks
+- Normalize framework monikers (e.g., "v4.8" → "net48")
+- Provide actionable error messages with workarounds
+- Suggest nearest supported framework for EOL versions
 
-**Public API:**
-```csharp
-public class FrameworkValidator
-{
-    public FrameworkValidationResult Validate(string targetFramework);
-    public bool IsSupportedFramework(string targetFramework);
-    public bool IsEOLFramework(string targetFramework);
-    public string? GetSuggestedFramework(string eolFramework);
-    public string NormalizeMoniker(string targetFramework); // e.g., "v4.8" -> "net48"
-}
+**Public Interface:**
+```
+Validate(targetFramework) → ValidationResult
+IsSupportedFramework(targetFramework) → boolean
+IsEOLFramework(targetFramework) → boolean
+GetSuggestedFramework(eolFramework) → string
+NormalizeMoniker(targetFramework) → string
 ```
 
 #### Component 2: LanguageVersionMapper
-**Location:** `RefactorCsharpMCP.Core/Analysis/LanguageVersionMapper.cs`
+**Purpose:** Maps framework monikers to C# language versions
 
-**Public API:**
-```csharp
-public class LanguageVersionMapper
-{
-    public LanguageVersion GetLanguageVersion(string targetFramework);
-    public LanguageVersion GetLanguageVersion(FrameworkInfo frameworkInfo);
-    public FrameworkInfo GetFrameworkInfo(string targetFramework);
-}
+**Key Responsibilities:**
+- Maintain framework → C# version mapping
+- Provide framework metadata (display name, support status, EOL date)
+- Handle version lookups for Roslyn configuration
+
+**Public Interface:**
+```
+GetLanguageVersion(targetFramework) → LanguageVersion
+GetLanguageVersion(frameworkInfo) → LanguageVersion
+GetFrameworkInfo(targetFramework) → FrameworkInfo
 ```
 
 #### Component 3: CompilationContextBuilder
-**Location:** `RefactorCsharpMCP.Core/Analysis/CompilationContextBuilder.cs`
+**Purpose:** Creates framework-aware Roslyn compilation contexts
 
-**Public API:**
-```csharp
-public class CompilationContextBuilder
+**Key Responsibilities:**
+- Configure C# parse options with correct language version
+- Build compilation with framework-appropriate references
+- Create semantic models for accurate code analysis
+
+**Public Interface:**
+```
+CreateParseOptions(frameworkInfo) → CSharpParseOptions
+CreateCompilation(syntaxTree, frameworkInfo) → CSharpCompilation
+CreateSemanticModel(syntaxTree, frameworkInfo) → SemanticModel
+```
+
+See [SDD Section 4](SDD-Framework-Version-Awareness.md#4-component-architecture) for implementation details.
+
+### 3.4 New Discovery Tool: List Supported Frameworks
+
+**New MCP Tool for Framework Discovery:**
+
+#### list_supported_frameworks Tool
+```
+Tool: list_supported_frameworks
+Parameters: (none)
+
+Response:
 {
-    public CSharpParseOptions CreateParseOptions(FrameworkInfo frameworkInfo);
-    public CSharpCompilation CreateCompilation(
-        SyntaxTree syntaxTree,
-        FrameworkInfo frameworkInfo);
-    public SemanticModel CreateSemanticModel(
-        SyntaxTree syntaxTree,
-        FrameworkInfo frameworkInfo);
+  "supportedFrameworks": [
+    {
+      "tfm": "net9.0",
+      "displayName": ".NET 9",
+      "languageVersion": "C# 13",
+      "family": "Modern",
+      "supportStatus": "Supported until Nov 2026 (STS)"
+    },
+    {
+      "tfm": "net8.0",
+      "displayName": ".NET 8",
+      "languageVersion": "C# 12",
+      "family": "Modern",
+      "supportStatus": "Supported until Nov 2026 (LTS)"
+    },
+    {
+      "tfm": "net48",
+      "displayName": ".NET Framework 4.8",
+      "languageVersion": "C# 7.3",
+      "family": "Framework",
+      "supportStatus": "Supported (tied to Windows lifecycle)"
+    },
+    // ... all supported frameworks
+  ],
+  "acceptedFormats": [
+    "Standard TFM format (e.g., 'net8.0', 'net48', 'netstandard2.0')",
+    "Alternative formats normalized: 'v4.8' → 'net48'",
+    "Alternative formats normalized: '.NETFramework,Version=v4.8' → 'net48'"
+  ],
+  "rejectedFormats": [
+    "Old-style versions: '.NET 8', 'dotnet8' (use 'net8.0')",
+    "Invalid prefixes: 'netfx5.0', 'framework48' (use proper TFM)",
+    "EOL frameworks: 'net6.0', 'net452' (use nearest supported version)"
+  ]
 }
 ```
 
-### 3.4 Updated MCP Tool Signatures
+**Purpose:**
+- Helps agents/users discover valid framework monikers
+- Shows exactly what formats are accepted
+- Provides current support status for each framework
+- Prevents trial-and-error with invalid formats
 
-All refactoring tools will be updated to include the required `targetFramework` parameter:
+**Use Case:**
+- Agent asks: "What .NET frameworks does this tool support?"
+- User confused by TFM format validation error
+- Integration testing to verify available frameworks
 
-#### Extract Method Tool
-```csharp
-[McpServerTool]
-[Description("Extracts a block of code into a new private method with framework-aware syntax.")]
-public Task<object> ExtractMethod(
-    [Description("The complete C# source code")]
-    string sourceCode,
+### 3.5 Updated MCP Tool Signatures
 
-    [Description("The starting line number (1-based) to extract")]
-    int startLine,
+**All refactoring tools require a `targetFramework` parameter (v1.0.0):**
 
-    [Description("The ending line number (1-based) to extract")]
-    int endLine,
+#### Extract Method Tool Signature
+```
+Tool: extract_method
+Parameters:
+  - sourceCode: string (required) - Complete C# source code
+  - startLine: integer (required) - Starting line number (1-based)
+  - endLine: integer (required) - Ending line number (1-based)
+  - newMethodName: string (required) - Name for extracted method
+  - targetFramework: string (required) - TFM (e.g., "net8.0", "net48", "net462")
 
-    [Description("The name for the new method")]
-    string newMethodName,
-
-    [Description("Target framework moniker (e.g., 'net8.0', 'net48', 'net462', 'netstandard2.0')")]
-    string targetFramework)  // REQUIRED
-{
-    // 1. Validate framework
-    var validationResult = _frameworkValidator.Validate(targetFramework);
-    if (!validationResult.IsValid || !validationResult.IsSupported)
-    {
-        return Task.FromResult<object>(new
-        {
-            success = false,
-            error = validationResult.ErrorMessage,
-            suggestedFramework = validationResult.SuggestedFramework
-        });
-    }
-
-    // 2. Get framework info
-    var frameworkInfo = _languageMapper.GetFrameworkInfo(targetFramework);
-
-    // 3. Execute refactoring with framework awareness
-    var result = _extractor.Execute(sourceCode, startLine, endLine, newMethodName, frameworkInfo);
-
-    // 4. Return result
-    return Task.FromResult<object>(new
-    {
-        success = result.IsSuccess,
-        message = result.Message,
-        refactoredCode = result.RefactoredCode,
-        frameworkInfo = new
-        {
-            targetFramework = frameworkInfo.TargetFramework,
-            languageVersion = frameworkInfo.LanguageVersion.ToString(),
-            family = frameworkInfo.Family.ToString()
-        }
-    });
-}
+Processing Flow:
+  1. Validate targetFramework → reject if EOL/invalid
+  2. Get framework metadata (C# version, display name)
+  3. Configure Roslyn with correct language version
+  4. Execute refactoring with framework-aware parsing
+  5. Return refactored code + framework info
 ```
 
-#### Constructor Injection Tool
-```csharp
-[McpServerTool]
-[Description("Converts method parameters to constructor-injected fields or properties with framework-aware syntax.")]
-public Task<object> ConstructorInjection(
-    [Description("The complete C# source code")]
-    string sourceCode,
-
-    [Description("The name of the class containing the method")]
-    string className,
-
-    [Description("The name of the method with parameters to inject")]
-    string methodName,
-
-    [Description("Comma-separated parameter names to inject (e.g., 'logger,config')")]
-    string parameterNames,
-
-    [Description("Target framework moniker (e.g., 'net8.0', 'net48', 'net462')")]
-    string targetFramework,  // REQUIRED
-
-    [Description("Use properties instead of fields (default: false)")]
-    bool useProperties = false)  // Still optional
+#### Constructor Injection Tool Signature
+```
+Tool: constructor_injection
+Parameters:
+  - sourceCode: string (required)
+  - className: string (required)
+  - methodName: string (required)
+  - parameterNames: string (required) - Comma-separated
+  - targetFramework: string (required) - TFM
+  - useProperties: boolean (optional, default: false)
 ```
 
 #### All Other Tools
-Similar updates to:
-- `MakeFieldReadonly` - add required `targetFramework`
-- `SafeDelete` - add required `targetFramework`
-- `ExtractClass` - add required `targetFramework`
+Updated signatures for:
+- **make_field_readonly** → add required `targetFramework`
+- **safe_delete_method** → add required `targetFramework`
+- **extract_class** → add required `targetFramework`
 
-**Parameter Format Examples:**
+**Accepted TFM Formats:**
 - Modern .NET: `"net8.0"`, `"net9.0"`
-- .NET Framework: `"net48"`, `"net472"`, `"net462"`
+- .NET Framework: `"net48"`, `"net472"`, `"net462"`, `"net35"`
 - .NET Standard: `"netstandard2.0"`, `"netstandard2.1"`
 
-**Alternative Formats (normalized internally):**
-- `"v4.8"` → normalized to `"net48"`
-- `.NETFramework,Version=v4.8` → normalized to `"net48"`
+**Alternative Formats** (normalized internally):
+- `"v4.8"` → `"net48"`
+- `.NETFramework,Version=v4.8` → `"net48"`
 
-### 3.5 Data Models
+See [SDD Section 5](SDD-Framework-Version-Awareness.md#5-mcp-tool-signature-updates) for complete C# method signatures.
 
-```csharp
-public class FrameworkInfo
+### 3.6 AI Agent Integration Pattern
+
+**This section addresses how AI agents (primary users) discover and interact with framework-aware refactoring tools.**
+
+#### How Agents Discover Tool Requirements
+
+**1. Tool Discovery via JSON Schema**
+
+When an AI agent (Claude Code, GitHub Copilot, etc.) connects to RefactorCsharpMCP:
+
+```
+Agent → Server: tools/list request
+Server → Agent: JSON Schema for each tool
+```
+
+**Auto-Generated Schema Example:**
+```json
 {
-    public string TargetFramework { get; init; }        // "net8.0", "net462"
-    public string TargetFrameworkMoniker { get; init; } // Full TFM
-    public FrameworkFamily Family { get; init; }        // Framework, Modern, Standard
-    public Version Version { get; init; }               // 4.6.2, 8.0
-    public LanguageVersion LanguageVersion { get; init; }
-    public bool IsSupported { get; init; }
-}
-
-public enum FrameworkFamily
-{
-    Framework,      // .NET Framework (3.5, 4.6.2-4.8.1)
-    Modern,         // .NET 8-9
-    Standard        // .NET Standard 2.0-2.1
-}
-
-public class FrameworkValidationResult
-{
-    public bool IsValid { get; init; }           // Valid TFM format
-    public bool IsSupported { get; init; }       // Microsoft-supported
-    public bool IsEOL { get; init; }             // End-of-life
-    public FrameworkInfo? FrameworkInfo { get; init; }
-    public string? ErrorMessage { get; init; }
-    public string? WarningMessage { get; init; }
-    public string? SuggestedFramework { get; init; }  // For EOL frameworks
+  "name": "extract_method",
+  "description": "Extracts a block of code into a new private method with framework-aware syntax.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "sourceCode": {
+        "type": "string",
+        "description": "The complete C# source code"
+      },
+      "startLine": {
+        "type": "integer",
+        "description": "The starting line number (1-based) to extract"
+      },
+      "endLine": {
+        "type": "integer",
+        "description": "The ending line number (1-based) to extract"
+      },
+      "newMethodName": {
+        "type": "string",
+        "description": "The name for the new method"
+      },
+      "targetFramework": {
+        "type": "string",
+        "description": "Target framework moniker (e.g., 'net8.0', 'net48', 'net462', 'netstandard2.0')"
+      }
+    },
+    "required": ["sourceCode", "startLine", "endLine", "newMethodName", "targetFramework"]
+  }
 }
 ```
+
+**Key Points:**
+- `targetFramework` appears in `properties` object
+- `targetFramework` appears in `required` array → agents know it's mandatory
+- `description` field guides agents on valid values
+- Schema auto-generated from C# `[Description]` attributes
+
+**2. Schema Generation Mechanism**
+
+RefactorCsharpMCP uses ModelContextProtocol SDK (v0.4.0-preview.1):
+
+```csharp
+// C# Tool Definition
+[McpServerTool]
+[Description("Extracts a block of code...")]
+public Task<object> ExtractMethod(
+    [Description("The complete C# source code")] string sourceCode,
+    [Description("Starting line (1-based)")] int startLine,
+    [Description("Ending line (1-based)")] int endLine,
+    [Description("Name for new method")] string newMethodName,
+    [Description("Target framework moniker")] string targetFramework)
+```
+
+↓ **Automatically converts to JSON Schema** ↓
+
+**Optional vs Required Parameters:**
+- No default value → appears in `required` array
+- Has default value (e.g., `bool useProperties = false`) → optional
+
+#### Schema Validation
+
+**Client-Side (Agent):**
+1. Agent receives JSON Schema via `tools/list`
+2. Agent validates parameters against schema **before** calling tool
+3. Type mismatches caught immediately
+4. Missing required parameters detected before network call
+
+**Server-Side (RefactorCsharpMCP):**
+1. MCP SDK validates incoming request against schema
+2. Type coercion and validation automatic
+3. Invalid requests rejected with schema violation errors
+4. Custom validation in tool implementation (TFM format check)
+
+#### Error Handling in Agent Context
+
+Agents receive structured error responses:
+
+```json
+{
+  "success": false,
+  "errorCode": "MISSING_PARAMETER",
+  "category": "ValidationError",
+  "error": "Missing required parameter: 'targetFramework'...",
+  "parameterName": "targetFramework",
+  "help": "Use 'list_supported_frameworks' tool..."
+}
+```
+
+**Agent Error Handling Flow:**
+```
+1. Agent attempts call with missing/invalid parameter
+2. Receives error with errorCode and help field
+3. Agent interprets errorCode:
+   - MISSING_PARAMETER → Prompt human for framework
+   - INVALID_TFM_FORMAT → Call list_supported_frameworks
+   - EOL_FRAMEWORK → Show workaround
+4. Human provides correct value
+5. Agent retries with corrected parameter
+```
+
+#### Self-Service Discovery Pattern
+
+**Agent discovers valid values via discovery tool:**
+
+```
+Agent → Server: list_supported_frameworks (no parameters)
+Server → Agent: Complete list of valid TFMs with metadata
+Agent → Human: "I need your .NET framework. Supported: net9.0, net8.0, net48..."
+Human → Agent: "We use .NET 8"
+Agent: Calls extract_method with targetFramework="net8.0"
+```
+
+#### Agent Adaptation to Schema Changes
+
+**How agents adapt without version flags:**
+
+1. Agent calls `tools/list` on every connection
+2. Receives current schema with `targetFramework` in `required`
+3. Agent detects new required parameter
+4. Agent adjusts behavior:
+   - Prompts human for framework version
+   - Or calls `list_supported_frameworks`
+   - Or reads .csproj file to detect framework
+5. Schema is source of truth - no version flag needed
+
+#### Integration Best Practices
+
+**For Agent Developers:**
+
+1. **Call list_supported_frameworks First** - Proactive discovery prevents errors
+2. **Handle All Error Codes** - Programmatic error handling by errorCode
+3. **Cache Framework Discovery** - list_supported_frameworks response cacheable per session
+4. **Provide Context to Humans** - Don't just ask "What's your framework?" - explain why
+5. **Validate Before Calling** - Use JSON Schema for client-side validation
+
+#### Example Agent Interaction
+
+```
+User: "Extract lines 10-20 into ProcessData method"
+
+Agent: [Calls tools/list, sees targetFramework required]
+Agent: [Calls list_supported_frameworks]
+Agent → Human: "I need your .NET framework version for compatible code.
+                Your project appears to use .NET 8. Use 'net8.0'?"
+Human: "Yes"
+
+Agent → Server: extract_method(..., targetFramework="net8.0")
+Server → Agent: {success: true, refactoredCode: "...", frameworkInfo: {...}}
+
+Agent → Human: "Extracted ProcessData() using .NET 8 (C# 12) syntax."
+```
+
+See [SDD Section 5](SDD-Framework-Version-Awareness.md#5-mcp-tool-signature-updates) for implementation details.
+
+### 3.7 Data Models (Conceptual)
+
+**FrameworkInfo** - Represents complete framework metadata:
+- Target framework moniker (e.g., "net8.0", "net462")
+- Framework family (Framework, Modern, Standard)
+- Version information (e.g., 4.6.2, 8.0)
+- C# language version (e.g., CSharp7_3, CSharp12)
+- Support status (boolean)
+
+**FrameworkFamily** - Categorizes .NET frameworks:
+- **Framework**: .NET Framework (3.5, 4.6.2-4.8.1)
+- **Modern**: .NET 8-9
+- **Standard**: .NET Standard 2.0-2.1
+
+**FrameworkValidationResult** - Validation response structure:
+- IsValid: Whether TFM format is correct
+- IsSupported: Whether Microsoft currently supports this framework
+- IsEOL: Whether this is end-of-life
+- ErrorMessage: Human-readable error
+- SuggestedFramework: Nearest supported version (for EOL)
+- FrameworkInfo: Complete metadata (if valid)
+
+See [SDD Section 2](SDD-Framework-Version-Awareness.md#2-data-models) for complete C# class definitions.
 
 ## 4. Implementation Plan
 
@@ -423,16 +702,17 @@ public class FrameworkValidationResult
 
 ### Phase 3: MCP Tool Updates (Week 3)
 **Deliverables:**
-- Add required `targetFramework` parameter to all 5 MCP tools
+- Add required `targetFramework` parameter to all 5 refactoring MCP tools
+- Implement `list_supported_frameworks` discovery tool (no parameters)
 - Update MCP tool error responses for invalid/EOL frameworks
 - Include framework info in success responses
 - Update tool descriptions in MCP metadata
-- End-to-end MCP tests (8 tests)
+- End-to-end MCP tests (10 tests: 8 refactoring + 2 discovery)
 
-**Breaking Change:**
-- This is a **breaking API change** - all existing tool calls will fail without `targetFramework`
-- Requires version bump to v2.0.0
-- Update README with migration guide
+**Initial Release (v1.0.0):**
+- This is the **initial release** with framework-aware refactoring
+- All MCP tools require `targetFramework` parameter from the start
+- No migration needed - this is the first production release
 
 ### Phase 4: Testing & Documentation (Week 4)
 **Deliverables:**
@@ -441,15 +721,26 @@ public class FrameworkValidationResult
 - Updated README.md, EXAMPLES.md
 - TROUBLESHOOTING.md updates
 
-### Phase 5: DevTools Validation (Week 5)
+### Phase 5: DevTools Validation & Release (Week 5)
 **Deliverables:**
-- Update all tool invocations to include `targetFramework` parameter
 - Test BackupTool refactoring with `targetFramework="net462"`
 - Test passgen refactoring with `targetFramework="net8.0"`
 - Verify EOL framework rejection for net452
 - Real-world examples for all supported frameworks
 - Performance benchmarks
-- Migration guide for v2.0.0 breaking changes
+- Tag and release v1.0.0
+
+**v1.0.0 Release (End of Week 5):**
+- Initial production release with framework-aware refactoring
+- All MCP tools include required `targetFramework` parameter
+- Publish to MCP catalog with framework support documentation
+- Announce on GitHub Discussions
+
+**User Onboarding:**
+- Clear documentation showing `targetFramework` is required
+- `list_supported_frameworks` tool helps discover valid values
+- Examples for all supported frameworks
+- Error messages guide users to correct usage
 
 ## 5. Documentation Requirements
 
