@@ -1,6 +1,6 @@
 # Product Requirements Document: RefactorCsharpMCP V1 Refactoring Capabilities
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Date:** 2025-10-09
 **Status:** Final - Reviewed and Ready for Implementation
 **Author:** Product Owner (Master)
@@ -21,6 +21,220 @@ The V1 release will support **10 refactoring operations** across three categorie
 - Enhanced Rename API with position-based symbol resolution
 - Added Extract Class reference updating to Phase 2
 - Incorporated shared infrastructure work (RefactoringBase, SymbolResolutionHelper)
+
+**Key Changes in v1.2.0:**
+- Added comprehensive .NET version support documentation
+- Created detailed user persona documents (Sarah, Mike, AI Agent)
+- Documented version-specific refactoring behavior across all 10 operations
+- Clarified framework awareness requirements and limitations
+- Cross-referenced Framework Version Awareness PRD for implementation details
+
+---
+
+## .NET Version Support & Framework Awareness
+
+### Critical Product Requirement
+
+**RefactorCsharpMCP must support all Microsoft-supported .NET versions** as of January 2025, with version-aware refactoring that respects C# language limitations and framework-specific syntax.
+
+**Why This Matters:**
+- Mike (Legacy Maintainer) works with .NET Framework 4.6.2-4.8.1 codebases
+- Sarah (Full-Stack Developer) uses .NET 8 with modern C# 12 features
+- Refactorings must generate framework-appropriate code to avoid compilation errors
+- Tool must REJECT end-of-life frameworks with clear guidance
+
+### Supported .NET Versions
+
+RefactorCsharpMCP supports **13 framework monikers** across 3 categories:
+
+#### Modern .NET (Currently Supported)
+- ✅ .NET 9 (C# 13.0) - Supported until Nov 2026 (STS)
+- ✅ .NET 8 (C# 12.0) - Supported until Nov 2026 (LTS)
+
+#### .NET Framework (Windows Component Lifecycle)
+- ✅ .NET Framework 4.8.1 (C# 7.3) - Indefinite support
+- ✅ .NET Framework 4.8 (C# 7.3) - Indefinite support
+- ✅ .NET Framework 4.7.2 (C# 7.3) - Indefinite support
+- ✅ .NET Framework 4.7.1 (C# 7.3) - Indefinite support
+- ✅ .NET Framework 4.7 (C# 7.3) - Indefinite support
+- ✅ .NET Framework 4.6.2 (C# 7.3) - Indefinite support
+- ✅ .NET Framework 3.5 SP1 (C# 3.0) - Indefinite support
+
+#### .NET Standard (Cross-Platform Compatibility)
+- ✅ .NET Standard 2.1 (C# 8.0) - Active
+- ✅ .NET Standard 2.0 (C# 7.3) - Active
+
+#### End-of-Life Frameworks (NOT Supported)
+- ❌ .NET 7, 6, 5 - Reached EOL, security risk
+- ❌ .NET Core 3.x, 2.x - Reached EOL
+- ❌ .NET Framework 4.6.1, 4.6, 4.5.2 - Reached EOL
+- **Tool Behavior:** Rejects with error code `EOL_FRAMEWORK` and suggests nearest supported version
+
+### How Version Awareness Affects Each Refactoring
+
+**Not all refactorings behave identically across .NET versions.** C# language version determines available syntax, which directly impacts refactoring output.
+
+#### Version-Sensitive Refactorings
+
+**1. Extract Method**
+- **Tuple Returns:** Require C# 7.0+ (.NET Framework 4.7+ or .NET 8)
+  - ✅ .NET Framework 4.8: `(string name, int age)` - Supported
+  - ❌ .NET Framework 3.5: Multiple returns NOT supported (C# 3.0)
+- **Collection Expressions:** Require C# 12 (.NET 8+)
+  - ✅ .NET 8: `return [1, 2, 3];` - Supported
+  - ❌ .NET Framework 4.8: Must use `new List<int> { 1, 2, 3 }`
+- **Nullable Reference Types:** Require C# 8.0+ (.NET Standard 2.1, .NET 8)
+  - ✅ .NET 8: `string? name` - Supported
+  - ❌ .NET Framework 4.8: Nullable annotations stripped
+
+**2. Constructor Injection**
+- **Read-Only Auto-Properties:** Require C# 6.0+ (.NET Framework 4.6.2+)
+  - ✅ .NET Framework 4.8: `public ILogger Logger { get; }`
+  - ❌ .NET Framework 3.5: Must use explicit backing fields and get accessors
+
+**3. Extract Class**
+- **Collection Expressions:** Require C# 12 (.NET 8+)
+  - ✅ .NET 8: `private List<int> _items = [];`
+  - ❌ .NET Framework 4.8: `private List<int> _items = new List<int>();`
+
+**4. Inline Variable**
+- **Collection Expression Inlining:** Require C# 12 (.NET 8+)
+  - ✅ .NET 8: Inline `var nums = [1, 2]` as `[1, 2]`
+  - ❌ .NET Framework 4.8: Convert to `new[] { 1, 2 }`
+
+**5. Remove Unused Usings**
+- **Global Usings:** Require C# 10+ (.NET 6+)
+  - ✅ .NET 8: Preserve `global using` declarations
+  - ❌ .NET Framework 4.8: No global usings (C# 7.3)
+- **Implicit Usings:** Require SDK-style projects (.NET 6+)
+  - ✅ .NET 8: Aware of implicit usings from SDK
+  - ❌ .NET Framework 4.8: All usings explicit
+
+**6. Introduce Parameter Object**
+- **Record Types:** Require C# 9.0+ (.NET 5+)
+  - ✅ .NET 8: `public record AddressInfo(string Street, string City);`
+  - ❌ .NET Framework 4.8: Must use traditional class
+- **Primary Constructors:** Require C# 12 (.NET 8+)
+  - ✅ .NET 8: `public class AddressInfo(string street, string city)`
+  - ❌ .NET Framework 4.8: Traditional constructor with assignments
+- **Init-Only Setters:** Require C# 9.0+ (.NET 5+)
+  - ✅ .NET 8: `public string Street { get; init; }`
+  - ❌ .NET Framework 4.8: `public string Street { get; }`
+
+#### Version-Independent Refactorings
+
+**7. Make Field Readonly** - Works identically across all versions (C# 1.0 feature)
+
+**8. Safe Delete** - Works identically across all versions (symbol-based, no syntax dependency)
+
+**9. Rename** - Works identically across all versions (symbol-based, no syntax dependency)
+
+**10. Inline Method** - Mostly version-independent (expressions work in all versions), but modern C# features preserved/converted as needed
+
+### Framework Detection & Validation
+
+**All MCP tools require explicit `targetFramework` parameter:**
+
+```json
+{
+  "name": "extract_method",
+  "inputSchema": {
+    "properties": {
+      "targetFramework": {
+        "type": "string",
+        "description": "Target framework moniker (e.g., 'net8.0', 'net48', 'net462')",
+        "required": true
+      }
+    }
+  }
+}
+```
+
+**Framework Validation Flow:**
+1. User/AI agent calls tool with `targetFramework` parameter
+2. Tool validates framework moniker format
+3. Tool checks if framework is Microsoft-supported (not EOL)
+4. Tool maps framework to C# language version
+5. Tool configures Roslyn with correct language version
+6. Tool executes refactoring with version-appropriate syntax
+7. Tool returns refactored code OR error with guidance
+
+**Error Handling:**
+- **EOL Framework:** Error code `EOL_FRAMEWORK`, suggested alternative, workaround guidance
+- **Invalid Format:** Error code `INVALID_TFM_FORMAT`, valid examples, link to discovery tool
+- **Unknown Framework:** Error code `UNKNOWN_FRAMEWORK`, supported framework list
+- **Unsupported Feature:** Error code `UNSUPPORTED_LANGUAGE_FEATURE`, explanation of C# version limitation
+
+### Discovery Tool: List Supported Frameworks
+
+**New MCP Tool:** `list_supported_frameworks` (no parameters required)
+
+**Returns:**
+- Complete list of supported framework monikers
+- C# language version for each framework
+- Support status and end-of-life dates
+- Accepted TFM formats
+- Examples of rejected formats (EOL, invalid)
+
+**Use Cases:**
+- AI agent discovers valid frameworks proactively
+- User confused by validation error
+- Integration testing to verify supported frameworks
+
+### Documentation References
+
+**Comprehensive version support documentation:**
+
+1. **[DOT-NET-VERSION-SUPPORT.md](DOT-NET-VERSION-SUPPORT.md)** - Comprehensive analysis:
+   - C# language version mapping to .NET frameworks
+   - Refactoring compatibility matrix (all 10 refactorings × 13 frameworks)
+   - Version-specific behavior for each refactoring
+   - Input/output examples showing syntax differences
+   - Edge cases and limitations per version
+   - Testing strategy across framework versions
+
+2. **[PRD-Framework-Version-Awareness.md](PRD-Framework-Version-Awareness.md)** - Implementation requirements:
+   - Framework validation component design
+   - Language version mapper architecture
+   - MCP tool signature updates with `targetFramework` parameter
+   - Error taxonomy and handling strategy
+   - AI agent integration patterns
+
+3. **User Persona Documents** (see [docs/personas/](personas/)):
+   - **[SARAH-FULL-STACK-DEVELOPER.md](personas/SARAH-FULL-STACK-DEVELOPER.md)** - .NET 8 primary user
+   - **[MIKE-LEGACY-CODE-MAINTAINER.md](personas/MIKE-LEGACY-CODE-MAINTAINER.md)** - .NET Framework 4.6.2-4.8.1 primary user
+   - **[AI-CODING-AGENT.md](personas/AI-CODING-AGENT.md)** - Framework parameter handling patterns
+
+### Impact on User Personas
+
+**Sarah (Full-Stack Developer - .NET 8):**
+- Expects modern C# 12 syntax in refactored code (collection expressions, primary constructors)
+- Uses `targetFramework="net8.0"` for all refactorings
+- Benefits from enhanced features (records in Introduce Parameter Object)
+- Legacy code maintenance: switches to `targetFramework="net48"` when working on .NET Framework services
+
+**Mike (Legacy Code Maintainer - .NET Framework 4.8):**
+- **CRITICAL:** Tool must NOT generate C# 8+ features in Framework code
+- Uses `targetFramework="net48"` or `"net472"` or `"net462"` depending on project
+- Relies on version validation to prevent compilation errors
+- Migration scenario: Uses `targetFramework="net8.0"` for pilot .NET 8 services
+- Workaround for .NET Framework 4.5.2 (EOL): Specifies `"net462"`, manually verifies compatibility
+
+**AI Coding Agent (Claude Code):**
+- Infers framework from project file (.csproj) OR asks human
+- Calls `list_supported_frameworks` proactively to cache valid monikers
+- Handles `EOL_FRAMEWORK` errors gracefully with human-in-the-loop clarification
+- Provides framework-aware explanations (e.g., "I used .NET 8 syntax because your project targets net8.0")
+
+### Success Criteria (Version Support)
+
+- ✅ All 13 Microsoft-supported frameworks explicitly supported
+- ✅ All 10 refactorings tested on minimum 6 framework versions
+- ✅ EOL frameworks rejected with error code and suggested alternative
+- ✅ Version-specific syntax correctly generated (no C# 12 in .NET Framework 4.8)
+- ✅ Clear documentation of version limitations per refactoring
+- ✅ Framework discovery tool enables self-service learning
+- ✅ Error messages guide users to correct framework specification
 
 ---
 
@@ -53,17 +267,28 @@ The V1 release will support **10 refactoring operations** across three categorie
 
 ### User Personas
 
-**Persona 1: Sarah - Full-Stack Developer**
-- Uses Claude Code daily for C# backend development
-- Frequently extracts methods to reduce code duplication
+RefactorCsharpMCP serves three primary user archetypes. Detailed persona documents are available in [docs/personas/](personas/).
+
+**Persona 1: Sarah - Full-Stack Developer** ([detailed persona](personas/SARAH-FULL-STACK-DEVELOPER.md))
+- Uses Claude Code daily for C# backend development (.NET 8 primary, .NET Framework 4.8 legacy)
+- Frequently extracts methods to reduce code duplication (3-5 times per day)
 - Needs dependency injection patterns for testability
 - Values speed and reliability over comprehensive features
+- **Framework Context:** Primary .NET 8 user, expects modern C# 12 syntax, switches to Framework 4.8 for legacy maintenance
 
-**Persona 2: Mike - Legacy Code Maintainer**
-- Works with existing .NET Framework 4.5.2+ codebases
-- Regularly cleans up code smells (long methods, god classes)
-- Needs safe refactorings that don't break existing functionality
+**Persona 2: Mike - Legacy Code Maintainer** ([detailed persona](personas/MIKE-LEGACY-CODE-MAINTAINER.md))
+- Works with existing .NET Framework 4.6.2-4.8.1 codebases (15+ year old ERP system)
+- Regularly cleans up code smells (long methods, god classes) while maintaining stability
+- Needs safe refactorings that don't break existing functionality (zero tolerance for production issues)
 - Prefers explicit, predictable transformations
+- **Framework Context:** Primary .NET Framework user, CRITICAL that tool doesn't generate C# 8+ features in Framework code
+
+**Persona 3: AI Coding Agent** ([detailed persona](personas/AI-CODING-AGENT.md))
+- Claude Code, Cursor, Continue, and other MCP clients
+- Interprets human natural language requests and maps to MCP tool calls
+- Infers framework from project context or asks human for clarification
+- Handles framework validation errors gracefully with human-in-the-loop
+- **Framework Context:** Uses `list_supported_frameworks` for discovery, includes `targetFramework` in all tool calls
 
 ---
 
@@ -1108,10 +1333,10 @@ All tools follow consistent patterns:
 
 ## Document Approval
 
-**Product Owner**: Approved - Ready for implementation (v1.1.0)
+**Product Owner**: Approved - Ready for implementation (v1.2.0)
 **Reviewed by**: Master Software Architect - Approved with Recommendations
 **Date**: 2025-10-09
-**Version**: 1.1.0 (Incorporating architect feedback)
+**Version**: 1.2.0 (Adding .NET version support documentation)
 **Next Review**: After Phase 1 completion (Week 3)
 
 **Key Updates in v1.1.0**:
@@ -1122,6 +1347,15 @@ All tools follow consistent patterns:
 - Added Extract Class reference updating to Phase 2
 - Updated effort estimates based on technical complexity analysis
 - Incorporated shared infrastructure work (RefactoringBase, SymbolResolutionHelper)
+
+**Key Updates in v1.2.0**:
+- Added comprehensive .NET Version Support & Framework Awareness section
+- Documented version-specific behavior for all 10 refactorings
+- Created detailed user persona documents (Sarah, Mike, AI Agent)
+- Cross-referenced DOT-NET-VERSION-SUPPORT.md for technical details
+- Cross-referenced PRD-Framework-Version-Awareness.md for implementation
+- Clarified 13 supported framework monikers and EOL framework handling
+- Updated user personas with framework context
 
 ---
 
