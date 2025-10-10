@@ -1,9 +1,9 @@
 # .NET Version Support & Refactoring Compatibility Matrix
 
-**Version:** 1.0.0
-**Date:** 2025-10-09
-**Status:** Comprehensive Analysis
-**Related:** PRD-V1-Refactoring-Capabilities.md, PRD-Framework-Version-Awareness.md
+**Version:** 1.1.0 **[UPDATED]**
+**Date:** 2025-10-10
+**Status:** Comprehensive Analysis - Updated with Architect Recommendations
+**Related:** PRD-V1-Refactoring-Capabilities.md (v1.3.0), PRD-Framework-Version-Awareness.md
 
 ---
 
@@ -147,7 +147,7 @@ RefactorCsharpMCP must support all Microsoft-supported .NET versions as of Janua
 | **Make Field Readonly** | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full | Modifier-only change |
 | **Safe Delete** | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full | No syntax dependencies |
 | **Extract Class** | ⚠️ Limited | ✅ Full | ✅ Full | ✅ Full | ✅ Enhanced | C# 3.0 limits object init |
-| **Inline Method** | ⚠️ Limited | ✅ Full | ✅ Full | ✅ Full | ✅ Full | Complex expressions limited |
+| **Inline Method** | ⚠️ Limited | ✅ Full | ✅ Full | ✅ Full | ✅ Enhanced | **[UPDATED v1.1.0]** Version-sensitive for C# 6.0+ syntax |
 | **Inline Variable** | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Enhanced | Collection expressions in C# 12 |
 | **Rename** | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full | No syntax dependencies |
 | **Remove Unused Usings** | ✅ Full | ✅ Full | ✅ Full | ⚠️ Careful | ⚠️ Careful | Global usings C# 10+ |
@@ -615,11 +615,13 @@ public class ShoppingCart
 
 ---
 
-### 6. Inline Method
+### 6. Inline Method **[RECLASSIFIED in v1.1.0]**
 
 #### Framework Variation Points
 
-##### Expression-Bodied Members
+**IMPORTANT:** Inline Method is **VERSION-SENSITIVE** when inlining methods that contain modern C# syntax. The refactoring must convert modern syntax to framework-compatible equivalents when targeting older frameworks.
+
+##### Expression-Bodied Members (C# 6.0+)
 
 **C# 6.0+ (.NET Framework 4.6+) - Expression Bodies:**
 ```csharp
@@ -631,16 +633,82 @@ public int Calculate()
     return Sum(5, 10);
 }
 
-// Output (.NET Framework 4.8, .NET 8) - Inline expression
+// Output (.NET Framework 4.8, .NET 8) - Inline expression directly
 public int Calculate()
 {
     return 5 + 10;  // Expression inlined
 }
 
-// .NET Framework 3.5 - Same result (expressions work in all versions)
+// Output (.NET Framework 3.5) - Must expand expression-bodied member
+// If method being inlined uses => syntax, it must be expanded for C# 3.0
 public int Calculate()
 {
-    return 5 + 10;
+    return 5 + 10;  // Expression still works, but source method format may need conversion
+}
+```
+
+##### Read-Only Auto-Properties (C# 6.0+)
+
+**C# 6.0+ (.NET Framework 4.6+):**
+```csharp
+// Input - Method accesses read-only auto-property
+public class Config
+{
+    public int Timeout { get; } = 30;
+
+    private int GetTimeout() => Timeout;
+}
+
+// Output (.NET Framework 4.8) - Inline directly
+public class Config
+{
+    public int Timeout { get; } = 30;
+
+    public void Process()
+    {
+        var timeout = Timeout;  // Inlined
+    }
+}
+
+// Output (.NET Framework 3.5) - If inlining into C# 3.0 code
+// Tool must be aware property syntax differs
+public class Config
+{
+    private readonly int _timeout = 30;
+    public int Timeout { get { return _timeout; } }
+
+    public void Process()
+    {
+        var timeout = Timeout;  // Inlined, but property definition different
+    }
+}
+```
+
+##### String Interpolation (C# 6.0+)
+
+**C# 6.0+ (.NET Framework 4.6+):**
+```csharp
+// Input
+private string FormatName(string first, string last) => $"Name: {first} {last}";
+
+public void Display()
+{
+    var formatted = FormatName("John", "Doe");
+    Console.WriteLine(formatted);
+}
+
+// Output (.NET Framework 4.8, .NET 8) - Inline string interpolation
+public void Display()
+{
+    var formatted = $"Name: John Doe";  // ✅ String interpolation preserved
+    Console.WriteLine(formatted);
+}
+
+// Output (.NET Framework 3.5) - Convert to string.Format
+public void Display()
+{
+    var formatted = string.Format("Name: {0} {1}", "John", "Doe");  // ✅ Converted to C# 3.0
+    Console.WriteLine(formatted);
 }
 ```
 
@@ -663,31 +731,44 @@ public void Process()
 }
 ```
 
-##### Validation Rules by Version
+##### Validation Rules by Version **[UPDATED v1.1.0]**
 
 | Validation Rule | .NET Fx 3.5 | .NET Fx 4.6.2-4.8.1 | .NET Std 2.1 | .NET 8/9 |
 |----------------|-------------|---------------------|--------------|----------|
 | Inline simple method | ✅ | ✅ | ✅ | ✅ |
 | Inline with parameters | ✅ | ✅ | ✅ | ✅ |
 | Expression-bodied members | ⚠️ Convert | ✅ | ✅ | ✅ |
+| Read-only auto-properties | ⚠️ Expand | ✅ | ✅ | ✅ |
+| String interpolation | ⚠️ Convert | ✅ | ✅ | ✅ |
 | Lambda parameter substitution | ✅ | ✅ | ✅ | ✅ |
+| Modern C# features (C# 8+) | ❌ Error | ⚠️ Depends | ✅ | ✅ |
 
-#### Edge Cases
+#### Edge Cases **[UPDATED v1.1.0]**
 
 **Case 1: Expression-Bodied Member on .NET Framework 3.5**
 - **Input:** `private int Sum(int a, int b) => a + b;`
 - **Behavior:**
   - Parse expression body correctly
   - Inline the expression at call sites
-  - Result is identical (expressions work in C# 3.0)
+  - Result works in C# 3.0 (simple expressions compatible)
+  - **Note:** Method *definition* uses C# 6 syntax, but inlined *expression* is C# 3.0 compatible
 
-**Case 2: Method with Modern C# 12 Features**
+**Case 2: String Interpolation on .NET Framework 3.5**
+- **Input:** `private string Format(string name) => $"Hello {name}";`
+- **Behavior:**
+  - Detect string interpolation (C# 6.0 feature)
+  - Convert to `string.Format("Hello {0}", name)` for C# 3.0
+  - Inline converted expression at call sites
+
+**Case 3: Method with Modern C# 12 Features**
 - **Input (.NET 8):** Method using collection expressions
 - **Behavior:**
-  - Inline preserves collection expression syntax
-  - If inlining into .NET Framework 4.8 code → ERROR:
-    - `error`: "Cannot inline method using C# 12 features into C# 7.3 code"
-    - `suggestion`: "Target framework mismatch - method uses newer syntax"
+  - If `targetFramework="net8.0"` → Inline preserves collection expression syntax
+  - If `targetFramework="net48"` → Convert collection expressions to traditional syntax before inlining
+  - If conversion not possible → ERROR:
+    - `errorCode`: `FRAMEWORK_SYNTAX_MISMATCH`
+    - `error`: "Cannot inline method using C# 12 collection expressions into C# 7.3 context without conversion"
+    - `suggestion`: "Use syntax conversion or target newer framework"
 
 ---
 
@@ -1118,6 +1199,32 @@ All MCP tools require `targetFramework` parameter:
   "error": "Unrecognized framework: 'net10.0'.",
   "suggestedFramework": "net9.0",
   "supportedFrameworks": ["net9.0", "net8.0", "net48", ...]
+}
+```
+
+#### Input Syntax Mismatch **[NEW in v1.1.0]**
+```json
+{
+  "success": false,
+  "errorCode": "INPUT_SYNTAX_MISMATCH",
+  "error": "Input code contains C# 12 collection expressions, which are incompatible with target framework net48 (C# 7.3).",
+  "feature": "Collection expressions",
+  "requiredVersion": "C# 12.0",
+  "targetVersion": "C# 7.3",
+  "suggestion": "Remove collection expressions from input code or target net8.0+"
+}
+```
+
+#### Framework Syntax Mismatch **[NEW in v1.1.0]**
+```json
+{
+  "success": false,
+  "errorCode": "FRAMEWORK_SYNTAX_MISMATCH",
+  "error": "Refactored code would generate C# 8.0 nullable reference types, which are incompatible with target framework net48 (C# 7.3).",
+  "feature": "Nullable reference types",
+  "requiredVersion": "C# 8.0",
+  "targetVersion": "C# 7.3",
+  "suggestion": "Target netstandard2.1 or net8.0 to use nullable reference types"
 }
 ```
 

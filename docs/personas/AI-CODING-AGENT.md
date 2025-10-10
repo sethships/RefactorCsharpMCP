@@ -1,7 +1,7 @@
 # User Persona: AI Coding Agent
 
-**Version:** 1.0.0
-**Date:** 2025-10-09
+**Version:** 1.1.0
+**Date:** 2025-10-10
 **Archetype:** AI-Powered Development Assistant
 
 ---
@@ -266,6 +266,74 @@ Human: "What .NET versions do you support?"
 Agent → Server: list_supported_frameworks
 Server → Agent: [net9.0, net8.0, net48, net472, net462, ...]
 Agent: "I support .NET 8-9, .NET Framework 4.6.2-4.8.1, and .NET Standard 2.0-2.1."
+```
+
+#### Case 5: Multi-Targeting Projects **[NEW v1.1.0]**
+
+**Scenario:** Project targets multiple frameworks simultaneously
+
+**Single Target Framework (Standard):**
+```xml
+<TargetFramework>net8.0</TargetFramework>
+```
+```
+Agent: [Reads .csproj file]
+Agent: Finds single framework "net8.0"
+Agent: ✅ Uses "net8.0" in tool call
+```
+
+**Multi-Target Frameworks (Requires Multiple Passes):**
+```xml
+<TargetFrameworks>net8.0;net48</TargetFrameworks>
+```
+```
+Human: "Extract this method from lines 15-25"
+Agent: [Reads .csproj file]
+Agent: Finds PLURAL <TargetFrameworks> with "net8.0;net48"
+Agent: Parses frameworks: ["net8.0", "net48"]
+
+Agent Strategy - Apply Refactoring to EACH Framework Independently:
+
+Pass 1 - .NET 8:
+Agent → Server: extract_method with targetFramework="net8.0"
+Server → Agent: {refactoredCode with C# 12 syntax, frameworkInfo: "net8.0"}
+
+Pass 2 - .NET Framework 4.8:
+Agent → Server: extract_method with targetFramework="net48"
+Server → Agent: {refactoredCode with C# 7.3 syntax, frameworkInfo: "net48"}
+
+Agent → Human: "I've refactored this code for both target frameworks:
+
+1. .NET 8 (C# 12): Uses collection expressions and primary constructors
+2. .NET Framework 4.8 (C# 7.3): Uses traditional syntax
+
+Since your project targets both frameworks, you'll need to use preprocessor
+directives (#if NET8_0_OR_GREATER) or conditional compilation to maintain
+both code paths, OR refactor using the LOWEST COMMON DENOMINATOR syntax
+(C# 7.3 in this case).
+
+Would you like me to:
+1. Show the .NET 8 version (modern syntax)
+2. Show the .NET Framework 4.8 version (legacy syntax)
+3. Show a unified version using C# 7.3 syntax (works for both frameworks)"
+```
+
+**Key Insights for Multi-Targeting:**
+- **Parse all frameworks:** Split `<TargetFrameworks>` by semicolon (`;`)
+- **Independent refactoring:** Each framework may generate different syntax
+- **Lowest common denominator:** Recommend unified approach using oldest framework's language version
+- **Conditional compilation:** Explain when preprocessor directives are appropriate
+- **User choice:** Let human decide which framework version to prioritize
+
+**Example: net8.0;net6.0;net48**
+```
+Agent: "Your project targets 3 frameworks:
+        - .NET 8 (C# 12) ✅ Current LTS
+        - .NET 6 (C# 10) ⚠️ EOL November 2024
+        - .NET Framework 4.8 (C# 7.3) ✅ Legacy support
+
+        I recommend refactoring using C# 7.3 syntax for maximum compatibility
+        across all three frameworks. Should I proceed with C# 7.3?"
 ```
 
 ---
@@ -555,10 +623,11 @@ Agent Strategy:
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.1.0 | 2025-10-10 | Added multi-targeting project scenario (Case 5) - Documents handling of `<TargetFrameworks>` plural element with multiple framework passes |
 | 1.0.0 | 2025-10-09 | Initial persona based on PRD v1.1.0 and Framework Awareness PRD |
 
 ---
 
 **Persona Owner:** Product Owner (Master)
-**Last Review:** 2025-10-09
+**Last Review:** 2025-10-10
 **Next Review:** After V1 release integration feedback

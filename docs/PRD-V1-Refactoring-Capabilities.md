@@ -1,10 +1,10 @@
 # Product Requirements Document: RefactorCsharpMCP V1 Refactoring Capabilities
 
-**Version:** 1.2.0
-**Date:** 2025-10-09
-**Status:** Final - Reviewed and Ready for Implementation
+**Version:** 1.3.0
+**Date:** 2025-10-10
+**Status:** Final - Updated with Architectural Recommendations
 **Author:** Product Owner (Master)
-**Reviewed by:** Master Software Architect
+**Reviewed by:** Master Software Architect - APPROVED with Critical Recommendations
 
 ---
 
@@ -121,15 +121,25 @@ RefactorCsharpMCP supports **13 framework monikers** across 3 categories:
   - ✅ .NET 8: `public string Street { get; init; }`
   - ❌ .NET Framework 4.8: `public string Street { get; }`
 
+**7. Inline Method** **[RECLASSIFIED in v1.3.0]**
+- **Version-Sensitive** when inlining methods containing modern C# syntax
+- **Read-Only Auto-Properties:** Require C# 6.0+ (.NET Framework 4.6.2+)
+  - ✅ .NET Framework 4.8: Inline `public int Count { get; }` directly
+  - ❌ .NET Framework 3.5: Must expand to explicit backing field
+- **Expression-Bodied Members:** Require C# 6.0+ (.NET Framework 4.6.2+)
+  - ✅ .NET Framework 4.8: Inline `int GetValue() => 42;` as `=> 42`
+  - ❌ .NET Framework 3.5: Must expand to `{ return 42; }`
+- **String Interpolation:** Require C# 6.0+ (.NET Framework 4.6.2+)
+  - ✅ .NET Framework 4.8: Inline `$"Hello {name}"` directly
+  - ❌ .NET Framework 3.5: Must convert to `string.Format("Hello {0}", name)`
+
 #### Version-Independent Refactorings
 
-**7. Make Field Readonly** - Works identically across all versions (C# 1.0 feature)
+**8. Make Field Readonly** - Works identically across all versions (C# 1.0 feature)
 
-**8. Safe Delete** - Works identically across all versions (symbol-based, no syntax dependency)
+**9. Safe Delete** - Works identically across all versions (symbol-based, no syntax dependency)
 
-**9. Rename** - Works identically across all versions (symbol-based, no syntax dependency)
-
-**10. Inline Method** - Mostly version-independent (expressions work in all versions), but modern C# features preserved/converted as needed
+**10. Rename** - Works identically across all versions (symbol-based, no syntax dependency)
 
 ### Framework Detection & Validation
 
@@ -159,11 +169,13 @@ RefactorCsharpMCP supports **13 framework monikers** across 3 categories:
 6. Tool executes refactoring with version-appropriate syntax
 7. Tool returns refactored code OR error with guidance
 
-**Error Handling:**
+**Error Handling:** **[ENHANCED in v1.3.0]**
 - **EOL Framework:** Error code `EOL_FRAMEWORK`, suggested alternative, workaround guidance
 - **Invalid Format:** Error code `INVALID_TFM_FORMAT`, valid examples, link to discovery tool
 - **Unknown Framework:** Error code `UNKNOWN_FRAMEWORK`, supported framework list
 - **Unsupported Feature:** Error code `UNSUPPORTED_LANGUAGE_FEATURE`, explanation of C# version limitation
+- **Input Syntax Mismatch:** Error code `INPUT_SYNTAX_MISMATCH` **[NEW]**, indicates input code contains syntax incompatible with specified framework (e.g., collection expressions in .NET Framework 4.8)
+- **Output Syntax Mismatch:** Error code `FRAMEWORK_SYNTAX_MISMATCH` **[NEW]**, indicates refactored output would generate syntax incompatible with target framework
 
 ### Discovery Tool: List Supported Frameworks
 
@@ -378,9 +390,9 @@ private decimal CalculateFinalAmount(Order order)
 - Return value correctly detected (void, single value, or tuple)
 - Proper indentation and formatting
 
-**Implementation Effort**: **3-4 days** (Medium complexity)
+**Implementation Effort**: **5-6 days** **[UPDATED in v1.3.0]** (Medium complexity, increased due to version-aware tuple return conversion and collection expression handling)
 
-**Current Implementation Status**: ✅ Implemented, needs enhancement for return value detection
+**Current Implementation Status**: ✅ Implemented, needs enhancement for return value detection and version-aware syntax generation
 
 ---
 
@@ -535,7 +547,7 @@ public class Calculator
 - Code semantics preserved
 - No compilation errors
 
-**Implementation Effort**: **6-8 days** (High complexity due to parameter substitution and name conflict handling)
+**Implementation Effort**: **7-9 days** **[UPDATED in v1.3.0]** (High complexity due to parameter substitution, name conflict handling, and version-sensitive syntax conversion)
 
 **Current Implementation Status**: ❌ Not implemented - NEW for V1
 
@@ -594,7 +606,7 @@ public void ProcessData()
 - Code semantics preserved
 - Parentheses added if needed to preserve precedence
 
-**Implementation Effort**: **4-5 days** (Medium complexity)
+**Implementation Effort**: **5-6 days** **[UPDATED in v1.3.0]** (Medium complexity, increased due to collection expression conversion logic)
 
 **Current Implementation Status**: ❌ Not implemented - NEW for V1
 
@@ -704,7 +716,7 @@ public void CreateCustomer(string name, string email, AddressInfo address)
 - Method body references updated
 - All callers updated to construct parameter object
 
-**Implementation Effort**: **5-6 days** (Medium-High complexity due to caller updates)
+**Implementation Effort**: **7-8 days** **[UPDATED in v1.3.0]** (Medium-High complexity due to caller updates, record type detection, and init-only setter conversion)
 
 **Current Implementation Status**: ❌ Not implemented - NEW for V1 (Phase 4 - Optional)
 
@@ -905,7 +917,7 @@ public class SimpleClass
 - Code compiles successfully
 - No functionality changes
 
-**Implementation Effort**: **2-3 days** (Low complexity - easiest refactoring to implement)
+**Implementation Effort**: **3-4 days** **[UPDATED in v1.3.0]** (Low complexity, increased due to global using awareness and implicit using handling)
 
 **Current Implementation Status**: ❌ Not implemented - NEW for V1 (moved to Phase 1)
 
@@ -913,18 +925,18 @@ public class SimpleClass
 
 ## V1 Refactoring Summary Table
 
-| # | Refactoring | Priority | Status | Category | Effort |
-|---|-------------|----------|--------|----------|--------|
-| 1 | **Remove Unused Usings** | P0 🔥 | ❌ NEW | Code Cleanup | 2-3 days |
+| # | Refactoring | Priority | Status | Category | Effort (v1.3.0) |
+|---|-------------|----------|--------|----------|-----------------|
+| 1 | **Remove Unused Usings** | P0 🔥 | ❌ NEW | Code Cleanup | 3-4 days |
 | 2 | **Rename** | P0 🔥 | ❌ NEW | Code Cleanup | 5-7 days |
-| 3 | Extract Method | P0 🔥 | ✅ ENHANCE | Code Extraction | 3-4 days |
+| 3 | Extract Method | P0 🔥 | ✅ ENHANCE | Code Extraction | 5-6 days |
 | 4 | Constructor Injection | P0 🔥 | ✅ STABLE | Dependency Mgmt | - |
-| 5 | Inline Variable | P1 | ❌ NEW | Code Extraction | 4-5 days |
-| 6 | Inline Method | P1 | ❌ NEW | Code Extraction | 6-8 days |
+| 5 | Inline Variable | P1 | ❌ NEW | Code Extraction | 5-6 days |
+| 6 | Inline Method | P1 | ❌ NEW | Code Extraction | 7-9 days |
 | 7 | Make Field Readonly | P1 | ✅ STABLE | Code Cleanup | - |
 | 8 | Safe Delete | P1 | ✅ DOCUMENT | Code Cleanup | - |
 | 9 | Extract Class | P1 | ✅ ENHANCE | Code Extraction | 3-4 days |
-| 10 | Introduce Parameter Object | P2 | ❌ NEW | Dependency Mgmt | 5-6 days |
+| 10 | Introduce Parameter Object | P2 | ❌ NEW | Dependency Mgmt | 7-8 days |
 
 **Total**: 10 refactorings (4 implemented, 6 new)
 
@@ -933,14 +945,69 @@ public class SimpleClass
 - Effort estimates updated based on architect review
 - Extract Class includes Phase 2 enhancement for reference updates
 
+**Key Changes in v1.3.0**:
+- All effort estimates increased to account for version-aware syntax generation
+- Inline Method reclassified as version-sensitive (affects 7 of 10 refactorings)
+- Total effort impact: +8-10 days across all refactorings
+
 ---
 
 ## Implementation Priority & Phasing
 
-### Phase 1: Critical Foundation (Weeks 1-3) **[EXTENDED in v1.1.0]**
-**Goal**: Build shared infrastructure and implement high-priority refactorings
+### Phase 0: Framework Infrastructure (Weeks 1-2) **[NEW in v1.3.0]**
+**Goal**: Establish critical cross-framework compilation and testing infrastructure before refactoring work
 
-**Week 1: Infrastructure & Easy Win**
+**Week 1: Reference Assemblies & Test Infrastructure (Part 1)**
+
+1. **Reference Assembly Management** (4-5 days)
+   - Implement NuGet package download and caching strategy
+   - Target packages: `Microsoft.NETFramework.ReferenceAssemblies.{net481, net48, net472, net471, net47, net462, net35}`
+   - Handle .NET Core BCL via runtime assemblies
+   - Create ReferenceAssemblyResolver with performance caching
+   - Unit tests for reference assembly loading across all 13 frameworks
+
+2. **Multi-Framework Test Infrastructure - Foundation** (3 days of 5-7 day task)
+   - Create FrameworkTestFixture base class
+   - Implement per-framework Roslyn CSharpCompilation factory
+   - Configure metadata references, preprocessor symbols, language version, nullable context
+   - Create test data builders for framework-specific source code
+
+**Week 2: Test Infrastructure Completion & Syntax Conversion**
+
+3. **Multi-Framework Test Infrastructure - Completion** (2-4 days remaining)
+   - Matrix testing utility (test × 13 frameworks = 13 test executions)
+   - Framework-specific assertion helpers
+   - Compilation validation utilities (verify input/output compiles)
+   - Integration with existing xUnit test suite
+
+4. **Syntax Conversion Framework** (3-4 days)
+   - Collection expression converter (C# 12 → legacy array/list syntax)
+   - Nullable reference type stripper (C# 8.0 → pre-8.0 syntax)
+   - Tuple return converter (C# 7.0 tuples → out parameters or wrapper classes for .NET Framework 3.5)
+   - Read-only auto-property expander (C# 6.0 → explicit backing fields for .NET Framework 3.5)
+   - Unit tests for each syntax converter
+
+5. **Input/Output Validation** (2 days)
+   - Framework-aware syntax validator
+   - Pre-refactoring validation: Does input compile with target framework?
+   - Post-refactoring validation: Does output compile with target framework?
+   - New error codes: `INPUT_SYNTAX_MISMATCH`, `FRAMEWORK_SYNTAX_MISMATCH`
+   - Error message generation with specific C# feature names and minimum versions
+
+**Phase 0 Deliverables**:
+- Reference assembly management system with caching
+- Complete multi-framework test infrastructure (13 frameworks supported)
+- Syntax conversion framework for modern C# → legacy C# transformations
+- Input/output validation framework with framework-specific error codes
+- Updated error taxonomy documentation
+- Foundation for version-aware refactoring work in Phase 1+
+
+---
+
+### Phase 1: Critical Foundation (Weeks 3-5) **[RENUMBERED in v1.3.0, EXTENDED in v1.1.0]**
+**Goal**: Build shared refactoring infrastructure and implement high-priority refactorings
+
+**Week 3: Infrastructure & Easy Win**
 1. **Shared Infrastructure** (3 days)
    - RefactoringBase abstract class (eliminates boilerplate)
    - SymbolResolutionHelper utility (shared by multiple refactorings)
@@ -951,13 +1018,13 @@ public class SimpleClass
    - No dependencies on other refactorings
    - Good warm-up for more complex work
 
-**Week 2: Critical Symbol Resolution**
+**Week 4: Critical Symbol Resolution**
 3. **Rename Symbol** (P0) (5 days)
    - Includes 2-day spike for symbol resolution prototype
    - Most frequently used refactoring (highest user value)
    - Foundation for other symbol-based refactorings
 
-**Week 3: Extract Method Enhancement**
+**Week 5: Extract Method Enhancement**
 4. **Extract Method - Return Value Detection** (P0 enhancement) (4 days)
    - Complete existing implementation
    - Add single return and tuple return support
@@ -973,27 +1040,28 @@ public class SimpleClass
 
 ---
 
-### Phase 2: Code Manipulation (Weeks 4-6)
+### Phase 2: Code Manipulation (Weeks 6-8) **[RENUMBERED in v1.3.0]**
 **Goal**: Add P1 refactorings for complete common case coverage
 
-**Week 4: Inline Operations**
+**Week 6: Inline Operations**
 1. **Inline Variable** (P1) (5 days)
    - Simpler than Inline Method
    - Standalone feature
    - Conservative approach: literals and simple expressions only
 
-**Week 5: Extract Class Enhancement & Inline Method**
+**Week 7: Extract Class Enhancement & Inline Method**
 2. **Extract Class Enhancement** (P1) (4 days) ← **ADDED in v1.1.0**
    - Auto-update references within same class
    - High value/effort ratio
    - Reduces manual user work significantly
 
-3. **Inline Method** (P1) - Start (4 days of 8-day task)
+3. **Inline Method** (P1) - Start (4 days of 9-day task)
    - Most complex of Phase 2
    - Simple cases first (no parameters, no returns)
+   - Version-sensitive: requires syntax conversion for modern C# features
 
-**Week 6: Inline Method Completion**
-3. **Inline Method** (P1) - Complete (4 days remaining)
+**Week 8: Inline Method Completion**
+3. **Inline Method** (P1) - Complete (5 days remaining)
    - Parameter substitution
    - Variable conflict handling
    - Multiple call site support
@@ -1006,7 +1074,7 @@ public class SimpleClass
 
 ---
 
-### Phase 3: Polish & Validation (Week 7)
+### Phase 3: Polish & Validation (Week 9) **[RENUMBERED in v1.3.0]**
 **Goal**: Document limitations, validate performance, and prepare for release
 
 1. **Documentation Updates** (2 days)
@@ -1033,10 +1101,10 @@ public class SimpleClass
 
 ---
 
-### Phase 4: Nice-to-Have (Week 8 - Optional)
+### Phase 4: Nice-to-Have (Optional - Can be deferred to V1.1) **[UPDATED in v1.3.0]**
 **Goal**: Add P2 refactorings if time permits (can be deferred to V1.1)
 
-1. **Introduce Parameter Object** (P2) (6 days)
+1. **Introduce Parameter Object** (P2) (7-8 days)
    - Complex caller updates required
    - Defer to V1.1 if timeline slips
 
@@ -1048,7 +1116,7 @@ public class SimpleClass
 
 ---
 
-**Total Implementation Timeline: 7-8 weeks** (extended from original 6 weeks)
+**Total Implementation Timeline: 8-9 weeks** (extended from 7-8 weeks in v1.2.0, originally 6 weeks)
 
 **Key Changes in v1.1.0 Phasing**:
 - Phase 1 extended from 2 weeks to 3 weeks (architect recommendation)
@@ -1057,6 +1125,19 @@ public class SimpleClass
 - Reordered Rename to Week 2 (after infrastructure)
 - Added Extract Class enhancement to Phase 2
 - Total timeline: 7-8 weeks (vs original 6 weeks)
+
+**Key Changes in v1.3.0 Phasing**:
+- **NEW Phase 0** (Weeks 1-2): Critical framework infrastructure
+  - Reference assembly management (NuGet packages)
+  - Multi-framework test infrastructure (13 frameworks)
+  - Syntax conversion framework (modern → legacy C#)
+  - Input/output validation with new error codes
+- Phase 1 renumbered to Weeks 3-5 (previously Weeks 1-3)
+- Phase 2 renumbered to Weeks 6-8 (previously Weeks 4-6)
+- Phase 3 renumbered to Week 9 (previously Week 7)
+- Phase 4 remains optional, updated effort estimates
+- Inline Method effort: 6-8 days → 7-9 days (version-sensitive)
+- Total timeline: **8-9 weeks** (vs 7-8 weeks in v1.2.0)
 
 ---
 
@@ -1333,11 +1414,11 @@ All tools follow consistent patterns:
 
 ## Document Approval
 
-**Product Owner**: Approved - Ready for implementation (v1.2.0)
-**Reviewed by**: Master Software Architect - Approved with Recommendations
-**Date**: 2025-10-09
-**Version**: 1.2.0 (Adding .NET version support documentation)
-**Next Review**: After Phase 1 completion (Week 3)
+**Product Owner**: Approved - Ready for implementation (v1.3.0)
+**Reviewed by**: Master Software Architect - APPROVED with Critical Recommendations Incorporated
+**Date**: 2025-10-10
+**Version**: 1.3.0 (Architectural recommendations from PR #14 incorporated)
+**Next Review**: After Phase 0 completion (Week 2)
 
 **Key Updates in v1.1.0**:
 - Extended timeline from 6 to 7-8 weeks
@@ -1356,6 +1437,81 @@ All tools follow consistent patterns:
 - Cross-referenced PRD-Framework-Version-Awareness.md for implementation
 - Clarified 13 supported framework monikers and EOL framework handling
 - Updated user personas with framework context
+
+**Key Updates in v1.3.0 (Architectural Recommendations from PR #14)**:
+
+**1. Timeline Extension (7-8 weeks → 8-9 weeks)**
+- Extended total implementation timeline to account for Phase 0 infrastructure work
+- Added critical infrastructure requirements identified in architect review
+- Phase 0 (2 weeks): Reference assemblies, test infrastructure, syntax conversion, validation
+- Updated next review milestone to post-Phase 0 (Week 2)
+
+**2. New Phase 0: Critical Infrastructure (Weeks 1-2)**
+- **Reference Assembly Management** (4-5 days): NuGet package strategy for cross-framework compilation
+  - Use Microsoft.NETFramework.ReferenceAssemblies.* packages
+  - Cache downloaded reference assemblies for performance
+  - Handle .NET Core BCL via NuGet.Frameworks package
+- **Multi-Framework Test Infrastructure** (5-7 days): Test harness for 13 supported frameworks
+  - Matrix testing across .NET 9, .NET 8, .NET Framework 4.8.1-4.6.2, .NET Framework 3.5, .NET Standard 2.1/2.0
+  - Per-framework test fixtures with correct compilation contexts
+- **Syntax Conversion Framework** (3-4 days): Convert modern C# to legacy-compatible equivalents
+  - Collection expressions → array/list initialization
+  - Nullable reference types → stripped annotations
+  - Tuple returns → out parameters or wrapper classes
+- **Input/Output Validation** (2 days): Framework-specific syntax validation
+  - Verify input code compiles with specified framework
+  - Verify output code compiles with specified framework
+  - New error codes: INPUT_SYNTAX_MISMATCH, FRAMEWORK_SYNTAX_MISMATCH
+
+**3. Inline Method Reclassification**
+- Moved from version-independent to **version-sensitive** refactorings
+- When inlining methods with C# 6.0+ syntax into .NET Framework 3.5 context, conversion required
+- Example: Read-only auto-properties, expression-bodied members, string interpolation
+- Impacts effort estimate: 6-8 days → 7-9 days
+
+**4. Error Taxonomy Enhancements**
+- Added `INPUT_SYNTAX_MISMATCH`: Input code contains syntax incompatible with specified framework
+- Added `FRAMEWORK_SYNTAX_MISMATCH`: Refactored code would generate syntax incompatible with target framework
+- Enhanced error messages provide specific C# feature name and required minimum version
+- Cross-referenced with DOT-NET-VERSION-SUPPORT.md for comprehensive error scenarios
+
+**5. Updated Effort Estimates (Based on Version-Awareness Complexity)**
+- **Extract Method**: 3-4 days → 5-6 days (tuple return conversion, collection expression handling)
+- **Constructor Injection**: +1 day for .NET Framework 3.5 (no read-only auto-properties)
+- **Introduce Parameter Object**: 5-6 days → 7-8 days (record type detection, init-only setter conversion)
+- **Inline Variable**: 4-5 days → 5-6 days (collection expression conversion logic)
+- **Inline Method**: 6-8 days → 7-9 days (reclassified as version-sensitive)
+- **Remove Unused Usings**: 2-3 days → 3-4 days (global using awareness, implicit using handling)
+
+**6. Reference Assembly Strategy Documented**
+- **NuGet Packages**: Microsoft.NETFramework.ReferenceAssemblies.{net481, net48, net472, net471, net47, net462, net35}
+- **Roslyn Configuration**: MetadataReferences + PreprocessorSymbols + LanguageVersion + Nullable context
+- **Not just LanguageVersion**: Architect clarified that complete Roslyn configuration requires metadata references and preprocessor symbols
+- Cache strategy for performance optimization
+
+**7. AI Agent Persona Enhancement**
+- Added multi-targeting project scenario (projects with `<TargetFrameworks>` plural)
+- Document logic: Parse all target frameworks, apply refactoring to EACH framework independently
+- Example: Project targeting `net8.0;net48` requires two refactoring passes with different syntax outputs
+- Cross-reference: See docs/personas/AI-CODING-AGENT.md for updated persona
+
+**8. Documentation Updates**
+- **DOT-NET-VERSION-SUPPORT.md**: Updated with Inline Method corrections, new error codes
+- **PRD-Framework-Version-Awareness.md**: Cross-referenced for implementation details
+- **Personas**: Updated AI Agent persona with multi-targeting scenarios
+- Maintained product-level abstraction (no implementation pseudocode in PRD)
+
+**9. Success Criteria Updates**
+- Added Phase 0 infrastructure validation criteria
+- Enhanced framework awareness testing requirements (13 frameworks × 10 refactorings = 130 test combinations minimum)
+- Updated performance targets to include reference assembly caching impact
+- Timeline success: Phase 0 complete by Week 2, Phase 1 by Week 5, full release by Week 9
+
+**Architect Approval Summary**:
+- Status: **APPROVED** with critical infrastructure requirements
+- Key Concerns Addressed: Timeline realistic, infrastructure scoped, error taxonomy complete
+- Remaining Work: Implementation of Phase 0 before proceeding to Phase 1
+- Next Review: Post-Phase 0 (Week 2) to validate infrastructure quality
 
 ---
 
