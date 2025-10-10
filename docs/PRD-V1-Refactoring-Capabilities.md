@@ -1,9 +1,10 @@
 # Product Requirements Document: RefactorCsharpMCP V1 Refactoring Capabilities
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Date:** 2025-10-09
-**Status:** Final - Ready for Implementation
+**Status:** Final - Reviewed and Ready for Implementation
 **Author:** Product Owner (Master)
+**Reviewed by:** Master Software Architect
 
 ---
 
@@ -11,7 +12,15 @@
 
 RefactorCsharpMCP V1 aims to deliver a focused, robust set of refactoring capabilities that address the most common C# code quality needs for AI-assisted development workflows. Rather than attempting comprehensive coverage of all possible refactorings, V1 prioritizes **breadth of common use cases** over **depth of edge cases**, ensuring each supported refactoring works reliably for typical development scenarios.
 
-The V1 release will support **8 core refactoring operations** across three categories: Code Extraction & Composition, Dependency Management, and Code Cleanup. These refactorings represent the operations developers perform most frequently and deliver the highest impact on code maintainability.
+The V1 release will support **10 refactoring operations** across three categories: Code Extraction & Composition, Dependency Management, and Code Cleanup. These refactorings represent the operations developers perform most frequently and deliver the highest impact on code maintainability.
+
+**Key Changes in v1.1.0:**
+- Extended implementation timeline from 6 weeks to 7-8 weeks based on architect review
+- Reordered Phase 1 to prioritize shared infrastructure and early wins
+- Promoted Remove Unused Usings from P2 to P0 (moved to Phase 1)
+- Enhanced Rename API with position-based symbol resolution
+- Added Extract Class reference updating to Phase 2
+- Incorporated shared infrastructure work (RefactoringBase, SymbolResolutionHelper)
 
 ---
 
@@ -24,7 +33,7 @@ The V1 release will support **8 core refactoring operations** across three categ
 4. **Maintain Simplicity**: Keep the API surface small and intuitive for AI clients to use effectively
 
 ### Success Criteria
-- ✅ All 8 refactorings work correctly for common cases (≥90% test coverage)
+- ✅ All 8 core refactorings work correctly for common cases (≥90% test coverage)
 - ✅ No breaking changes to existing refactorings
 - ✅ Clear documentation of limitations and out-of-scope scenarios
 - ✅ Performance: All refactorings complete within 2 seconds for typical files (<1000 LOC)
@@ -77,6 +86,7 @@ The V1 release will support **8 core refactoring operations** across three categ
 **V1 Scope (IN SCOPE)**:
 - ✅ Extract consecutive statements from a single method
 - ✅ Automatic detection of input parameters (data flowing into selection)
+- ✅ **[ENHANCED in v1.1.0]** Automatic return value detection (single return and tuple returns)
 - ✅ Preserve static/instance context (extracted method matches containing method)
 - ✅ Support for local variables, method parameters, and primitive types
 - ✅ Generic types (Dictionary<K,V>, List<T>, etc.)
@@ -86,7 +96,6 @@ The V1 release will support **8 core refactoring operations** across three categ
 - ✅ Single file refactoring only
 
 **V1 Scope (OUT OF SCOPE - Future Versions)**:
-- ❌ Return value detection (V1 only supports void methods)
 - ❌ Extraction across multiple methods
 - ❌ Async/await method extraction (detected but not auto-generated)
 - ❌ LINQ expression extraction with proper closure handling
@@ -94,6 +103,7 @@ The V1 release will support **8 core refactoring operations** across three categ
 - ❌ Extract to different visibility levels (always private in V1)
 - ❌ Cross-file extraction
 - ❌ Partial class extraction
+- ❌ Methods with early returns or complex control flow
 
 **Example**:
 
@@ -140,13 +150,16 @@ private decimal CalculateFinalAmount(Order order)
 - Extracted method compiles without errors
 - Original method behavior unchanged (no side effects)
 - Parameters correctly identified via data flow analysis
+- Return value correctly detected (void, single value, or tuple)
 - Proper indentation and formatting
+
+**Implementation Effort**: **3-4 days** (Medium complexity)
 
 **Current Implementation Status**: ✅ Implemented, needs enhancement for return value detection
 
 ---
 
-#### 1.2 Extract Class ✅ **[IMPLEMENTED - DOCUMENT LIMITATIONS]**
+#### 1.2 Extract Class ✅ **[IMPLEMENTED - ENHANCE IN PHASE 2]**
 
 **Description**: Extract selected fields and methods from a class into a new class with composition pattern (field holding instance of new class).
 
@@ -162,15 +175,16 @@ private decimal CalculateFinalAmount(Order order)
 - ✅ Extract methods that operate on those fields
 - ✅ Create composition relationship (original class holds instance of new class)
 - ✅ Generate readonly field for new class instance
+- ✅ **[ENHANCED in Phase 2]** Automatic reference updating within same class
 - ✅ Single file refactoring only
 
 **V1 Scope (OUT OF SCOPE - Future Versions)**:
-- ❌ Automatic reference updates (V1 requires manual fixes - documented limitation)
 - ❌ Extract to separate file
 - ❌ Extract with delegation pattern (auto-generate delegate methods)
 - ❌ Interface extraction
 - ❌ Inheritance-based extraction
 - ❌ Constructor parameter injection for extracted class
+- ❌ Cross-file reference updates
 
 **Example**:
 
@@ -217,15 +231,21 @@ public class Address
 }
 ```
 
-**⚠️ IMPORTANT**: V1 does NOT automatically update references. Developer must manually change calls from `GetFullAddress()` to `_address.GetFullAddress()`.
+**⚠️ IMPORTANT**:
+- **Phase 1**: Manual reference updates required (warning message displayed)
+- **Phase 2**: Automatic reference updating for members within same class (calls to `GetFullAddress()` become `_address.GetFullAddress()`)
 
 **Success Criteria**:
 - New class created with extracted members
 - Original class removes extracted members and adds new class field
-- Code compiles (after manual reference updates)
-- Warning message displayed about required manual updates
+- Code compiles (after automatic or manual reference updates)
+- Phase 2: References within same class automatically updated
 
-**Current Implementation Status**: ✅ Implemented with documented manual update requirement
+**Implementation Effort**:
+- Phase 1 (current): ✅ Complete
+- Phase 2 (reference updates): **3-4 days** (High value/effort ratio)
+
+**Current Implementation Status**: ✅ Implemented with Phase 2 enhancement planned
 
 ---
 
@@ -290,6 +310,8 @@ public class Calculator
 - Code semantics preserved
 - No compilation errors
 
+**Implementation Effort**: **6-8 days** (High complexity due to parameter substitution and name conflict handling)
+
 **Current Implementation Status**: ❌ Not implemented - NEW for V1
 
 ---
@@ -346,6 +368,8 @@ public void ProcessData()
 - Variable declaration removed
 - Code semantics preserved
 - Parentheses added if needed to preserve precedence
+
+**Implementation Effort**: **4-5 days** (Medium complexity)
 
 **Current Implementation Status**: ❌ Not implemented - NEW for V1
 
@@ -455,13 +479,15 @@ public void CreateCustomer(string name, string email, AddressInfo address)
 - Method body references updated
 - All callers updated to construct parameter object
 
-**Current Implementation Status**: ❌ Not implemented - NEW for V1
+**Implementation Effort**: **5-6 days** (Medium-High complexity due to caller updates)
+
+**Current Implementation Status**: ❌ Not implemented - NEW for V1 (Phase 4 - Optional)
 
 ---
 
 ### Category 3: Code Cleanup
 
-#### 2.3 Make Field Readonly ✅ **[IMPLEMENTED - STABLE]**
+#### 3.1 Make Field Readonly ✅ **[IMPLEMENTED - STABLE]**
 
 **Description**: Add readonly modifier to fields that are only assigned in constructors or at declaration.
 
@@ -490,7 +516,7 @@ public void CreateCustomer(string name, string email, AddressInfo address)
 
 ---
 
-#### 2.4 Safe Delete ✅ **[IMPLEMENTED - DOCUMENT LIMITATIONS]**
+#### 3.2 Safe Delete ✅ **[IMPLEMENTED - DOCUMENT LIMITATIONS]**
 
 **Description**: Delete methods or fields after verifying they have no references within the same file.
 
@@ -526,11 +552,11 @@ public void CreateCustomer(string name, string email, AddressInfo address)
 
 ---
 
-#### 2.5 Rename
+#### 3.3 Rename
 
 **Description**: Rename a symbol (variable, method, class, field, property) and update all references consistently.
 
-**Priority**: **P0** - THE most frequently used refactoring operation (research shows higher frequency than Extract Method)
+**Priority**: **P0** 🔥 - THE most frequently used refactoring operation (research shows higher frequency than Extract Method)
 
 **Use Cases**:
 - Improving code clarity with better names
@@ -590,15 +616,17 @@ public class DataProcessor
 - No symbol conflicts
 - Semantic equivalence preserved
 
+**Implementation Effort**: **5-7 days** (Medium-High complexity - symbol resolution and conflict detection)
+
 **Current Implementation Status**: ❌ Not implemented - NEW for V1 (HIGHEST PRIORITY)
 
 ---
 
-#### 2.6 Remove Unused Usings
+#### 3.4 Remove Unused Usings
 
 **Description**: Remove using directives that are not referenced in the file.
 
-**Priority**: **P2** - Nice to have, improves code cleanliness
+**Priority**: **P0** 🔥 **[PROMOTED from P2 in v1.1.0]** - Easy win, moved to Phase 1
 
 **Use Cases**:
 - Cleaning up after refactoring
@@ -652,81 +680,165 @@ public class SimpleClass
 - Code compiles successfully
 - No functionality changes
 
-**Current Implementation Status**: ❌ Not implemented - NEW for V1
+**Implementation Effort**: **2-3 days** (Low complexity - easiest refactoring to implement)
+
+**Current Implementation Status**: ❌ Not implemented - NEW for V1 (moved to Phase 1)
 
 ---
 
 ## V1 Refactoring Summary Table
 
-| # | Refactoring | Priority | Status | Category |
-|---|-------------|----------|--------|----------|
-| 1 | **Rename** | P0 🔥 | ❌ NEW | Code Cleanup |
-| 2 | Extract Method | P0 🔥 | ✅ ENHANCE | Code Extraction |
-| 3 | Constructor Injection | P0 🔥 | ✅ STABLE | Dependency Mgmt |
-| 4 | Inline Variable | P1 | ❌ NEW | Code Extraction |
-| 5 | Inline Method | P1 | ❌ NEW | Code Extraction |
-| 6 | Make Field Readonly | P1 | ✅ STABLE | Code Cleanup |
-| 7 | Safe Delete | P1 | ✅ DOCUMENT | Code Cleanup |
-| 8 | Extract Class | P1 | ✅ DOCUMENT | Code Extraction |
-| 9 | Introduce Parameter Object | P2 | ❌ NEW | Dependency Mgmt |
-| 10 | Remove Unused Usings | P2 | ❌ NEW | Code Cleanup |
+| # | Refactoring | Priority | Status | Category | Effort |
+|---|-------------|----------|--------|----------|--------|
+| 1 | **Remove Unused Usings** | P0 🔥 | ❌ NEW | Code Cleanup | 2-3 days |
+| 2 | **Rename** | P0 🔥 | ❌ NEW | Code Cleanup | 5-7 days |
+| 3 | Extract Method | P0 🔥 | ✅ ENHANCE | Code Extraction | 3-4 days |
+| 4 | Constructor Injection | P0 🔥 | ✅ STABLE | Dependency Mgmt | - |
+| 5 | Inline Variable | P1 | ❌ NEW | Code Extraction | 4-5 days |
+| 6 | Inline Method | P1 | ❌ NEW | Code Extraction | 6-8 days |
+| 7 | Make Field Readonly | P1 | ✅ STABLE | Code Cleanup | - |
+| 8 | Safe Delete | P1 | ✅ DOCUMENT | Code Cleanup | - |
+| 9 | Extract Class | P1 | ✅ ENHANCE | Code Extraction | 3-4 days |
+| 10 | Introduce Parameter Object | P2 | ❌ NEW | Dependency Mgmt | 5-6 days |
 
 **Total**: 10 refactorings (4 implemented, 6 new)
+
+**Key Changes in v1.1.0**:
+- Remove Unused Usings promoted from P2 to P0 (moved to Phase 1 for early win)
+- Effort estimates updated based on architect review
+- Extract Class includes Phase 2 enhancement for reference updates
 
 ---
 
 ## Implementation Priority & Phasing
 
-### Phase 1: Critical Path (Weeks 1-2)
-**Goal**: Implement missing P0 refactorings
+### Phase 1: Critical Foundation (Weeks 1-3) **[EXTENDED in v1.1.0]**
+**Goal**: Build shared infrastructure and implement high-priority refactorings
 
-1. **Rename** (P0) - Highest priority, most frequently used
-2. **Extract Method - Return Value Detection** (P0 enhancement) - Complete existing implementation
+**Week 1: Infrastructure & Easy Win**
+1. **Shared Infrastructure** (3 days)
+   - RefactoringBase abstract class (eliminates boilerplate)
+   - SymbolResolutionHelper utility (shared by multiple refactorings)
+   - Enhanced error handling with ErrorCode enum
 
-**Deliverables**:
+2. **Remove Unused Usings** (P0) (3 days) ← **MOVED UP from Phase 4**
+   - Easiest refactoring provides early win and team confidence
+   - No dependencies on other refactorings
+   - Good warm-up for more complex work
+
+**Week 2: Critical Symbol Resolution**
+3. **Rename Symbol** (P0) (5 days)
+   - Includes 2-day spike for symbol resolution prototype
+   - Most frequently used refactoring (highest user value)
+   - Foundation for other symbol-based refactorings
+
+**Week 3: Extract Method Enhancement**
+4. **Extract Method - Return Value Detection** (P0 enhancement) (4 days)
+   - Complete existing implementation
+   - Add single return and tuple return support
+   - Comprehensive unit tests
+
+**Phase 1 Deliverables**:
+- Shared refactoring infrastructure (RefactoringBase, SymbolResolutionHelper)
+- Remove Unused Usings with single-file scope
 - Rename refactoring with single-file scope
-- Extract Method with automatic return type detection
-- Comprehensive unit tests (>90% coverage)
+- Extract Method with automatic return type detection (void, single, tuple)
+- Comprehensive unit tests (>90% coverage for new code)
 - Updated EXAMPLES.md
 
-### Phase 2: High-Value Additions (Weeks 3-4)
+---
+
+### Phase 2: Code Manipulation (Weeks 4-6)
 **Goal**: Add P1 refactorings for complete common case coverage
 
-3. **Inline Variable** (P1)
-4. **Inline Method** (P1)
+**Week 4: Inline Operations**
+1. **Inline Variable** (P1) (5 days)
+   - Simpler than Inline Method
+   - Standalone feature
+   - Conservative approach: literals and simple expressions only
 
-**Deliverables**:
-- Working implementations for both refactorings
+**Week 5: Extract Class Enhancement & Inline Method**
+2. **Extract Class Enhancement** (P1) (4 days) ← **ADDED in v1.1.0**
+   - Auto-update references within same class
+   - High value/effort ratio
+   - Reduces manual user work significantly
+
+3. **Inline Method** (P1) - Start (4 days of 8-day task)
+   - Most complex of Phase 2
+   - Simple cases first (no parameters, no returns)
+
+**Week 6: Inline Method Completion**
+3. **Inline Method** (P1) - Complete (4 days remaining)
+   - Parameter substitution
+   - Variable conflict handling
+   - Multiple call site support
+
+**Phase 2 Deliverables**:
+- Working implementations for Inline Variable and Inline Method
+- Extract Class with automatic reference updates (within same class)
 - Integration tests with real code samples
-- Updated documentation
+- Updated documentation with limitations
 
-### Phase 3: Polish & Documentation (Week 5)
-**Goal**: Document limitations and prepare for release
+---
 
-5. Document **Extract Class** limitations (manual reference updates required)
-6. Document **Safe Delete** limitations (single-file analysis only)
-7. Update all documentation with scope/limitations
-8. Create comprehensive examples for all 8 refactorings
+### Phase 3: Polish & Validation (Week 7)
+**Goal**: Document limitations, validate performance, and prepare for release
 
-**Deliverables**:
-- Updated README.md with limitation warnings
-- TROUBLESHOOTING.md updates
-- Complete EXAMPLES.md
+1. **Documentation Updates** (2 days)
+   - Document all limitations clearly (single-file scope, etc.)
+   - Update README.md with limitation warnings
+   - Update TROUBLESHOOTING.md
+   - Create comprehensive EXAMPLES.md for all refactorings
 
-### Phase 4: Nice-to-Have (Week 6 - Optional)
-**Goal**: Add P2 refactorings if time permits
+2. **Performance Benchmarking** (2 days)
+   - Create BenchmarkDotNet baseline measurements
+   - Validate 2-second target for typical files
+   - Document performance characteristics
 
-9. **Introduce Parameter Object** (P2)
-10. **Remove Unused Usings** (P2)
+3. **Test Coverage Validation** (1 day)
+   - Ensure ≥90% coverage for all new refactorings
+   - Minimum 10 unit tests per refactoring
+   - Snapshot testing for complex outputs
 
-**Deliverables**: Optional additions, can be deferred to V1.1
+**Phase 3 Deliverables**:
+- Complete documentation with all limitations
+- Performance benchmarks validating targets
+- Test coverage reports
+- Release-ready codebase
+
+---
+
+### Phase 4: Nice-to-Have (Week 8 - Optional)
+**Goal**: Add P2 refactorings if time permits (can be deferred to V1.1)
+
+1. **Introduce Parameter Object** (P2) (6 days)
+   - Complex caller updates required
+   - Defer to V1.1 if timeline slips
+
+2. **Code Organization Refactoring** (2 days)
+   - Reorganize into categorized folders (optional improvement)
+   - Can be deferred to post-V1 release
+
+**Phase 4 Deliverables**: Optional additions, can be deferred to V1.1 or V1.2
+
+---
+
+**Total Implementation Timeline: 7-8 weeks** (extended from original 6 weeks)
+
+**Key Changes in v1.1.0 Phasing**:
+- Phase 1 extended from 2 weeks to 3 weeks (architect recommendation)
+- Added explicit shared infrastructure work in Week 1
+- Moved Remove Unused Usings to Phase 1 for early win
+- Reordered Rename to Week 2 (after infrastructure)
+- Added Extract Class enhancement to Phase 2
+- Total timeline: 7-8 weeks (vs original 6 weeks)
 
 ---
 
 ## Success Metrics
 
 ### Functional Metrics
-- ✅ All P0 refactorings implemented and tested (3/3)
+- ✅ All P0 refactorings implemented and tested (4/4: Rename, Extract Method, Constructor Injection, Remove Unused Usings)
 - ✅ All P1 refactorings implemented and tested (5/5)
 - ✅ Test coverage ≥90% for core refactoring logic
 - ✅ Zero compilation errors for all refactored code
@@ -792,14 +904,16 @@ public class SimpleClass
 | Roslyn data flow analysis fails for complex code | High | Medium | Conservative fallback: require manual parameters |
 | Performance degradation on large files | Medium | Low | Implement timeout (5s) and size limit (5000 LOC) |
 | Edge cases cause compilation errors | High | Medium | Comprehensive test suite, validate output compiles |
+| Symbol resolution ambiguity (Rename) | High | Medium | Use position-based resolution (lineNumber + columnNumber) |
 
 ### Product Risks
 
 | Risk | Impact | Probability | Mitigation |
 |------|--------|-------------|------------|
 | Users expect cross-file refactoring (not supported) | Medium | High | **CLEARLY DOCUMENT** single-file limitation in all docs |
-| Extract Class requires manual updates (confusing) | Medium | High | **WARNING MESSAGE** on every extraction |
+| Extract Class requires manual updates (Phase 1) | Medium | High | **Phase 2 enhancement** adds automatic reference updates |
 | Safe Delete misses cross-file references | High | Medium | **WARNING MESSAGE** + recommendation to search |
+| Rename complexity underestimated | High | Low | **2-day spike** before implementation, extended timeline |
 
 ---
 
@@ -829,8 +943,8 @@ public class SimpleClass
    - **Decision**: Defer to V1.1, focus on local/private symbols only
 
 2. **Should Extract Method support multiple return values (tuples)?**
-   - **Recommendation**: Yes if simple, use tuple return types
-   - **Decision**: Include in Phase 1 enhancement
+   - **Recommendation**: Yes - tuple return types are stable in C# 7.0+
+   - **Decision**: ✅ Include in Phase 1 enhancement
 
 3. **Should we add "Extract Interface" to V1?**
    - **Recommendation**: No - P2 priority, complex implementation
@@ -839,6 +953,10 @@ public class SimpleClass
 4. **Performance target: 2 seconds or 5 seconds?**
    - **Recommendation**: 2 seconds for typical files (<500 LOC), 5 seconds max timeout
    - **Decision**: Implement 5s timeout, optimize for 2s average
+
+5. **Should Inline Method be included in V1 or deferred to V1.1?**
+   - **Architect Note**: Complexity is higher than typical P1
+   - **Decision**: Include in Phase 2 with clear scope limitations (simple methods only)
 
 ---
 
@@ -883,6 +1001,8 @@ public class SimpleClass
 
 Each refactoring will be exposed as an MCP tool with this general structure:
 
+### Rename Symbol **[UPDATED in v1.1.0]**
+
 ```json
 {
   "name": "rename_symbol",
@@ -891,11 +1011,89 @@ Each refactoring will be exposed as an MCP tool with this general structure:
     "type": "object",
     "properties": {
       "sourceCode": { "type": "string", "description": "Complete C# source code" },
-      "symbolName": { "type": "string", "description": "Current name of the symbol" },
-      "newName": { "type": "string", "description": "New name for the symbol" },
-      "symbolType": { "type": "string", "enum": ["variable", "parameter", "method", "field"] }
+      "lineNumber": { "type": "number", "description": "1-based line number where symbol is located" },
+      "columnNumber": { "type": "number", "description": "1-based column number where symbol starts" },
+      "newName": { "type": "string", "description": "New name for the symbol" }
     },
-    "required": ["sourceCode", "symbolName", "newName"]
+    "required": ["sourceCode", "lineNumber", "columnNumber", "newName"]
+  }
+}
+```
+
+**Key Change**: Added `lineNumber` and `columnNumber` for precise symbol resolution (replaces ambiguous `symbolName` parameter)
+
+### Inline Variable
+
+```json
+{
+  "name": "inline_variable",
+  "description": "Replace all uses of a variable with its initialization expression",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "sourceCode": { "type": "string", "description": "Complete C# source code" },
+      "lineNumber": { "type": "number", "description": "Line where variable is declared" },
+      "variableName": { "type": "string", "description": "Variable name (for validation)" }
+    },
+    "required": ["sourceCode", "lineNumber", "variableName"]
+  }
+}
+```
+
+### Inline Method
+
+```json
+{
+  "name": "inline_method",
+  "description": "Replace all calls to a method with the method's body",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "sourceCode": { "type": "string", "description": "Complete C# source code" },
+      "className": { "type": "string", "description": "Class containing the method" },
+      "methodName": { "type": "string", "description": "Method to inline" }
+    },
+    "required": ["sourceCode", "className", "methodName"]
+  }
+}
+```
+
+### Remove Unused Usings
+
+```json
+{
+  "name": "remove_unused_usings",
+  "description": "Remove using directives that are not referenced in the file",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "sourceCode": { "type": "string", "description": "Complete C# source code" }
+    },
+    "required": ["sourceCode"]
+  }
+}
+```
+
+### Introduce Parameter Object
+
+```json
+{
+  "name": "introduce_parameter_object",
+  "description": "Group related parameters into a parameter object class",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "sourceCode": { "type": "string", "description": "Complete C# source code" },
+      "className": { "type": "string", "description": "Class containing the method" },
+      "methodName": { "type": "string", "description": "Method with parameters to group" },
+      "parameterNames": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Parameter names to group into object"
+      },
+      "newClassName": { "type": "string", "description": "Name for the parameter object class" }
+    },
+    "required": ["sourceCode", "className", "methodName", "parameterNames", "newClassName"]
   }
 }
 ```
@@ -910,9 +1108,20 @@ All tools follow consistent patterns:
 
 ## Document Approval
 
-**Product Owner**: Approved - Ready for implementation
+**Product Owner**: Approved - Ready for implementation (v1.1.0)
+**Reviewed by**: Master Software Architect - Approved with Recommendations
 **Date**: 2025-10-09
-**Next Review**: After Phase 1 completion (Week 2)
+**Version**: 1.1.0 (Incorporating architect feedback)
+**Next Review**: After Phase 1 completion (Week 3)
+
+**Key Updates in v1.1.0**:
+- Extended timeline from 6 to 7-8 weeks
+- Reordered Phase 1 implementation (infrastructure first, easy win, then complex work)
+- Promoted Remove Unused Usings from P2 to P0
+- Enhanced Rename API with position-based symbol resolution
+- Added Extract Class reference updating to Phase 2
+- Updated effort estimates based on technical complexity analysis
+- Incorporated shared infrastructure work (RefactoringBase, SymbolResolutionHelper)
 
 ---
 
