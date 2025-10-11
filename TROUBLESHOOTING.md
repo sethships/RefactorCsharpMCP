@@ -8,7 +8,8 @@ This guide helps resolve common issues when using RefactorCsharpMCP with Claude 
 2. [Connection Problems](#connection-problems)
 3. [Refactoring Errors](#refactoring-errors)
 4. [Performance Issues](#performance-issues)
-5. [Platform-Specific Issues](#platform-specific-issues)
+5. [Cache Issues](#cache-issues)
+6. [Platform-Specific Issues](#platform-specific-issues)
 
 ## Server Configuration Issues
 
@@ -215,6 +216,149 @@ This guide helps resolve common issues when using RefactorCsharpMCP with Claude 
 
 3. **Reduce Concurrent Operations**
    - Process one refactoring at a time
+
+## Cache Issues
+
+### Cache Location and Management
+
+**Cache Location**:
+```
+%USERPROFILE%/.refactor-csharp-mcp/reference-assemblies/
+```
+
+RefactorCsharpMCP caches reference assemblies for 11 supported .NET frameworks (~50MB each, ~550MB total).
+
+### Cache Growing Too Large
+
+**Symptom**: Cache directory exceeds 1GB or disk space concerns
+
+**Solutions**:
+
+1. **Check Cache Size**
+   ```bash
+   # Windows PowerShell
+   Get-ChildItem "$env:USERPROFILE\.refactor-csharp-mcp\reference-assemblies" -Recurse | Measure-Object -Property Length -Sum
+
+   # Linux/Mac
+   du -sh ~/.refactor-csharp-mcp/reference-assemblies/
+   ```
+
+2. **Clear Specific Framework Cache**
+   ```bash
+   # Windows PowerShell
+   Remove-Item -Recurse -Force "$env:USERPROFILE\.refactor-csharp-mcp\reference-assemblies\net481"
+
+   # Linux/Mac
+   rm -rf ~/.refactor-csharp-mcp/reference-assemblies/net481
+   ```
+
+3. **Clear All Caches**
+   ```bash
+   # Windows PowerShell
+   Remove-Item -Recurse -Force "$env:USERPROFILE\.refactor-csharp-mcp"
+
+   # Linux/Mac
+   rm -rf ~/.refactor-csharp-mcp/
+   ```
+
+**Note**: Cache will be automatically rebuilt on next use (requires internet for NuGet downloads).
+
+### Slow First Load for Framework
+
+**Symptom**: First refactoring operation for a framework takes 2-5 seconds
+
+**Explanation**: This is expected behavior. Reference assemblies are downloaded from NuGet on first use (~50MB per framework).
+
+**Solutions**:
+
+1. **Pre-warm Cache** (optional)
+   ```bash
+   # Test with simple code to trigger cache population
+   # The server will download needed frameworks automatically
+   ```
+
+2. **Check Internet Connection**
+   - NuGet download requires internet connectivity
+   - Verify no proxy/firewall blocking nuget.org
+
+3. **Verify Download Progress**
+   - Server logs show "Cache miss for {framework}, resolving..."
+   - Check logs for download errors
+
+### Cache Corruption
+
+**Symptom**: "Failed to load cached assembly" warnings in logs
+
+**Solutions**:
+
+1. **Clear Corrupted Framework Cache**
+   ```bash
+   # Windows PowerShell
+   Remove-Item -Recurse -Force "$env:USERPROFILE\.refactor-csharp-mcp\reference-assemblies\net8.0"
+
+   # Linux/Mac
+   rm -rf ~/.refactor-csharp-mcp/reference-assemblies/net8.0
+   ```
+
+2. **Verify Disk Health**
+   - Run disk check utility
+   - Ensure adequate free space (>2GB recommended)
+
+3. **Check File Permissions**
+   ```bash
+   # Linux/Mac - ensure write permissions
+   chmod -R u+w ~/.refactor-csharp-mcp/
+   ```
+
+### File Locking Issues
+
+**Symptom**: "File is being used by another process" errors
+
+**Solutions**:
+
+1. **Retry Automatically**
+   - Built-in retry logic handles transient locks (50ms, 200ms, 500ms delays)
+   - Most errors resolve automatically
+
+2. **Check for Antivirus Interference**
+   - Some antivirus software locks DLL files during scanning
+   - Add cache directory to exclusions list
+
+3. **Close Other Processes**
+   ```bash
+   # Windows - check processes using cache files
+   handle.exe $env:USERPROFILE\.refactor-csharp-mcp
+
+   # Linux/Mac
+   lsof ~/.refactor-csharp-mcp/
+   ```
+
+### Cache Performance Issues
+
+**Symptom**: Cache hits still slow (>1 second)
+
+**Solutions**:
+
+1. **Check Disk Performance**
+   - SSD recommended for optimal cache performance
+   - HDD may show 2-5x slower cache access
+
+2. **Verify Memory Cache**
+   - Memory cache should provide <10ms access for active frameworks
+   - Restart server if memory cache seems inactive
+
+3. **Review Cache Statistics**
+   - Check logs for "Memory cache hit" vs "Disk cache hit"
+   - Memory cache misses indicate server restarts or memory pressure
+
+### Future Cache Management
+
+**Note**: Automatic cache eviction (LRU policy) is planned for a future release. See [FUTURE-ROADMAP.md](docs/FUTURE-ROADMAP.md) V2.5.4 for details.
+
+For now, manual cache management is recommended:
+- Monitor cache size periodically
+- Clear unused framework caches manually
+- Keep 2-3 frequently used frameworks cached
 
 ## Platform-Specific Issues
 

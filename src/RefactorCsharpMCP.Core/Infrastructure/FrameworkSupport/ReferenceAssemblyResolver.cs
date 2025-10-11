@@ -1,24 +1,28 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Reflection;
 using Microsoft.CodeAnalysis;
+using Microsoft.Extensions.Logging;
 
 namespace RefactorCsharpMCP.Core.Infrastructure.FrameworkSupport;
 
 /// <summary>
-/// Main orchestrator for resolving reference assemblies across all 13 supported .NET frameworks.
+/// Main orchestrator for resolving reference assemblies across all 11 supported .NET frameworks.
 /// Handles framework validation, caching, NuGet downloads, and returns MetadataReference[] for Roslyn compilation.
 /// </summary>
-public class ReferenceAssemblyResolver
+public class ReferenceAssemblyResolver : IDisposable
 {
     private readonly ReferenceAssemblyCache _cache;
     private readonly NuGetPackageDownloader _downloader;
-    private readonly Dictionary<string, IReadOnlyList<MetadataReference>> _memoryCache;
+    private readonly ConcurrentDictionary<string, IReadOnlyList<MetadataReference>> _memoryCache;
+    private readonly ILogger? _logger;
 
-    public ReferenceAssemblyResolver()
+    public ReferenceAssemblyResolver(ILogger? logger = null)
     {
-        _cache = new ReferenceAssemblyCache();
-        _downloader = new NuGetPackageDownloader();
-        _memoryCache = new Dictionary<string, IReadOnlyList<MetadataReference>>(StringComparer.OrdinalIgnoreCase);
+        _logger = logger;
+        _cache = new ReferenceAssemblyCache(logger);
+        _downloader = new NuGetPackageDownloader(logger: logger);
+        _memoryCache = new ConcurrentDictionary<string, IReadOnlyList<MetadataReference>>(StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -40,7 +44,8 @@ public class ReferenceAssemblyResolver
         // Check memory cache first (fastest)
         if (_memoryCache.TryGetValue(targetFramework, out var cachedReferences))
         {
-            Console.WriteLine($"[ReferenceAssemblyResolver] Memory cache hit for {targetFramework} ({stopwatch.ElapsedMilliseconds}ms)");
+            _logger?.LogInformation("[ReferenceAssemblyResolver] Memory cache hit for {TargetFramework} ({ElapsedMs}ms)",
+                targetFramework, stopwatch.ElapsedMilliseconds);
             return cachedReferences;
         }
 
@@ -49,12 +54,13 @@ public class ReferenceAssemblyResolver
         if (diskCachedReferences != null)
         {
             _memoryCache[targetFramework] = diskCachedReferences;
-            Console.WriteLine($"[ReferenceAssemblyResolver] Disk cache hit for {targetFramework} ({stopwatch.ElapsedMilliseconds}ms)");
+            _logger?.LogInformation("[ReferenceAssemblyResolver] Disk cache hit for {TargetFramework} ({ElapsedMs}ms)",
+                targetFramework, stopwatch.ElapsedMilliseconds);
             return diskCachedReferences;
         }
 
         // Cache miss - need to download/resolve
-        Console.WriteLine($"[ReferenceAssemblyResolver] Cache miss for {targetFramework}, resolving...");
+        _logger?.LogInformation("[ReferenceAssemblyResolver] Cache miss for {TargetFramework}, resolving...", targetFramework);
 
         IReadOnlyList<MetadataReference> references;
 
@@ -73,7 +79,8 @@ public class ReferenceAssemblyResolver
         _memoryCache[targetFramework] = references;
 
         stopwatch.Stop();
-        Console.WriteLine($"[ReferenceAssemblyResolver] Resolved {references.Count} references for {targetFramework} ({stopwatch.ElapsedMilliseconds}ms)");
+        _logger?.LogInformation("[ReferenceAssemblyResolver] Resolved {ReferenceCount} references for {TargetFramework} ({ElapsedMs}ms)",
+            references.Count, targetFramework, stopwatch.ElapsedMilliseconds);
 
         return references;
     }
@@ -138,7 +145,7 @@ public class ReferenceAssemblyResolver
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"Warning: Failed to create reference from {path}: {ex.Message}");
+                _logger?.LogWarning(ex, "Failed to create reference from {AssemblyPath}", path);
             }
         }
 
@@ -272,5 +279,13 @@ public class ReferenceAssemblyResolver
     public static IReadOnlySet<string> GetSupportedFrameworks()
     {
         return FrameworkMoniker.SupportedFrameworks;
+    }
+
+    /// <summary>
+    /// Disposes resources used by the resolver.
+    /// </summary>
+    public void Dispose()
+    {
+        _downloader?.Dispose();
     }
 }

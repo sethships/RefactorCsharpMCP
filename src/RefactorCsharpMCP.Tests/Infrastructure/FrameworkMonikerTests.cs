@@ -217,4 +217,46 @@ public class FrameworkMonikerTests
                 $"Framework {framework} should be marked as EOL");
         }
     }
+
+    [Fact]
+    public void Normalize_ThrowsArgumentException_ForNullInput()
+    {
+        // Act & Assert
+        Assert.Throws<ArgumentException>(() => FrameworkMoniker.Normalize(null!));
+    }
+
+    [Fact]
+    public void Normalize_ThrowsArgumentException_ForEmptyInput()
+    {
+        // Act & Assert
+        Assert.Throws<ArgumentException>(() => FrameworkMoniker.Normalize(string.Empty));
+    }
+
+    [Fact]
+    public void Normalize_ThrowsArgumentException_ForWhitespaceInput()
+    {
+        // Act & Assert
+        Assert.Throws<ArgumentException>(() => FrameworkMoniker.Normalize("   "));
+    }
+
+    [Fact]
+    public void Normalize_ThrowsArgumentException_ForInputWithSpaces()
+    {
+        // Act & Assert
+        var exception = Assert.Throws<ArgumentException>(() => FrameworkMoniker.Normalize("net 8.0"));
+        Assert.Contains("cannot contain spaces", exception.Message);
+    }
+
+    [Fact]
+    public void Normalize_DoesNotNormalize_InvalidDottedVersions()
+    {
+        // Arrange - "net4.81" is not a valid framework (should be "net4.8.1" or "net481")
+        var input = "net4.81";
+
+        // Act
+        var result = FrameworkMoniker.Normalize(input);
+
+        // Assert - Should not be normalized to "net481" since it's not a valid pattern
+        Assert.Equal("net4.81", result);
+    }
 }

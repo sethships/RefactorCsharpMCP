@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis.CSharp;
 
 namespace RefactorCsharpMCP.Core.Infrastructure.FrameworkSupport;
@@ -167,16 +168,29 @@ public static class FrameworkMoniker
     /// </summary>
     public static string Normalize(string targetFramework)
     {
-        var normalized = targetFramework.ToLowerInvariant().Trim();
+        // Validate input
+        if (string.IsNullOrWhiteSpace(targetFramework))
+        {
+            throw new ArgumentException("Framework moniker cannot be null or empty", nameof(targetFramework));
+        }
 
-        // Handle dotted .NET Framework versions (net4.8 → net48)
-        normalized = normalized.Replace("net4.8.1", "net481")
-                               .Replace("net4.8", "net48")
-                               .Replace("net4.7.2", "net472")
-                               .Replace("net4.7.1", "net471")
-                               .Replace("net4.7", "net47")
-                               .Replace("net4.6.2", "net462")
-                               .Replace("net3.5", "net35");
+        var normalized = targetFramework.Trim().ToLowerInvariant();
+
+        // Reject input with internal whitespace (e.g., "net 8.0")
+        if (normalized.Contains(' '))
+        {
+            throw new ArgumentException($"Framework moniker cannot contain spaces: '{targetFramework}'", nameof(targetFramework));
+        }
+
+        // Handle dotted .NET Framework versions using specific pattern matching
+        // Use regex to ensure exact matches and prevent edge cases like "net4.81"
+        normalized = Regex.Replace(normalized, @"^net4\.8\.1$", "net481");
+        normalized = Regex.Replace(normalized, @"^net4\.8$", "net48");
+        normalized = Regex.Replace(normalized, @"^net4\.7\.2$", "net472");
+        normalized = Regex.Replace(normalized, @"^net4\.7\.1$", "net471");
+        normalized = Regex.Replace(normalized, @"^net4\.7$", "net47");
+        normalized = Regex.Replace(normalized, @"^net4\.6\.2$", "net462");
+        normalized = Regex.Replace(normalized, @"^net3\.5$", "net35");
 
         return normalized;
     }

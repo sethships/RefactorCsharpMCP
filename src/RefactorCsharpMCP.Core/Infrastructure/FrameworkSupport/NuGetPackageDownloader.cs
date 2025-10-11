@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using NuGet.Common;
 using NuGet.Configuration;
 using NuGet.Packaging;
@@ -11,15 +12,17 @@ namespace RefactorCsharpMCP.Core.Infrastructure.FrameworkSupport;
 /// Downloads NuGet packages and extracts reference assemblies.
 /// Uses NuGet v3 protocol for efficient package downloads.
 /// </summary>
-public class NuGetPackageDownloader
+public class NuGetPackageDownloader : IDisposable
 {
     private readonly string _packagesDirectory;
-    private readonly ILogger _logger;
+    private readonly NuGet.Common.ILogger _nugetLogger;
     private readonly SourceCacheContext _cache;
     private readonly SourceRepository _repository;
+    private readonly Microsoft.Extensions.Logging.ILogger? _logger;
 
-    public NuGetPackageDownloader(string? packagesDirectory = null)
+    public NuGetPackageDownloader(string? packagesDirectory = null, Microsoft.Extensions.Logging.ILogger? logger = null)
     {
+        _logger = logger;
         _packagesDirectory = packagesDirectory ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             ".refactor-csharp-mcp",
@@ -28,7 +31,7 @@ public class NuGetPackageDownloader
 
         Directory.CreateDirectory(_packagesDirectory);
 
-        _logger = NullLogger.Instance;
+        _nugetLogger = NullLogger.Instance;
         _cache = new SourceCacheContext();
 
         // Use official NuGet.org source
@@ -53,7 +56,7 @@ public class NuGetPackageDownloader
             var versions = await findPackageResource.GetAllVersionsAsync(
                 packageId,
                 _cache,
-                _logger,
+                _nugetLogger,
                 CancellationToken.None
             );
 
@@ -78,7 +81,7 @@ public class NuGetPackageDownloader
                     latestVersion,
                     packageStream,
                     _cache,
-                    _logger,
+                    _nugetLogger,
                     CancellationToken.None
                 );
 
@@ -128,6 +131,12 @@ public class NuGetPackageDownloader
                 file.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
             {
                 var fileName = Path.GetFileName(file);
+                if (string.IsNullOrEmpty(fileName))
+                {
+                    _logger?.LogWarning("Skipping file with invalid path: {FilePath}", file);
+                    continue;
+                }
+
                 var destinationPath = Path.Combine(extractDir, fileName);
 
                 // Extract the file
@@ -145,6 +154,12 @@ public class NuGetPackageDownloader
             foreach (var file in packageFiles.Where(f => f.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)))
             {
                 var fileName = Path.GetFileName(file);
+                if (string.IsNullOrEmpty(fileName))
+                {
+                    _logger?.LogWarning("Skipping file with invalid path: {FilePath}", file);
+                    continue;
+                }
+
                 var destinationPath = Path.Combine(extractDir, fileName);
 
                 using var sourceStream = packageReader.GetStream(file);
@@ -182,5 +197,6 @@ public class NuGetPackageDownloader
     public void Dispose()
     {
         _cache?.Dispose();
+        // SourceRepository does not implement IDisposable, so no disposal needed
     }
 }

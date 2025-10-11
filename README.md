@@ -206,6 +206,58 @@ For Docker deployment:
 
 Similar stdio-based configuration in your editor's MCP settings. Use either the dotnet or docker command depending on your deployment preference.
 
+### Cache Management
+
+RefactorCsharpMCP uses a three-tier caching strategy to optimize reference assembly resolution for cross-framework refactoring:
+
+**Cache Location:**
+```
+%USERPROFILE%/.refactor-csharp-mcp/reference-assemblies/
+```
+
+**Cache Characteristics:**
+- **Three-tier caching**: Memory cache → Disk cache → NuGet download
+- **Thread-safe**: Concurrent access supported with proper locking
+- **Automatic retry**: Transient file system errors handled with exponential backoff
+- **Framework isolation**: Each framework has a dedicated cache directory
+- **Size**: Approximately 50MB per framework (~550MB for all 11 supported frameworks)
+
+**Supported Frameworks (11 total):**
+- Modern .NET: net9.0, net8.0
+- .NET Framework: net481, net48, net472, net471, net47, net462, net35
+- .NET Standard: netstandard2.1, netstandard2.0
+
+**Cache Operations:**
+
+View cache statistics:
+```bash
+# Cache stats are logged during normal operation
+# Check logs for cache hit/miss information
+```
+
+Clear cache manually:
+```bash
+# Delete the cache directory
+rm -rf ~/.refactor-csharp-mcp/reference-assemblies/
+
+# Or on Windows PowerShell:
+Remove-Item -Recurse -Force "$env:USERPROFILE\.refactor-csharp-mcp\reference-assemblies"
+```
+
+**Cache Behavior:**
+- First access per framework downloads from NuGet (~50MB, one-time)
+- Subsequent access uses disk cache (~100-500ms)
+- Memory cache provides sub-millisecond access for active frameworks
+- Cache persists across server restarts
+- No automatic eviction (see [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for manual management)
+
+**Performance Characteristics:**
+- First load: ~2000ms (includes NuGet download and extraction)
+- Disk cache hit: ~100-500ms (load from disk)
+- Memory cache hit: <10ms (already in memory)
+
+See [FUTURE-ROADMAP.md](docs/FUTURE-ROADMAP.md) for planned enhancements including automatic cache eviction policies.
+
 ### Available Refactorings
 
 #### Extract Method
