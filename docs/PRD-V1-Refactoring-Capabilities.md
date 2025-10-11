@@ -1305,6 +1305,80 @@ public class SimpleClass
 
 ## Appendix B: MCP Tool Definitions
 
+Each refactoring will be exposed as an MCP tool with this general structure.
+
+### Diagnostic ID Mappings **[NEW in v1.3.0]**
+
+RefactorCsharpMCP tools map to Roslyn diagnostic IDs, enabling AI agents to automatically apply refactorings when linter warnings are detected. **All diagnostic fixes respect framework version constraints** - the tool will generate syntax appropriate for the specified `targetFramework`.
+
+**Version-Aware Diagnostic Mappings:**
+
+| Tool | Diagnostic IDs | Roslyn Diagnostic Description | Framework Notes |
+|------|----------------|------------------------------|-----------------|
+| `remove_unused_usings` | IDE0005, CS8019 | Using directive is unnecessary | **Version-aware**: Preserves `global using` (C# 10+), handles implicit usings (SDK projects) |
+| `make_field_readonly` | IDE0044 | Add readonly modifier | **Version-independent**: Works on all frameworks (C# 1.0) |
+| `inline_variable` | IDE0059, IDE0058 | Value assigned is never used / Expression value is never used | **Version-sensitive**: C# 12 collection expressions converted to legacy syntax for older frameworks |
+| `inline_method` | IDE0022 | Use expression body for methods | **Version-sensitive**: Expression-bodied members (C# 6.0+), string interpolation (C# 6.0+) converted for older frameworks |
+
+**How AI Agents Use Diagnostic Mappings:**
+
+**Scenario 1: CI/CD Pipeline Failure**
+```
+User: "My build failed with IDE0005 errors on 8 files"
+Agent: *reads diagnostic ID mapping*
+Agent: "IDE0005 is 'Using directive is unnecessary'. I can fix this with the remove_unused_usings tool."
+Agent: *calls remove_unused_usings with targetFramework from .csproj*
+```
+
+**Scenario 2: Code Review Feedback**
+```
+User: "Code reviewer says to make fields readonly (IDE0044 warnings)"
+Agent: *identifies IDE0044 maps to make_field_readonly*
+Agent: "I'll apply make_field_readonly to all flagged fields. This refactoring works on all .NET versions."
+```
+
+**Scenario 3: Version-Aware Fix**
+```
+User: "Fix IDE0058 expression value unused warnings" (project targets net48)
+Agent: *calls inline_variable with targetFramework="net48"*
+Agent: *tool converts C# 12 collection expressions to new List<T>() for Framework 4.8*
+Agent: "Fixed! I used .NET Framework 4.8 compatible syntax since your project targets net48."
+```
+
+**Important Framework Constraints:**
+
+⚠️ **Diagnostic fixes are NOT one-size-fits-all.** The same diagnostic ID may require different fixes depending on target framework:
+
+- **IDE0059 (unused value) in .NET 8**: Inline as `[1, 2, 3]` (collection expression)
+- **IDE0059 (unused value) in .NET Framework 4.8**: Inline as `new[] { 1, 2, 3 }` (array initializer)
+- **IDE0022 (expression body) in .NET 8**: Keep `=> expression` syntax
+- **IDE0022 (expression body) in .NET Framework 3.5**: Expand to `{ return expression; }` (C# 3.0 doesn't support expression-bodied members)
+
+**Future Diagnostic Mappings (V2.0+):**
+
+When additional refactorings are added, diagnostic mappings will expand:
+
+| Future Tool | Diagnostic IDs | Description |
+|-------------|----------------|-------------|
+| `extract_method` (future enhancement) | IDE0001 | Simplify name (extract to reduce complexity) |
+| `rename_symbol` | IDE1006 | Naming rule violation |
+| `extract_class` | CA1505 | Avoid unmaintainable code (god class) |
+| `constructor_injection` | CA1001 | Types that own disposable fields should be disposable |
+
+**Zero-Effort Integration:**
+
+Adding diagnostic IDs to tool descriptions requires **no implementation work** - it's purely documentation. This enables:
+- ✅ AI agents can map linter warnings → refactoring tools immediately
+- ✅ Users understand which diagnostics each tool addresses
+- ✅ Sets up future V2.0 `fix_diagnostic` tool integration
+- ✅ No scope creep to V1 timeline
+
+**See Also:**
+- `docs/FUTURE-ROADMAP.md` - V2.0 diagnostic integration strategy
+- `docs/DOT-NET-VERSION-SUPPORT.md` - Framework-specific syntax generation details
+
+---
+
 Each refactoring will be exposed as an MCP tool with this general structure:
 
 ### Rename Symbol **[UPDATED in v1.1.0]**
@@ -1333,15 +1407,21 @@ Each refactoring will be exposed as an MCP tool with this general structure:
 ```json
 {
   "name": "inline_variable",
-  "description": "Replace all uses of a variable with its initialization expression",
+  "description": "Replace all uses of a variable with its initialization expression. Fixes Roslyn diagnostics IDE0059 and IDE0058. Version-sensitive: Converts C# 12 collection expressions to legacy-compatible syntax (array initializers or List<T> constructors) for older frameworks.",
+  "diagnosticIds": ["IDE0059", "IDE0058"],
   "inputSchema": {
     "type": "object",
     "properties": {
       "sourceCode": { "type": "string", "description": "Complete C# source code" },
+      "targetFramework": {
+        "type": "string",
+        "description": "Target framework moniker (e.g., 'net8.0', 'net48', 'net462'). Required for version-aware syntax generation.",
+        "required": true
+      },
       "lineNumber": { "type": "number", "description": "Line where variable is declared" },
       "variableName": { "type": "string", "description": "Variable name (for validation)" }
     },
-    "required": ["sourceCode", "lineNumber", "variableName"]
+    "required": ["sourceCode", "targetFramework", "lineNumber", "variableName"]
   }
 }
 ```
@@ -1351,15 +1431,21 @@ Each refactoring will be exposed as an MCP tool with this general structure:
 ```json
 {
   "name": "inline_method",
-  "description": "Replace all calls to a method with the method's body",
+  "description": "Replace all calls to a method with the method's body. Fixes Roslyn diagnostic IDE0022. Version-sensitive: Converts modern C# syntax (expression-bodied members C# 6.0+, string interpolation C# 6.0+, throw expressions C# 7.0+) to legacy-compatible syntax for older frameworks.",
+  "diagnosticIds": ["IDE0022"],
   "inputSchema": {
     "type": "object",
     "properties": {
       "sourceCode": { "type": "string", "description": "Complete C# source code" },
+      "targetFramework": {
+        "type": "string",
+        "description": "Target framework moniker (e.g., 'net8.0', 'net48', 'net462'). Required for version-aware syntax conversion.",
+        "required": true
+      },
       "className": { "type": "string", "description": "Class containing the method" },
       "methodName": { "type": "string", "description": "Method to inline" }
     },
-    "required": ["sourceCode", "className", "methodName"]
+    "required": ["sourceCode", "targetFramework", "className", "methodName"]
   }
 }
 ```
@@ -1369,13 +1455,19 @@ Each refactoring will be exposed as an MCP tool with this general structure:
 ```json
 {
   "name": "remove_unused_usings",
-  "description": "Remove using directives that are not referenced in the file",
+  "description": "Remove using directives that are not referenced in the file. Fixes Roslyn diagnostics IDE0005 and CS8019. Version-aware: Preserves global using declarations (C# 10+) and handles implicit usings from SDK-style projects.",
+  "diagnosticIds": ["IDE0005", "CS8019"],
   "inputSchema": {
     "type": "object",
     "properties": {
-      "sourceCode": { "type": "string", "description": "Complete C# source code" }
+      "sourceCode": { "type": "string", "description": "Complete C# source code" },
+      "targetFramework": {
+        "type": "string",
+        "description": "Target framework moniker (e.g., 'net8.0', 'net48', 'net462'). Required for framework-aware analysis.",
+        "required": true
+      }
     },
-    "required": ["sourceCode"]
+    "required": ["sourceCode", "targetFramework"]
   }
 }
 ```
