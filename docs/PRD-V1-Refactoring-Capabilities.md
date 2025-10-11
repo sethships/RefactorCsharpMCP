@@ -1,10 +1,10 @@
 # Product Requirements Document: RefactorCsharpMCP V1 Refactoring Capabilities
 
-**Version:** 1.3.0
+**Version:** 1.4.0
 **Date:** 2025-10-10
-**Status:** Final - Updated with Architectural Recommendations
+**Status:** Final - Technical Review Corrections Applied
 **Author:** Product Owner (Master)
-**Reviewed by:** Master Software Architect - APPROVED with Critical Recommendations
+**Reviewed by:** Master Software Architect - APPROVED with Critical Recommendations (Corrections Applied)
 
 ---
 
@@ -28,6 +28,12 @@ The V1 release will support **10 refactoring operations** across three categorie
 - Documented version-specific refactoring behavior across all 10 operations
 - Clarified framework awareness requirements and limitations
 - Cross-referenced Framework Version Awareness PRD for implementation details
+
+**Key Changes in v1.4.0:**
+- **Error Code Clarification:** Distinguished `INPUT_SYNTAX_MISMATCH` (user code incompatible with specified framework) from `FRAMEWORK_SYNTAX_MISMATCH` (refactoring output would generate incompatible syntax)
+- **.NET Framework 3.5 Tuple Workaround:** Documented V1 behavior for Extract Method with multiple returns on net35 (rejection with error, future enhancements for out parameters/wrapper classes)
+- **Phase 0 Roslyn Compilation Factory:** Added detailed requirements for CSharpCompilation factory (MetadataReferences, PreprocessorSymbols, LanguageVersion, NullableContextOptions)
+- **Performance Targets:** Updated from 2s to 2.5s for first operation to account for ~500ms reference assembly loading overhead (subsequent operations remain ~2s with caching)
 
 ---
 
@@ -80,6 +86,11 @@ RefactorCsharpMCP supports **13 framework monikers** across 3 categories:
 - **Tuple Returns:** Require C# 7.0+ (.NET Framework 4.7+ or .NET 8)
   - ✅ .NET Framework 4.8: `(string name, int age)` - Supported
   - ❌ .NET Framework 3.5: Multiple returns NOT supported (C# 3.0)
+  - **Workaround for .NET Framework 3.5 (C# 3.0):**
+    - **Option 1 (Recommended):** Tool rejects Extract Method operations that would require multiple return values with `FRAMEWORK_SYNTAX_MISMATCH` error
+    - **Option 2 (Future Enhancement):** Convert to `out` parameters: `void GetNameAndAge(out string name, out int age)`
+    - **Option 3 (Future Enhancement):** Generate wrapper class: `class NameAndAge { public string Name; public int Age; }`
+    - **V1 Behavior:** Tool REJECTS multi-return Extract Method for net35 with clear error message explaining C# 3.0 limitation
 - **Collection Expressions:** Require C# 12 (.NET 8+)
   - ✅ .NET 8: `return [1, 2, 3];` - Supported
   - ❌ .NET Framework 4.8: Must use `new List<int> { 1, 2, 3 }`
@@ -169,13 +180,21 @@ RefactorCsharpMCP supports **13 framework monikers** across 3 categories:
 6. Tool executes refactoring with version-appropriate syntax
 7. Tool returns refactored code OR error with guidance
 
-**Error Handling:** **[ENHANCED in v1.3.0]**
+**Error Handling:** **[ENHANCED in v1.3.0, v1.4.0]**
 - **EOL Framework:** Error code `EOL_FRAMEWORK`, suggested alternative, workaround guidance
 - **Invalid Format:** Error code `INVALID_TFM_FORMAT`, valid examples, link to discovery tool
 - **Unknown Framework:** Error code `UNKNOWN_FRAMEWORK`, supported framework list
 - **Unsupported Feature:** Error code `UNSUPPORTED_LANGUAGE_FEATURE`, explanation of C# version limitation
-- **Input Syntax Mismatch:** Error code `INPUT_SYNTAX_MISMATCH` **[NEW]**, indicates input code contains syntax incompatible with specified framework (e.g., collection expressions in .NET Framework 4.8)
-- **Output Syntax Mismatch:** Error code `FRAMEWORK_SYNTAX_MISMATCH` **[NEW]**, indicates refactored output would generate syntax incompatible with target framework
+- **Input Syntax Mismatch:** Error code `INPUT_SYNTAX_MISMATCH` **[NEW in v1.3.0]** **[CLARIFIED in v1.4.0]**
+  - **When:** User-provided input code contains C# syntax features that are incompatible with the specified `targetFramework`
+  - **Example:** User specifies `targetFramework="net48"` but input code contains collection expressions (`var nums = [1, 2, 3];`) which require C# 12 (.NET 8+)
+  - **Tool Behavior:** REJECT before refactoring, return error with explanation: "Input code uses collection expressions (C# 12), but target framework net48 supports C# 7.3"
+  - **User Action Required:** Either update `targetFramework` to net8.0 or modify input code to use compatible syntax
+- **Framework Syntax Mismatch:** Error code `FRAMEWORK_SYNTAX_MISMATCH` **[NEW in v1.3.0]** **[CLARIFIED in v1.4.0]**
+  - **When:** Refactoring operation would generate output code with C# syntax features unavailable in the target framework
+  - **Example:** Extract Method with multiple return values targeting .NET Framework 3.5 would generate tuple syntax (`(string, int)`), but tuples require C# 7.0+ (.NET Framework 4.7+)
+  - **Tool Behavior:** REJECT refactoring, return error with explanation: "This refactoring would generate tuple return types (C# 7.0), but target framework net35 supports C# 3.0"
+  - **User Action Required:** Either update `targetFramework` to net47+ or manually refactor using out parameters/wrapper classes
 
 ### Discovery Tool: List Supported Frameworks
 
@@ -262,7 +281,16 @@ RefactorCsharpMCP supports **13 framework monikers** across 3 categories:
 - ✅ All 8 core refactorings work correctly for common cases (≥90% test coverage)
 - ✅ No breaking changes to existing refactorings
 - ✅ Clear documentation of limitations and out-of-scope scenarios
-- ✅ Performance: All refactorings complete within 2 seconds for typical files (<1000 LOC)
+- ✅ **Performance:** **[UPDATED in v1.4.0]**
+  - **Target:** All refactorings complete within **2.5 seconds** for typical files (<1000 LOC)
+  - **Breakdown:**
+    - Reference assembly loading: ~500ms (one-time cost per session, cached afterward)
+    - Compilation + semantic analysis: ~1000ms
+    - Refactoring operation: ~500ms
+    - Output validation: ~500ms
+  - **Session Performance:** First refactoring in session may take 2.5s, subsequent refactorings should complete in ~2s (cached reference assemblies)
+  - **Timeout:** Maximum 5 seconds for any single refactoring operation
+  - **Large Files:** Files >1000 LOC may exceed 2.5s target (acceptable degradation)
 - ✅ Integration: Seamless MCP tool invocation from Claude Code and other clients
 
 ---
@@ -968,8 +996,16 @@ public class SimpleClass
 
 2. **Multi-Framework Test Infrastructure - Foundation** (3 days of 5-7 day task)
    - Create FrameworkTestFixture base class
-   - Implement per-framework Roslyn CSharpCompilation factory
-   - Configure metadata references, preprocessor symbols, language version, nullable context
+   - **Implement per-framework Roslyn CSharpCompilation factory** (CRITICAL INFRASTRUCTURE)
+     - **NOT just LanguageVersion:** Setting `CSharpParseOptions.LanguageVersion` alone is insufficient
+     - **Required Configuration:**
+       - `MetadataReferences`: Load framework-specific reference assemblies (mscorlib.dll, System.dll, etc.)
+       - `PreprocessorSymbols`: Define framework-specific symbols (e.g., NET48, NETFRAMEWORK, NET35)
+       - `LanguageVersion`: Map framework → C# version (net35 → CSharp3, net48 → CSharp7_3, net8.0 → CSharp12)
+       - `NullableContextOptions`: Enable for C# 8.0+, disable for older versions
+     - **Factory Pattern:** `CSharpCompilation CreateCompilation(string targetFramework, string sourceCode)`
+     - **Reference Assembly Resolution:** Use ReferenceAssemblyResolver from Week 1 deliverable
+     - **Validation:** Compilation must produce zero errors for framework-appropriate code
    - Create test data builders for framework-specific source code
 
 **Week 2: Test Infrastructure Completion & Syntax Conversion**
@@ -1150,8 +1186,8 @@ public class SimpleClass
 - ✅ Zero compilation errors for all refactored code
 - ✅ 100% semantic preservation (behavior unchanged)
 
-### Quality Metrics
-- ✅ Performance: <2 seconds for files <1000 LOC
+### Quality Metrics **[UPDATED in v1.4.0]**
+- ✅ **Performance:** <2.5 seconds for files <1000 LOC (includes ~500ms reference assembly overhead for first operation, subsequent operations <2s with caching)
 - ✅ Memory: <100MB baseline, <500MB peak
 - ✅ Reliability: <1% failure rate in production use
 - ✅ Documentation: All limitations clearly documented
@@ -1506,10 +1542,10 @@ All tools follow consistent patterns:
 
 ## Document Approval
 
-**Product Owner**: Approved - Ready for implementation (v1.3.0)
-**Reviewed by**: Master Software Architect - APPROVED with Critical Recommendations Incorporated
+**Product Owner**: Approved - Ready for implementation (v1.4.0)
+**Reviewed by**: Master Software Architect - APPROVED with Critical Recommendations Incorporated, Technical Corrections Applied
 **Date**: 2025-10-10
-**Version**: 1.3.0 (Architectural recommendations from PR #14 incorporated)
+**Version**: 1.4.0 (Technical review corrections applied)
 **Next Review**: After Phase 0 completion (Week 2)
 
 **Key Updates in v1.1.0**:
@@ -1529,6 +1565,44 @@ All tools follow consistent patterns:
 - Cross-referenced PRD-Framework-Version-Awareness.md for implementation
 - Clarified 13 supported framework monikers and EOL framework handling
 - Updated user personas with framework context
+
+**Key Updates in v1.4.0 (Final Technical Review Corrections)**:
+
+**1. Error Code Distinction Clarification (Correction #1)**
+- **INPUT_SYNTAX_MISMATCH clarified:** User-provided input code contains C# features incompatible with specified `targetFramework`
+  - Example: User specifies net48 but input code has collection expressions (C# 12)
+  - Tool behavior: REJECT before refactoring with explanation
+- **FRAMEWORK_SYNTAX_MISMATCH clarified:** Refactoring would generate output with features unavailable in target framework
+  - Example: Extract Method with multiple returns on net35 would generate tuples (C# 7.0+)
+  - Tool behavior: REJECT refactoring with explanation and alternatives
+- Added detailed "When", "Example", "Tool Behavior", "User Action Required" for each error code
+
+**2. .NET Framework 3.5 Tuple Workaround Details (Correction #2)**
+- Documented V1 behavior for Extract Method with multiple return values on net35:
+  - **Recommended:** Reject with `FRAMEWORK_SYNTAX_MISMATCH` error (V1 behavior)
+  - **Future Option 2:** Convert to `out` parameters
+  - **Future Option 3:** Generate wrapper class
+- Clarified that V1 REJECTS multi-return Extract Method for net35 with clear error message explaining C# 3.0 limitation
+
+**3. Phase 0 Roslyn Compilation Factory Requirements (Correction #3)**
+- Emphasized that **LanguageVersion alone is insufficient** for cross-framework compilation
+- Documented complete CSharpCompilation factory requirements:
+  - `MetadataReferences`: Framework-specific reference assemblies (mscorlib.dll, System.dll, etc.)
+  - `PreprocessorSymbols`: Framework-specific symbols (NET48, NETFRAMEWORK, NET35)
+  - `LanguageVersion`: Framework → C# version mapping
+  - `NullableContextOptions`: Enable for C# 8.0+, disable for older versions
+- Added factory pattern signature: `CSharpCompilation CreateCompilation(string targetFramework, string sourceCode)`
+- Validation requirement: Compilation must produce zero errors for framework-appropriate code
+
+**4. Performance Targets Updated for Reference Assembly Overhead (Correction #4)**
+- Updated target from **2 seconds → 2.5 seconds** for typical files (<1000 LOC)
+- Performance breakdown documented:
+  - Reference assembly loading: ~500ms (one-time per session, cached afterward)
+  - Compilation + semantic analysis: ~1000ms
+  - Refactoring operation: ~500ms
+  - Output validation: ~500ms
+- **Session performance:** First operation ~2.5s, subsequent operations ~2s (cached assemblies)
+- Quality Metrics updated to reflect 2.5s target with caching details
 
 **Key Updates in v1.3.0 (Architectural Recommendations from PR #14)**:
 
