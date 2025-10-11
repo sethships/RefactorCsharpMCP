@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__MCP_DOCKER__list_issues",
+      "mcp__MCP_DOCKER__search_issues",
+      "mcp__MCP_DOCKER__get_me",
+      "mcp__MCP_DOCKER__get_issue"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
