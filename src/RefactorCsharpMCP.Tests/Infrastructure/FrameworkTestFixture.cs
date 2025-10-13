@@ -107,12 +107,23 @@ public abstract class FrameworkTestFixture : IDisposable
         try
         {
             // Clear caches to avoid test interference
-            Resolver?.ClearAllCaches();
-            Resolver?.Dispose();
+            if (Resolver != null)
+            {
+                try
+                {
+                    Resolver.ClearAllCaches();
+                }
+                finally
+                {
+                    // Always dispose resolver even if cache clear fails
+                    Resolver.Dispose();
+                }
+            }
         }
         catch
         {
             // Ignore disposal errors in tests
+            // Consider adding ITestOutputHelper for diagnostics in derived classes
         }
 
         GC.SuppressFinalize(this);

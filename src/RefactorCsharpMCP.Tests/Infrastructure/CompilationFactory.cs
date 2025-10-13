@@ -136,9 +136,33 @@ public class CompilationFactory
 
             return (!diagnostics.Any(), diagnostics);
         }
-        catch (Exception)
+        catch (ArgumentException ex)
         {
-            return (false, Enumerable.Empty<Diagnostic>());
+            // Create a synthetic diagnostic for framework validation errors
+            var diagnostic = Diagnostic.Create(
+                new DiagnosticDescriptor(
+                    "TFM001",
+                    "Invalid Target Framework",
+                    ex.Message,
+                    "Framework",
+                    DiagnosticSeverity.Error,
+                    true),
+                Location.None);
+            return (false, new[] { diagnostic });
+        }
+        catch (Exception ex)
+        {
+            // Create a synthetic diagnostic for unexpected exceptions
+            var diagnostic = Diagnostic.Create(
+                new DiagnosticDescriptor(
+                    "TFM999",
+                    "Unexpected Compilation Error",
+                    $"Failed to create compilation: {ex.GetType().Name}: {ex.Message}",
+                    "Internal",
+                    DiagnosticSeverity.Error,
+                    true),
+                Location.None);
+            return (false, new[] { diagnostic });
         }
     }
 

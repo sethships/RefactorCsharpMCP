@@ -107,6 +107,11 @@ public static class FrameworkMappings
                 symbols.Add("NETSTANDARD2_0_OR_GREATER");
                 symbols.Add("NETSTANDARD");
                 break;
+
+            default:
+                // Unknown framework - add minimal symbol for identification
+                symbols.Add($"UNKNOWN_{normalized.ToUpperInvariant().Replace(".", "_")}");
+                break;
         }
 
         return symbols;
