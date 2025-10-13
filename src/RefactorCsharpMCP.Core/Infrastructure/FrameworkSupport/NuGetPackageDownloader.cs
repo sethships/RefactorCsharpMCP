@@ -1,3 +1,4 @@
+using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using NuGet.Common;
 using NuGet.Configuration;
@@ -5,6 +6,7 @@ using NuGet.Packaging;
 using NuGet.Protocol;
 using NuGet.Protocol.Core.Types;
 using NuGet.Versioning;
+using System.Reflection.PortableExecutable;
 
 namespace RefactorCsharpMCP.Core.Infrastructure.FrameworkSupport;
 
@@ -140,9 +142,20 @@ public class NuGetPackageDownloader : IDisposable
                 var destinationPath = Path.Combine(extractDir, fileName);
 
                 // Extract the file
-                using var sourceStream = packageReader.GetStream(file);
-                using var destinationStream = File.Create(destinationPath);
-                sourceStream.CopyTo(destinationStream);
+                using (var sourceStream = packageReader.GetStream(file))
+                using (var destinationStream = File.Create(destinationPath))
+                {
+                    sourceStream.CopyTo(destinationStream);
+                }
+
+                // Validate that the DLL is a valid managed assembly for use as a reference
+                if (!IsManagedAssembly(destinationPath))
+                {
+                    _logger?.LogDebug("Skipping unmanaged/problematic assembly as reference: {FileName}", fileName);
+                    // Don't delete the file - leave it for transitive dependency resolution
+                    // But don't add it to the reference list
+                    continue;
+                }
 
                 extractedAssemblies.Add(destinationPath);
             }
@@ -162,9 +175,26 @@ public class NuGetPackageDownloader : IDisposable
 
                 var destinationPath = Path.Combine(extractDir, fileName);
 
-                using var sourceStream = packageReader.GetStream(file);
-                using var destinationStream = File.Create(destinationPath);
-                sourceStream.CopyTo(destinationStream);
+                // Skip if file already exists (already extracted in previous section)
+                if (File.Exists(destinationPath))
+                {
+                    continue;
+                }
+
+                using (var sourceStream = packageReader.GetStream(file))
+                using (var destinationStream = File.Create(destinationPath))
+                {
+                    sourceStream.CopyTo(destinationStream);
+                }
+
+                // Validate that the DLL is a valid managed assembly for use as a reference
+                if (!IsManagedAssembly(destinationPath))
+                {
+                    _logger?.LogDebug("Skipping unmanaged/problematic assembly as reference: {FileName}", fileName);
+                    // Don't delete the file - leave it for transitive dependency resolution
+                    // But don't add it to the reference list
+                    continue;
+                }
 
                 extractedAssemblies.Add(destinationPath);
             }
@@ -191,6 +221,41 @@ public class NuGetPackageDownloader : IDisposable
         {
             Directory.Delete(_packagesDirectory, recursive: true);
             Directory.CreateDirectory(_packagesDirectory);
+        }
+    }
+
+    /// <summary>
+    /// Checks if a DLL file is a valid managed .NET assembly that can be used by Roslyn.
+    /// Filters out known problematic assemblies (COM interop wrappers, unmanaged DLLs).
+    /// </summary>
+    private static bool IsManagedAssembly(string filePath)
+    {
+        var fileName = Path.GetFileName(filePath);
+
+        // Filter out known unmanaged/problematic assemblies
+        var problematicAssemblies = new[]
+        {
+            "System.EnterpriseServices.Wrapper.dll",  // COM interop wrapper - not a valid reference assembly
+            "System.EnterpriseServices.Thunk.dll"      // Native thunk DLL - not managed
+        };
+
+        if (problematicAssemblies.Any(name => fileName.Equals(name, StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var stream = File.OpenRead(filePath);
+            using var peReader = new PEReader(stream);
+
+            // Check if it has a CLI header (managed code indicator)
+            return peReader.HasMetadata && peReader.PEHeaders.CorHeader != null;
+        }
+        catch
+        {
+            // If we can't read the PE headers, it's not a valid managed assembly
+            return false;
         }
     }
 

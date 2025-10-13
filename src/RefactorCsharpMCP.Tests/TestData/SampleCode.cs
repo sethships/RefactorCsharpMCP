@@ -1,3 +1,5 @@
+using RefactorCsharpMCP.Tests.Infrastructure;
+
 namespace RefactorCsharpMCP.Tests.TestData;
 
 /// <summary>
@@ -251,29 +253,22 @@ public class Calculator
 
     /// <summary>
     /// Gets sample code appropriate for a target framework.
+    /// Uses FrameworkMappings to determine feature availability.
     /// </summary>
     public static string GetSampleForFramework(string targetFramework, SampleCodeType type)
     {
-        var normalized = targetFramework.ToLowerInvariant();
-
         return type switch
         {
             SampleCodeType.Simple => SimpleClass,
             SampleCodeType.WithFields => ClassWithFields,
             SampleCodeType.Generic => GenericClass,
             SampleCodeType.Linq => MethodWithLinq,
-            SampleCodeType.Async => normalized != "net35" ? AsyncMethod : SimpleClass,
-            SampleCodeType.Nullable => (normalized == "net8.0" || normalized == "net9.0" || normalized == "netstandard2.1")
-                ? NullableTypes
-                : ClassWithFields,
-            SampleCodeType.Tuple => normalized != "net35" ? TupleReturn : SimpleClass,
-            SampleCodeType.PatternMatching => normalized != "net35" ? PatternMatching : SimpleClass,
-            SampleCodeType.CollectionExpressions => (normalized == "net8.0" || normalized == "net9.0")
-                ? CollectionExpressions
-                : GenericClass,
-            SampleCodeType.Record => (normalized == "net8.0" || normalized == "net9.0")
-                ? RecordType
-                : SimpleClass,
+            SampleCodeType.Async => FrameworkMappings.HasPatternMatching(targetFramework) ? AsyncMethod : SimpleClass,
+            SampleCodeType.Nullable => FrameworkMappings.HasNullableTypes(targetFramework) ? NullableTypes : ClassWithFields,
+            SampleCodeType.Tuple => FrameworkMappings.HasTuples(targetFramework) ? TupleReturn : SimpleClass,
+            SampleCodeType.PatternMatching => FrameworkMappings.HasPatternMatching(targetFramework) ? PatternMatching : SimpleClass,
+            SampleCodeType.CollectionExpressions => FrameworkMappings.HasCollectionExpressions(targetFramework) ? CollectionExpressions : GenericClass,
+            SampleCodeType.Record => FrameworkMappings.HasRecords(targetFramework) ? RecordType : SimpleClass,
             SampleCodeType.ConstructorInjection => ConstructorInjection,
             SampleCodeType.MultipleMethods => MultipleMethodsClass,
             _ => SimpleClass

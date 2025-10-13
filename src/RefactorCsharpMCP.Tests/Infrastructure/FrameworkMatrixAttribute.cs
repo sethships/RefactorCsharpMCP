@@ -34,7 +34,11 @@ public class FrameworkMatrixAttribute : DataAttribute
 
         return filter switch
         {
-            FrameworkFamily.Modern => allFrameworks.Where(f => f.StartsWith("net") && !f.StartsWith("netstandard") && !f.Contains("4")),
+            // Modern: net8.0, net9.0 (single digit followed by dot)
+            FrameworkFamily.Modern => allFrameworks.Where(f =>
+                f.StartsWith("net", StringComparison.OrdinalIgnoreCase) &&
+                !f.StartsWith("netstandard", StringComparison.OrdinalIgnoreCase) &&
+                System.Text.RegularExpressions.Regex.IsMatch(f, @"^net\d+\.\d+$")),
             FrameworkFamily.Framework => allFrameworks.Where(f => f.Contains("4") || f == "net35"),
             FrameworkFamily.Standard => allFrameworks.Where(f => f.StartsWith("netstandard")),
             FrameworkFamily.All => allFrameworks,
