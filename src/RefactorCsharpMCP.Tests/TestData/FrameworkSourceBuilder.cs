@@ -127,9 +127,22 @@ public class FrameworkSourceBuilder
 
     /// <summary>
     /// Creates a simple class with a single method for testing.
+    /// For netstandard targets, avoids Console which requires separate package.
     /// </summary>
     public static string CreateSimpleClass(string targetFramework, string className = "TestClass", string methodName = "TestMethod")
     {
+        // For netstandard targets, avoid Console which requires separate package
+        var normalized = targetFramework.ToLowerInvariant();
+        var isNetStandard = normalized.StartsWith("netstandard");
+
+        var methodBody = isNetStandard
+            ? @"var x = 1;
+        var y = 2;
+        var sum = x + y;"  // No Console for netstandard
+            : @"var x = 1;
+        var y = 2;
+        Console.WriteLine(x + y);";
+
         return new FrameworkSourceBuilder()
             .ForFramework(targetFramework)
             .WithUsing("System")
@@ -138,9 +151,7 @@ public class FrameworkSourceBuilder
                 {
                     $@"public void {methodName}()
     {{
-        var x = 1;
-        var y = 2;
-        Console.WriteLine(x + y);
+        {methodBody}
     }}"
                 })
             .Build();
