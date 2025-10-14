@@ -6,11 +6,27 @@ namespace RefactorCsharpMCP.Core.SyntaxConversion;
 
 /// <summary>
 /// Strips nullable reference type annotations for frameworks that don't support C# 8.0+.
+///
 /// Transformations:
 /// - string? → string
 /// - List&lt;string?&gt; → List&lt;string&gt;
 /// - Removes #nullable enable/disable directives
 /// - Removes ! null-forgiving operators
+///
+/// IMPORTANT LIMITATION: This converter currently strips ALL nullable syntax, including value type
+/// nullables (int?, DateTime?, etc.). Value type nullables (Nullable&lt;T&gt;) have been available since
+/// C# 2.0 and should ideally be preserved when targeting frameworks that support them.
+///
+/// Distinguishing between reference type nullables (C# 8.0+) and value type nullables requires
+/// semantic analysis with a SemanticModel, which is beyond the scope of pure syntax conversion.
+///
+/// Impact:
+/// - string? → string (CORRECT - reference type nullable removed)
+/// - int? → int (INCORRECT - changes semantics, null becomes 0)
+/// - DateTime? → DateTime (INCORRECT - changes semantics, null becomes DateTime.MinValue)
+///
+/// Users should be aware that this converter may change program semantics when value type nullables
+/// are present. A future enhancement will add semantic analysis to preserve value type nullables.
 /// </summary>
 public class NullableReferenceTypeStripper : SyntaxConverterBase
 {
@@ -31,9 +47,14 @@ public class NullableReferenceTypeStripper : SyntaxConverterBase
 
     /// <summary>
     /// Visits a nullable type and strips the ? annotation.
+    /// WARNING: See class documentation - this strips both reference and value type nullables.
     /// </summary>
     public override SyntaxNode? VisitNullableType(NullableTypeSyntax node)
     {
+        // TODO: Need semantic model to distinguish reference types from value types
+        // Ideally: if (semanticModel.GetTypeInfo(node.ElementType).Type?.IsValueType == true)
+        //              return base.VisitNullableType(node);
+
         // Strip the nullable annotation, keeping the underlying type
         var elementType = (TypeSyntax)Visit(node.ElementType)!;
         return PreserveTrivia(elementType, node);

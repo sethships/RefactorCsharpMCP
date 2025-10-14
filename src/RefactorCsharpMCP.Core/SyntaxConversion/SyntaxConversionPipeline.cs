@@ -87,7 +87,7 @@ public class SyntaxConversionPipeline
 
             return ConversionResult.Success(convertedCode, message, appliedConverters);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         {
             return ConversionResult.Failure($"Conversion failed: {ex.Message}");
         }
