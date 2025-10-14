@@ -407,3 +407,148 @@ Claude Code will invoke:
    - Run tests after each refactoring
    - Maintain consistent naming conventions
    - Keep methods focused and concise
+
+## Framework-Aware Validation
+
+RefactorCsharpMCP includes framework-aware validation to ensure refactored code is compatible with your target .NET framework. All refactorings validate both input and output code against the specified framework's C# language version.
+
+### Example 1: Successful Validation (net8.0)
+
+**Input Code:**
+```csharp
+public class Example
+{
+    public void Method()
+    {
+        var numbers = new[] { 1, 2, 3 };
+        Console.WriteLine(numbers.Length);
+    }
+}
+```
+
+**Refactoring with async API:**
+```csharp
+var refactoring = new ExtractMethod();
+var result = await refactoring.ExecuteAsync(
+    sourceCode: code,
+    startLine: 3,
+    endLine: 4,
+    newMethodName: "PrintCount",
+    targetFramework: "net8.0"  // Modern .NET supports this syntax
+);
+
+// result.IsSuccess == true
+// result.RefactoredCode contains valid C# 12 code
+```
+
+### Example 2: Input Syntax Mismatch (net48)
+
+**Input Code with C# 12 Syntax:**
+```csharp
+public class Example
+{
+    public void Method()
+    {
+        int[] numbers = [1, 2, 3];  // Collection expressions (C# 12)
+        Console.WriteLine(numbers.Length);
+    }
+}
+```
+
+**Refactoring Attempt:**
+```csharp
+var refactoring = new ExtractMethod();
+var result = await refactoring.ExecuteAsync(
+    sourceCode: code,
+    startLine: 3,
+    endLine: 4,
+    newMethodName: "PrintCount",
+    targetFramework: "net48"  // .NET Framework 4.8 only supports C# 7.3
+);
+
+// result.IsSuccess == false
+// result.ErrorCode == ErrorCode.INPUT_SYNTAX_MISMATCH
+// result.ErrorMessage:
+//   "Input code uses collection expressions (C# 12), but target framework net48 supports C# 7.3."
+// result.SuggestedAction:
+//   "Either update targetFramework to a version supporting C# 12 or modify input code to use compatible syntax."
+```
+
+### Example 3: Framework Syntax Mismatch Detection
+
+The validation framework also prevents generating code that uses features unavailable in the target framework:
+
+```csharp
+var validation = new SyntaxValidator();
+var result = await validation.ValidateOutputAsync(
+    refactoredCode,
+    targetFramework: "net35"  // .NET Framework 3.5 supports C# 3.0
+);
+
+// If refactored code uses features like:
+// - Tuples (C# 7.0+)
+// - Nullable reference types (C# 8.0+)
+// - Record types (C# 9.0+)
+// - Primary constructors (C# 12+)
+//
+// result.IsValid == false
+// result.ErrorCode == ErrorCode.FRAMEWORK_SYNTAX_MISMATCH
+```
+
+### Supported Frameworks and Language Versions
+
+| Framework | C# Version | Features Available |
+|-----------|------------|-------------------|
+| net9.0 | C# 13 | Latest features |
+| net8.0 | C# 12 | Collection expressions, primary constructors |
+| net48/net481 | C# 7.3 | Tuples, pattern matching basics |
+| net462-net472 | C# 7.3 | Same as net48 |
+| net35 | C# 3.0 | LINQ, lambdas, var |
+| netstandard2.1 | C# 8.0 | Nullable reference types, ranges |
+| netstandard2.0 | C# 7.3 | Same as net48 |
+
+### Using Validation APIs
+
+**Async Validation-Aware APIs (Recommended):**
+```csharp
+// Extract Method with validation
+var result = await extractMethod.ExecuteAsync(code, 1, 5, "NewMethod", "net8.0");
+
+// Constructor Injection with validation
+var result = await ctorInjection.ExecuteAsync(code, "MyClass", "Method",
+    new[] {"logger"}, "net48");
+
+// Make Field Readonly with validation
+var result = await makeReadonly.ExecuteAsync(code, "MyClass", "_field", "net8.0");
+
+// Safe Delete with validation
+var result = await safeDelete.ExecuteAsync(code, "MyClass", "UnusedMethod", "net48");
+
+// Extract Class with validation
+var result = await extractClass.ExecuteAsync(code, "MyClass", "NewClass",
+    "field1,field2", "net8.0");
+```
+
+**Legacy Sync APIs (No Validation):**
+```csharp
+// Still available for backward compatibility
+var result = extractMethod.Execute(code, 1, 5, "NewMethod");
+// No framework validation - use with caution
+```
+
+### Validation Error Codes
+
+| Error Code | Description | Resolution |
+|------------|-------------|------------|
+| INPUT_SYNTAX_MISMATCH | Input code uses features not supported by target framework | Update framework or modify input code |
+| FRAMEWORK_SYNTAX_MISMATCH | Refactored code would use unsupported features | Update target framework or use manual refactoring |
+| SYNTAX_ERROR | Code contains syntax errors | Fix syntax errors before refactoring |
+| UNKNOWN_FRAMEWORK | Framework moniker not recognized | Use supported framework (net8.0, net48, etc.) |
+
+### Best Practices for Framework Validation
+
+1. **Always Specify Target Framework**: Use ExecuteAsync methods with targetFramework parameter
+2. **Match Your Project's TFM**: Use the same framework moniker as your .csproj file
+3. **Handle Validation Failures**: Check `result.IsValid` and `result.ValidationResult` before using refactored code
+4. **Read Error Messages**: ValidationResult includes detailed error messages and suggested actions
+5. **Multi-Target Projects**: Run refactorings separately for each target framework

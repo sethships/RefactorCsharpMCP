@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using RefactorCsharpMCP.Core.Validation;
 
 namespace RefactorCsharpMCP.Core.Refactorings;
 
@@ -9,6 +10,52 @@ namespace RefactorCsharpMCP.Core.Refactorings;
 /// </summary>
 public class ConstructorInjection
 {
+    /// <summary>
+    /// Converts specified method parameters to constructor-injected fields or properties with framework-aware validation.
+    /// </summary>
+    /// <param name="sourceCode">The source code containing the method.</param>
+    /// <param name="className">The name of the class containing the method.</param>
+    /// <param name="methodName">The name of the method with parameters to inject.</param>
+    /// <param name="parameterNames">The names of parameters to convert to constructor injection.</param>
+    /// <param name="targetFramework">The target .NET framework (e.g., "net8.0", "net48").</param>
+    /// <param name="useProperties">If true, generates properties; if false, generates fields.</param>
+    /// <returns>A result containing the refactored code or error information.</returns>
+    public async Task<RefactoringResult> ExecuteAsync(
+        string sourceCode,
+        string className,
+        string methodName,
+        string[] parameterNames,
+        string targetFramework,
+        bool useProperties = false)
+    {
+        // Step 1: Validate input code against target framework
+        var validator = new SyntaxValidator();
+        var inputValidation = await validator.ValidateInputAsync(sourceCode, targetFramework);
+
+        if (!inputValidation.IsValid)
+        {
+            return RefactoringResult.ValidationFailure(inputValidation);
+        }
+
+        // Step 2: Perform refactoring (delegate to existing logic)
+        var refactoringResult = Execute(sourceCode, className, methodName, parameterNames, useProperties);
+
+        if (!refactoringResult.IsSuccess)
+        {
+            return refactoringResult;
+        }
+
+        // Step 3: Validate output code against target framework
+        var outputValidation = await validator.ValidateOutputAsync(refactoringResult.RefactoredCode!, targetFramework);
+
+        if (!outputValidation.IsValid)
+        {
+            return RefactoringResult.ValidationFailure(outputValidation);
+        }
+
+        return refactoringResult;
+    }
+
     /// <summary>
     /// Converts specified method parameters to constructor-injected fields or properties.
     /// </summary>

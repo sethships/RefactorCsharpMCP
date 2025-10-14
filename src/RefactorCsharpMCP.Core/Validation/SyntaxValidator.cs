@@ -62,6 +62,15 @@ public class SyntaxValidator
         ErrorCode mismatchErrorCode,
         string codeDescription)
     {
+        // Validate input
+        if (string.IsNullOrWhiteSpace(sourceCode))
+        {
+            return ValidationResult.Failure(
+                ErrorCode.SYNTAX_ERROR,
+                "Source code cannot be empty.",
+                "Provide valid C# source code.");
+        }
+
         try
         {
             // Normalize framework moniker
