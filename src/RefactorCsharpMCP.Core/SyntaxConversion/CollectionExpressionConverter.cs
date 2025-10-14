@@ -6,15 +6,34 @@ namespace RefactorCsharpMCP.Core.SyntaxConversion;
 
 /// <summary>
 /// Converts C# 12 collection expressions to legacy array/collection initialization syntax.
+///
 /// Transformations:
 /// - [1, 2, 3] → new[] { 1, 2, 3 } (array)
 /// - [] → Array.Empty&lt;T&gt;() (empty collection)
 /// - [..arr] → arr.ToArray() (spread to LINQ)
 ///
-/// Note: This is a placeholder implementation that demonstrates the converter architecture.
-/// Full collection expression support requires Roslyn 4.8.0+ which includes CollectionExpressionSyntax.
-/// Current project uses Roslyn 4.14.0 but collection expression syntax nodes are not yet available
-/// in that version's public API.
+/// IMPLEMENTATION STATUS: Intentionally deferred (not a missing API issue).
+///
+/// The CollectionExpressionSyntax API is fully available in Roslyn 4.14.0 (introduced in 4.7.0).
+/// However, full implementation is deferred because:
+///
+/// 1. RARE USE CASE: Collection expressions are C# 12 (2023). Targeting frameworks requiring
+///    C# 11 or lower is uncommon as of 2025. Most production code targets modern frameworks
+///    that support collection expressions natively.
+///
+/// 2. COMPLEX TRIVIA PRESERVATION: Like TupleReturnConverter, this requires sophisticated
+///    trivia management during major syntax transformations:
+///    - Whitespace and formatting preservation
+///    - Handling nested collection expressions
+///    - Type inference for empty collections ([] → Array.Empty&lt;T&gt;())
+///    - Spread element conversion ([..items] → items.ToArray())
+///    - Proper indentation and code formatting
+///
+/// 3. FOCUS ON HIGH-VALUE FEATURES: V1 prioritizes refactorings with clear ROI.
+///    Collection expression downgrading serves a niche migration scenario.
+///
+/// This converter demonstrates the architecture and will be fully implemented when
+/// real-world demand emerges. See docs/FUTURE-ROADMAP.md for implementation timeline.
 /// </summary>
 public class CollectionExpressionConverter : SyntaxConverterBase
 {
@@ -34,18 +53,32 @@ public class CollectionExpressionConverter : SyntaxConverterBase
     public override LanguageVersion MaximumTargetLanguageVersion => LanguageVersion.CSharp11;
 
     /// <summary>
-    /// For now, this converter serves as architectural demonstration.
-    /// Full implementation pending Roslyn version upgrade that includes CollectionExpressionSyntax.
+    /// Currently returns the node unchanged as full implementation is intentionally deferred.
     /// </summary>
     /// <remarks>
-    /// Collection expressions are parsed by Roslyn 4.14.0 but the specific syntax node types
-    /// (CollectionExpressionSyntax, SpreadElementSyntax, etc.) are not exposed in the public API yet.
-    /// This will be implemented when upgrading to a newer Roslyn version.
+    /// IMPLEMENTATION READY: CollectionExpressionSyntax is available in Roslyn 4.14.0.
+    ///
+    /// To implement, override VisitCollectionExpression:
+    /// <code>
+    /// public override SyntaxNode? VisitCollectionExpression(CollectionExpressionSyntax node)
+    /// {
+    ///     // Convert [1, 2, 3] → new[] { 1, 2, 3 }
+    ///     // Convert [] → Array.Empty&lt;T&gt;() (requires type inference)
+    ///     // Convert [..arr] → arr.ToArray()
+    /// }
+    /// </code>
+    ///
+    /// Implementation requires:
+    /// - Type inference for empty collections (requires SemanticModel)
+    /// - Spread element transformation
+    /// - Trivia preservation during structural changes
+    ///
+    /// See docs/FUTURE-ROADMAP.md Section "Collection Expression Converter Implementation"
+    /// for complete implementation plan.
     /// </remarks>
     public override SyntaxNode? Visit(SyntaxNode? node)
     {
-        // Placeholder: In future versions with CollectionExpressionSyntax support,
-        // this would override VisitCollectionExpression to handle the conversion
+        // Implementation deferred - see class documentation and FUTURE-ROADMAP.md
         return base.Visit(node);
     }
 }

@@ -6,9 +6,18 @@ using Xunit;
 namespace RefactorCsharpMCP.Tests.SyntaxConversion;
 
 /// <summary>
-/// Tests for CollectionExpressionConverter - currently a placeholder demonstrating
-/// the converter architecture. Full implementation pending Roslyn version with
-/// CollectionExpressionSyntax support.
+/// Tests for CollectionExpressionConverter - architectural demonstration.
+///
+/// CollectionExpressionSyntax API is available in Roslyn 4.14.0, but full implementation
+/// is intentionally deferred pending real-world migration scenarios requiring collection
+/// expression downgrading to C# 11 or lower syntax.
+///
+/// Current tests verify:
+/// - Converter properties (name, language version requirements)
+/// - Framework compatibility detection (CanConvert)
+/// - Placeholder behavior (returns code unchanged)
+///
+/// See docs/FUTURE-ROADMAP.md for implementation timeline and rationale.
 /// </summary>
 public class CollectionExpressionConverterTests
 {

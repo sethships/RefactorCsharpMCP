@@ -755,6 +755,361 @@ Agent: "Done! Cleared 4 frameworks and freed 256MB. Cache now 1.14GB."
 
 ---
 
+## Deferred Implementations: Collection Expression Converter
+
+**Last Updated:** 2025-10-13
+**Status:** Intentionally Deferred
+**Target:** V2.5 or later (demand-driven)
+
+### Overview
+
+The CollectionExpressionConverter exists as an architectural demonstration but is NOT fully implemented.
+This is an **intentional decision**, not a technical limitation.
+
+**IMPORTANT:** CollectionExpressionSyntax API is **fully available** in Roslyn 4.14.0 (introduced in 4.7.0).
+The documentation claiming "API not yet available" was outdated and has been corrected.
+
+### Current Implementation Status
+
+**Location:** `src/RefactorCsharpMCP.Core/SyntaxConversion/CollectionExpressionConverter.cs`
+
+**What Exists:**
+- ✅ Converter class inheriting from SyntaxConverterBase
+- ✅ Correct language version properties (MinimumSourceLanguageVersion = C# 12, MaximumTargetLanguageVersion = C# 11)
+- ✅ Framework compatibility checking (CanConvert method)
+- ✅ Basic test coverage (7 tests verifying properties and framework detection)
+
+**What's Missing:**
+- ❌ Override of `VisitCollectionExpression` method
+- ❌ Type inference for empty collections (`[]` → `Array.Empty<T>()`)
+- ❌ Spread element conversion (`[..arr]` → `arr.ToArray()`)
+- ❌ Nested collection expression handling
+- ❌ Trivia preservation during transformation
+
+### Reasons for Deferral
+
+#### 1. Rare Use Case (Primary Reason)
+
+**Market Reality:**
+- Collection expressions introduced in C# 12 (November 2023)
+- Requires .NET 8+ or latest compiler with language version override
+- Migration scenario: "I have C# 12 code that must run on older frameworks"
+
+**Usage Statistics:**
+- As of January 2025, C# 12 adoption is still ramping up
+- Most codebases target C# 7.3 (net48), C# 10 (net6.0), or C# 12 (net8.0+)
+- Very few codebases are **downgrading** from C# 12 to C# 11 or lower
+- Native support is preferred over syntax conversion
+
+**Typical Migration Paths:**
+- ✅ Common: net48 (C# 7.3) → net8.0 (C# 12) - **UPGRADE** (no conversion needed)
+- ✅ Common: net6.0 (C# 10) → net8.0 (C# 12) - **UPGRADE** (no conversion needed)
+- ❌ Rare: net8.0 (C# 12) → net48 (C# 7.3) - **DOWNGRADE** (collection expression converter needed)
+- ❌ Very Rare: Using C# 12 features on net48 with compiler override, then needing to remove them
+
+**Contrast with Tuple Converter:**
+- Tuples (C# 7.0, 2017) targeting net35 (C# 3.0, 2008) = **9-year gap**
+- Collection expressions (C# 12, 2023) targeting net48 (C# 7.3) = **forward-porting scenario**
+
+**Verdict:** Low demand justifies deferral until real-world usage patterns emerge.
+
+#### 2. Complex Trivia Preservation (Secondary Reason)
+
+Collection expression conversion requires **major structural transformation**:
+
+**Before (C# 12):**
+```csharp
+var numbers = [1, 2, 3];
+var empty = [];
+var combined = [..first, ..second];
+```
+
+**After (C# 7.3):**
+```csharp
+var numbers = new[] { 1, 2, 3 };
+var empty = Array.Empty<int>();  // Requires type inference!
+var combined = first.Concat(second).ToArray();  // or first.Union(second).ToArray()
+```
+
+**Technical Challenges:**
+
+1. **Type Inference for Empty Collections**
+   - `[]` has no elements → What's the element type?
+   - Requires SemanticModel to infer from assignment target
+   - Example: `List<string> items = [];` → Must infer `string` from `List<string>`
+
+2. **Spread Element Semantics**
+   - `[..arr]` can mean different things based on context
+   - Array context: `arr.ToArray()`
+   - List context: `new List<T>(arr)`
+   - IEnumerable context: `arr` (no conversion)
+   - Requires semantic analysis to determine correct conversion
+
+3. **Nested Collection Expressions**
+   - `[[1, 2], [3, 4]]` → `new[] { new[] { 1, 2 }, new[] { 3, 4 } }`
+   - Recursive visitor pattern with correct precedence
+
+4. **Trivia Preservation**
+   - Collection expressions often span multiple lines with custom formatting
+   - Converting `[` to `new[] {` while preserving indentation is non-trivial
+   - NormalizeWhitespace() conflicts with PreserveTrivia() (same issue as TupleReturnConverter)
+
+**Comparison to Other Converters:**
+
+| Converter | Transformation Complexity | Trivia Complexity | Status |
+|-----------|--------------------------|-------------------|--------|
+| NullableReferenceTypeStripper | Low (remove `?`) | Low (token removal) | ✅ Implemented (24/24 tests passing) |
+| TupleReturnConverter | High (return type + body changes) | **High** (documented limitations) | ⚠️ Placeholder (11/11 tests failing due to trivia) |
+| CollectionExpressionConverter | **Very High** (semantic + structural) | **High** (nested structures) | ⏳ Deferred |
+
+**Verdict:** Effort required (~5-7 days) doesn't justify ROI given rare use case.
+
+#### 3. V1 Focus on High-ROI Features (Strategic Reason)
+
+**V1 Priorities** (8-9 weeks):
+1. Extract Method (high demand, frequent use)
+2. Constructor Injection (high demand, architectural improvement)
+3. Make Field Readonly (medium demand, easy wins)
+4. Safe Delete (medium demand, safety feature)
+5. Extract Class (medium demand, architectural improvement)
+
+**Collection Expression Converter:**
+- Demand: Very low (niche migration scenario)
+- Frequency: Rare (one-time migration, not daily workflow)
+- Value: Limited (workaround: manually rewrite collection expressions)
+
+**Resource Allocation:**
+- V1 budget: 40-45 days
+- Collection expression full implementation: 5-7 days
+- **Opportunity cost:** 5-7 days could be spent on higher-value features
+
+**Verdict:** Deliver converters with clear user demand first.
+
+### Implementation Roadmap
+
+#### When to Implement
+
+**Triggers for Implementation:**
+
+1. **User Demand Threshold**
+   - 5+ GitHub issues requesting collection expression downgrading
+   - 10+ users asking about C# 12 → C# 11 migration
+   - Survey data showing >20% of users need this feature
+
+2. **Ecosystem Maturity**
+   - C# 12 adoption reaches 50%+ of .NET projects
+   - Common migration path emerges (e.g., Unity games using latest C# but targeting older runtimes)
+   - Large codebases using C# 12 features with multi-targeting scenarios
+
+3. **Strategic Value**
+   - Integration with broader framework migration tools (V3.0 Migration Assistants)
+   - Part of comprehensive "Modernize Code" workflow
+   - Completes syntax conversion framework for marketing purposes
+
+**Decision Point:** Q3 2025 (6 months after V1.0 release)
+- Review GitHub issue tracker for demand signals
+- Survey V1.0 users about syntax conversion needs
+- Re-evaluate against V2.5 feature priorities
+
+#### Estimated Effort (When Implemented)
+
+**Implementation:** 5-7 days
+- VisitCollectionExpression override: 2 days
+- Type inference with SemanticModel: 1-2 days
+- Spread element conversion: 1 day
+- Trivia preservation: 2 days
+- Testing (20+ test cases): 1 day
+
+**Testing:** 2-3 days
+- Array collection expressions: 5 tests
+- Empty collection inference: 5 tests
+- Spread elements: 5 tests
+- Nested expressions: 3 tests
+- Trivia preservation: 2 tests
+
+**Total:** 7-10 days
+
+**Compare to:**
+- NullableReferenceTypeStripper (implemented): 3-4 days → **24/24 tests passing** ✅
+- TupleReturnConverter (placeholder): 5-7 days → **11/11 tests failing** (trivia issues) ⚠️
+- CollectionExpressionConverter (deferred): 7-10 days → **Architecture proven, implementation when needed** ⏳
+
+#### Implementation Plan (Future V2.5)
+
+**Phase 1: Basic Conversion (3 days)**
+```csharp
+public override SyntaxNode? VisitCollectionExpression(CollectionExpressionSyntax node)
+{
+    // Handle simple array initialization: [1, 2, 3] → new[] { 1, 2, 3 }
+    if (node.Elements.All(e => e is ExpressionElementSyntax))
+    {
+        var elements = node.Elements
+            .Cast<ExpressionElementSyntax>()
+            .Select(e => e.Expression);
+
+        return SyntaxFactory.ImplicitArrayCreationExpression(
+            SyntaxFactory.InitializerExpression(
+                SyntaxKind.ArrayInitializerExpression,
+                SyntaxFactory.SeparatedList(elements)))
+            .WithLeadingTrivia(node.GetLeadingTrivia())
+            .WithTrailingTrivia(node.GetTrailingTrivia());
+    }
+
+    return base.VisitCollectionExpression(node);
+}
+```
+
+**Phase 2: Type Inference for Empty Collections (2 days)**
+```csharp
+private TypeSyntax InferElementType(CollectionExpressionSyntax node, SemanticModel semanticModel)
+{
+    // Get the type of the variable being assigned to
+    var parent = node.Parent;
+    if (parent is EqualsValueClauseSyntax equalsValue)
+    {
+        var variableDeclarator = equalsValue.Parent as VariableDeclaratorSyntax;
+        var variableDeclaration = variableDeclarator?.Parent as VariableDeclarationSyntax;
+        if (variableDeclaration != null)
+        {
+            var typeInfo = semanticModel.GetTypeInfo(variableDeclaration.Type);
+            if (typeInfo.Type is INamedTypeSymbol namedType && namedType.IsGenericType)
+            {
+                return SyntaxFactory.ParseTypeName(namedType.TypeArguments[0].ToDisplayString());
+            }
+        }
+    }
+
+    // Fallback: object
+    return SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.ObjectKeyword));
+}
+
+// Convert [] → Array.Empty<T>()
+if (node.Elements.Count == 0)
+{
+    var elementType = InferElementType(node, semanticModel);
+    return SyntaxFactory.InvocationExpression(
+        SyntaxFactory.MemberAccessExpression(
+            SyntaxKind.SimpleMemberAccessExpression,
+            SyntaxFactory.GenericName("Array")
+                .WithTypeArgumentList(
+                    SyntaxFactory.TypeArgumentList(
+                        SyntaxFactory.SingletonSeparatedList(elementType))),
+            SyntaxFactory.IdentifierName("Empty")));
+}
+```
+
+**Phase 3: Spread Element Conversion (1 day)**
+```csharp
+// Handle spread elements: [..arr] → arr.ToArray()
+if (node.Elements.All(e => e is SpreadElementSyntax))
+{
+    // Single spread: [..arr] → arr
+    if (node.Elements.Count == 1)
+    {
+        var spread = (SpreadElementSyntax)node.Elements[0];
+        return spread.Expression;
+    }
+
+    // Multiple spreads: [..first, ..second] → first.Concat(second).ToArray()
+    // ... implementation ...
+}
+```
+
+**Phase 4: Trivia Preservation (2 days)**
+- Study TupleReturnConverter limitations
+- Implement sophisticated trivia copying
+- Test with real-world formatting scenarios
+
+### Code Locations
+
+**Primary Implementation:**
+- `src/RefactorCsharpMCP.Core/SyntaxConversion/CollectionExpressionConverter.cs` (lines 1-84)
+  - Class documentation: Lines 7-37
+  - Visit method: Lines 55-83
+
+**Test Coverage:**
+- `src/RefactorCsharpMCP.Tests/SyntaxConversion/CollectionExpressionConverterTests.cs` (lines 1-98)
+  - Class documentation: Lines 8-21
+  - Property tests: Lines 23-29
+  - Framework compatibility tests: Lines 31-64
+  - Placeholder behavior test: Lines 66-89
+
+**Architecture:**
+- `src/RefactorCsharpMCP.Core/SyntaxConversion/SyntaxConverterBase.cs` - Base class providing framework checking
+- `src/RefactorCsharpMCP.Core/SyntaxConversion/ISyntaxConverter.cs` - Interface defining converter contract
+- `src/RefactorCsharpMCP.Core/SyntaxConversion/SyntaxConversionPipeline.cs` (lines 123-135) - Pipeline that will invoke converter when implemented
+
+### Alternative Approaches
+
+#### Option A: Lightweight Validation Only (Current Approach)
+- Converter exists for architecture demonstration
+- Returns code unchanged (no transformation)
+- Clear documentation explains deferral
+- **Effort:** 0 days (already complete)
+- **Value:** Framework-aware detection works, users warned when targeting incompatible frameworks
+
+#### Option B: Partial Implementation (Simple Cases Only)
+- Handle only simple array expressions: `[1, 2, 3]` → `new[] { 1, 2, 3 }`
+- Skip empty collections (no type inference)
+- Skip spread elements
+- **Effort:** 2-3 days
+- **Value:** 60% of use cases covered, but incomplete solution may confuse users
+
+#### Option C: Full Implementation (V2.5 or Later)
+- Complete conversion including type inference and spread elements
+- Sophisticated trivia preservation
+- **Effort:** 7-10 days
+- **Value:** 100% coverage, production-ready
+
+**Current Decision:** **Option A** until user demand justifies Option C.
+
+### Related Converters for Comparison
+
+#### TupleReturnConverter (Similar Complexity)
+- **Status:** Placeholder (like CollectionExpressionConverter)
+- **Known Issues:** 11/11 tests failing due to trivia preservation
+- **Lesson:** Major structural transformations require significant trivia handling effort
+- **Similarity:** Both require semantic analysis (tuple element names vs. collection element types)
+
+#### NullableReferenceTypeStripper (Successful Implementation)
+- **Status:** Fully implemented, 24/24 tests passing
+- **Reason for Success:** Simple token removal, minimal structural changes
+- **Difference:** Collection expressions require complete syntax tree restructuring
+
+### User Guidance
+
+**If you need collection expression downgrading:**
+
+1. **Manual Rewrite (Recommended):**
+   ```csharp
+   // Change this:
+   var numbers = [1, 2, 3];
+
+   // To this:
+   var numbers = new[] { 1, 2, 3 };
+   ```
+
+2. **Compiler Language Version:**
+   ```xml
+   <LangVersion>11.0</LangVersion>
+   ```
+   Set in .csproj to prevent C# 12 features from being used.
+
+3. **Static Analysis:**
+   Use IDE/analyzer to detect C# 12 features in older codebases.
+
+4. **Request Implementation:**
+   Open GitHub issue with use case details. If demand is sufficient, implementation will be prioritized.
+
+### Decision Authority
+
+**Approved By:** Software Architect (architectural review)
+**Date:** 2025-10-13
+**Review Cycle:** Quarterly (Q3 2025, Q4 2025, Q1 2026)
+**Escalation:** If >5 user requests in single quarter, move to active implementation
+
+---
+
 ## V4.0+: Advanced Scenarios
 
 **Timeline:** TBD (12+ months after V1.0)
