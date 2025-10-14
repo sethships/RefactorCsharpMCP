@@ -29,7 +29,7 @@ public class ExtractClass
         string? methodNames = null)
     {
         // Step 1: Validate input code against target framework
-        var validator = new SyntaxValidator();
+        using var validator = new SyntaxValidator();
         var inputValidation = await validator.ValidateInputAsync(sourceCode, targetFramework);
 
         if (!inputValidation.IsValid)

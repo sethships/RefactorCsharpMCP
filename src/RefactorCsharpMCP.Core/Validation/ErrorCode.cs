@@ -81,5 +81,13 @@ public enum ErrorCode
     /// Refactoring would produce code using C# features not supported by target framework.
     /// Example: Refactoring generates tuple returns (C# 7.0) for net35 target (C# 3.0).
     /// </summary>
-    FRAMEWORK_SYNTAX_MISMATCH = 427
+    FRAMEWORK_SYNTAX_MISMATCH = 427,
+
+    /// <summary>
+    /// Code uses types or members unavailable in target framework's BCL.
+    /// Code compiles syntactically but references APIs not present in target framework.
+    /// Example: Using System.Text.Json (net6.0+) when targeting net48.
+    /// This differs from typos (SYNTAX_ERROR) - these are real APIs just not available in the target.
+    /// </summary>
+    FRAMEWORK_API_UNAVAILABLE = 428
 }

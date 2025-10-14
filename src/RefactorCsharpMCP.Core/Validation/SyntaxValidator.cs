@@ -7,10 +7,13 @@ namespace RefactorCsharpMCP.Core.Validation;
 /// <summary>
 /// Validates C# source code syntax compatibility with target .NET frameworks.
 /// Performs both pre-refactoring (input) and post-refactoring (output) validation.
+/// Implements IDisposable to properly clean up reference assembly resolver resources.
 /// </summary>
-public class SyntaxValidator
+public class SyntaxValidator : IDisposable
 {
     private readonly ReferenceAssemblyResolver _referenceResolver;
+    private readonly bool _ownsResolver;
+    private bool _disposed;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SyntaxValidator"/> class.
@@ -19,6 +22,7 @@ public class SyntaxValidator
     public SyntaxValidator(ReferenceAssemblyResolver? referenceResolver = null)
     {
         _referenceResolver = referenceResolver ?? new ReferenceAssemblyResolver();
+        _ownsResolver = referenceResolver == null;
     }
 
     /// <summary>
@@ -171,7 +175,7 @@ public class SyntaxValidator
 
             if (semanticDiagnostics.Any())
             {
-                // Check if these are API availability errors (type/member not found)
+                // Check if these are API availability errors (type/member not found in framework)
                 var apiErrors = semanticDiagnostics.Where(d =>
                     d.Id == "CS0246" || // Type not found
                     d.Id == "CS0103" || // Name does not exist
@@ -180,28 +184,68 @@ public class SyntaxValidator
 
                 if (apiErrors.Any())
                 {
-                    // API compatibility issue - not a syntax issue
+                    // These could be either:
+                    // 1. Typos in user code (syntax errors)
+                    // 2. APIs unavailable in target framework (framework limitation)
+                    //
+                    // We classify as FRAMEWORK_API_UNAVAILABLE because:
+                    // - We're validating against framework-specific reference assemblies
+                    // - If it's a typo, it would fail on ANY framework
+                    // - This context suggests it's a framework compatibility issue
+                    //
+                    // Users can distinguish by testing on multiple framework targets.
                     var apiErrorDetails = string.Join(", ", apiErrors.Select(d => d.GetMessage()).Take(3));
+                    if (apiErrors.Count > 3)
+                    {
+                        apiErrorDetails += $" (and {apiErrors.Count - 3} more)";
+                    }
+
                     return ValidationResult.Failure(
-                        ErrorCode.REFACTORING_FAILED,
-                        $"API compatibility errors: {apiErrorDetails}",
-                        "Ensure all types and members used are available in the target framework.");
+                        ErrorCode.FRAMEWORK_API_UNAVAILABLE,
+                        $"Code references types or members not available in {targetFramework}: {apiErrorDetails}",
+                        "Either target a newer framework version or replace with APIs available in the target framework. " +
+                        "If these appear to be typos, check spelling and using directives.");
                 }
 
-                // Other semantic errors
+                // Other semantic errors (not API availability)
                 var semanticErrorDetails = string.Join(", ", semanticDiagnostics.Select(d => d.GetMessage()).Take(3));
+                if (semanticDiagnostics.Count > 3)
+                {
+                    semanticErrorDetails += $" (and {semanticDiagnostics.Count - 3} more)";
+                }
                 return ValidationResult.SyntaxError(semanticErrorDetails);
             }
 
             // Validation succeeded
             return ValidationResult.Success();
         }
-        catch (Exception ex)
+        catch (ArgumentException ex)
+        {
+            return ValidationResult.Failure(
+                ErrorCode.MISSING_PARAMETER,
+                "Invalid parameter provided",
+                ex.ParamName != null ? $"Check parameter: {ex.ParamName}" : "Check input parameters are valid.");
+        }
+        catch (NotSupportedException ex)
+        {
+            return ValidationResult.Failure(
+                ErrorCode.UNKNOWN_FRAMEWORK,
+                ex.Message,
+                "Use a supported .NET framework version.");
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("reference assembl", StringComparison.OrdinalIgnoreCase))
         {
             return ValidationResult.Failure(
                 ErrorCode.REFACTORING_FAILED,
-                $"Validation failed: {ex.Message}",
-                "Check source code and target framework are valid.");
+                "Unable to resolve reference assemblies for target framework",
+                "Ensure the target framework is properly installed or try clearing the assembly cache.");
+        }
+        catch (InvalidOperationException)
+        {
+            return ValidationResult.Failure(
+                ErrorCode.REFACTORING_FAILED,
+                "Validation encountered an unexpected state",
+                "Check source code syntax and ensure target framework is valid.");
         }
     }
 
@@ -229,26 +273,87 @@ public class SyntaxValidator
     }
 
     /// <summary>
-    /// Detects the required C# version from a compiler error.
+    /// Detects the required C# version from a compiler error using diagnostic ID mapping.
+    /// Uses comprehensive diagnostic ID table to avoid locale-dependent string matching.
     /// </summary>
     private static string DetectRequiredVersion(Diagnostic diagnostic)
     {
         var id = diagnostic.Id;
 
-        // Map diagnostic IDs to C# versions
-        if (id == "CS8652") return "C# 12"; // Collection expressions
-        if (id.StartsWith("CS8") && id.CompareTo("CS8600") >= 0 && id.CompareTo("CS8699") <= 0) return "C# 8.0"; // Nullable reference types
-        if (id.StartsWith("CS8") && id.CompareTo("CS8370") >= 0 && id.CompareTo("CS8399") <= 0) return "C# 7.0"; // Tuples
-        if (id.StartsWith("CS8") && id.CompareTo("CS8400") >= 0 && id.CompareTo("CS8499") <= 0) return "C# 8.0"; // C# 8 features
+        // Comprehensive diagnostic ID to C# version mapping
+        var versionMap = new Dictionary<string, string>
+        {
+            // C# 13 features
+            { "CS9257", "C# 13" }, // Params collections
+            { "CS9258", "C# 13" }, // Params span
 
-        // Check message content for version hints
-        var message = diagnostic.GetMessage();
-        if (message.Contains("12")) return "C# 12";
-        if (message.Contains("11")) return "C# 11";
-        if (message.Contains("10")) return "C# 10";
-        if (message.Contains("9")) return "C# 9";
-        if (message.Contains("8")) return "C# 8.0";
-        if (message.Contains("7")) return "C# 7.0";
+            // C# 12 features
+            { "CS8652", "C# 12" }, // Collection expressions
+            { "CS9113", "C# 12" }, // Primary constructors (class)
+            { "CS8866", "C# 12" }, // Inline arrays
+            { "CS9175", "C# 12" }, // Using alias for any type
+
+            // C# 11 features
+            { "CS9058", "C# 11" }, // Required members
+            { "CS8936", "C# 11" }, // File-scoped types
+            { "CS8773", "C# 11" }, // UTF-8 string literals
+            { "CS8981", "C# 11" }, // Generic attributes
+
+            // C# 10 features
+            { "CS8805", "C# 10" }, // Global using directives
+            { "CS8773", "C# 10" }, // File-scoped namespaces
+            { "CS8869", "C# 10" }, // Record structs
+            { "CS8910", "C# 10" }, // Extended property patterns
+
+            // C# 9 features
+            { "CS8805", "C# 9" },  // Record types
+            { "CS8870", "C# 9" },  // Init-only setters
+            { "CS8400", "C# 9" },  // Top-level statements
+            { "CS8794", "C# 9" },  // Target-typed new
+
+            // C# 8.0 features
+            { "CS8400", "C# 8.0" }, // Using declarations
+            { "CS8321", "C# 8.0" }, // Default interface members
+            { "CS8370", "C# 8.0" }, // Async streams
+            { "CS8302", "C# 8.0" }, // Nullable reference types
+            { "CS8625", "C# 8.0" }, // Nullable reference types
+            { "CS8632", "C# 8.0" }, // Nullable reference types
+
+            // C# 7.3 features
+            { "CS8107", "C# 7.3" }, // Ref structs
+            { "CS8350", "C# 7.3" }, // Unmanaged constraint
+
+            // C# 7.2 features
+            { "CS8107", "C# 7.2" }, // Ref readonly
+            { "CS8302", "C# 7.2" }, // In parameters
+
+            // C# 7.1 features
+            { "CS8107", "C# 7.1" }, // Async main
+            { "CS8302", "C# 7.1" }, // Default literal
+
+            // C# 7.0 features
+            { "CS8059", "C# 7.0" }, // Tuples
+            { "CS8070", "C# 7.0" }, // Pattern matching
+            { "CS8058", "C# 7.0" }, // Out variables
+            { "CS8059", "C# 7.0" }, // Local functions
+        };
+
+        // Check if we have a known mapping
+        if (versionMap.TryGetValue(id, out var version))
+        {
+            return version;
+        }
+
+        // Check diagnostic properties for RequiredLanguageVersion (Roslyn standard)
+        if (diagnostic.Properties.TryGetValue("RequiredLanguageVersion", out var requiredVersion))
+        {
+            return $"C# {requiredVersion}";
+        }
+
+        // Fallback: use diagnostic ID ranges for broad categorization
+        if (id.StartsWith("CS9")) return "C# 11+"; // CS9xxx typically C# 11+
+        if (id.StartsWith("CS8") && id.CompareTo("CS8600") >= 0 && id.CompareTo("CS8699") <= 0) return "C# 8.0+";
+        if (id.StartsWith("CS8") && id.CompareTo("CS8000") >= 0 && id.CompareTo("CS8599") <= 0) return "C# 7.0+";
 
         return "a newer C# version";
     }
@@ -276,5 +381,31 @@ public class SyntaxValidator
             LanguageVersion.CSharp3 => "C# 3.0",
             _ => version.ToString()
         };
+    }
+
+    /// <summary>
+    /// Releases resources used by the SyntaxValidator.
+    /// </summary>
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// Releases unmanaged and optionally managed resources.
+    /// </summary>
+    /// <param name="disposing">True to release both managed and unmanaged resources; false to release only unmanaged resources.</param>
+    protected virtual void Dispose(bool disposing)
+    {
+        if (_disposed)
+            return;
+
+        if (disposing && _ownsResolver)
+        {
+            _referenceResolver?.Dispose();
+        }
+
+        _disposed = true;
     }
 }
