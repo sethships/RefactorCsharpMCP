@@ -443,25 +443,55 @@ public class SyntaxValidator : IDisposable
     }
 
     /// <summary>
-    /// Extracts the identifier name from a diagnostic error message or location.
+    /// Extracts the identifier name from a diagnostic error using syntax tree location (locale-independent)
+    /// with fallback to message parsing for edge cases.
     /// </summary>
+    /// <param name="diagnostic">The diagnostic containing the error.</param>
+    /// <param name="syntaxTree">The syntax tree to extract identifier from.</param>
+    /// <returns>The extracted identifier, or empty string if extraction fails.</returns>
     private static string ExtractIdentifierFromError(Diagnostic diagnostic, SyntaxTree syntaxTree)
     {
+        // Strategy 1 (PRIMARY): Use diagnostic location to extract identifier from syntax tree
+        // This is locale-independent and version-resilient
+        if (diagnostic.Location.IsInSource)
+        {
+            try
+            {
+                var node = syntaxTree.GetRoot().FindNode(diagnostic.Location.SourceSpan);
+                if (node != null)
+                {
+                    var identifierText = node.ToString().Trim();
+                    if (!string.IsNullOrWhiteSpace(identifierText))
+                    {
+                        return identifierText;
+                    }
+                }
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                // Location span is invalid, fall through to message parsing
+            }
+        }
+
+        // Strategy 2 (FALLBACK): Extract from error message (locale-dependent)
+        // Support multiple quote characters for different locales
         var message = diagnostic.GetMessage();
 
-        // CS0246: The type or namespace name 'Foo' could not be found
-        // CS0103: The name 'bar' does not exist in the current context
-        // CS0234: The type or namespace name 'Baz' does not exist in the namespace 'System'
-        // CS1061: 'Type' does not contain a definition for 'Method'
-
-        // Extract quoted identifier from error message
-        var startQuote = message.IndexOf('\'');
-        if (startQuote >= 0)
+        // Try various quote characters: single quote (English), double quote, Unicode quotes
+        foreach (var quoteChar in new[] { '\'', '"', '\u2018', '\u2019', '\u201C', '\u201D' })
         {
-            var endQuote = message.IndexOf('\'', startQuote + 1);
-            if (endQuote > startQuote)
+            var startQuote = message.IndexOf(quoteChar);
+            if (startQuote >= 0)
             {
-                return message.Substring(startQuote + 1, endQuote - startQuote - 1);
+                var endQuote = message.IndexOf(quoteChar, startQuote + 1);
+                if (endQuote > startQuote)
+                {
+                    var extracted = message.Substring(startQuote + 1, endQuote - startQuote - 1);
+                    if (!string.IsNullOrWhiteSpace(extracted))
+                    {
+                        return extracted;
+                    }
+                }
             }
         }
 
@@ -469,33 +499,60 @@ public class SyntaxValidator : IDisposable
     }
 
     /// <summary>
+    /// Known BCL and Microsoft framework namespace prefixes.
+    /// Static readonly for efficient reuse across calls.
+    /// All entries have trailing dots for precise matching.
+    /// </summary>
+    private static readonly string[] KnownBclPrefixes = new[]
+    {
+        // Core BCL namespaces
+        "System.",
+        "Microsoft.",
+        "Windows.",
+        "Internal.",
+
+        // Common System.* sub-namespaces
+        "System.Collections.",
+        "System.Collections.Concurrent.",
+        "System.Collections.Generic.",
+        "System.Collections.Immutable.",
+        "System.Threading.",
+        "System.Threading.Tasks.",
+        "System.Linq.",
+        "System.Text.",
+        "System.Text.Json.",
+        "System.Text.RegularExpressions.",
+        "System.IO.",
+        "System.Net.",
+        "System.Net.Http.",
+        "System.Diagnostics.",
+        "System.Reflection.",
+        "System.Runtime.",
+        "System.Runtime.CompilerServices.",
+        "System.Runtime.InteropServices.",
+        "System.Security.",
+        "System.Security.Cryptography.",
+        "System.Data.",
+        "System.Xml.",
+        "System.Xml.Linq.",
+        "System.ComponentModel.",
+        "System.ComponentModel.DataAnnotations.",
+        "System.Drawing.",
+        "System.Web.",
+
+        // Additional framework namespaces
+        "NuGet.",
+        "FSharp."
+    };
+
+    /// <summary>
     /// Checks if an identifier belongs to a known BCL namespace.
     /// </summary>
+    /// <param name="identifier">The identifier to check.</param>
+    /// <returns>True if the identifier starts with a known BCL namespace prefix.</returns>
     private static bool IsKnownBclNamespace(string identifier)
     {
-        // Known BCL and Microsoft framework namespace prefixes
-        var bclPrefixes = new[]
-        {
-            "System.",
-            "Microsoft.",
-            "Windows.",
-            "Internal.",
-            "Collections.",
-            "Threading.",
-            "Linq.",
-            "Text.",
-            "IO.",
-            "Net.",
-            "Diagnostics.",
-            "Reflection.",
-            "Runtime.",
-            "Security.",
-            "Data.",
-            "Xml.",
-            "Json"
-        };
-
-        return bclPrefixes.Any(prefix => identifier.StartsWith(prefix, StringComparison.Ordinal));
+        return KnownBclPrefixes.Any(prefix => identifier.StartsWith(prefix, StringComparison.Ordinal));
     }
 
     /// <summary>
