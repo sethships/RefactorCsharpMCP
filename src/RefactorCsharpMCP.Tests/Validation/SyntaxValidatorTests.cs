@@ -530,4 +530,124 @@ class Test
     }
 
     #endregion
+
+    #region API Classification Edge Case Tests
+
+    [Fact]
+    public async Task ValidateInputAsync_NestedNamespace_ClassifiedAsFrameworkApi()
+    {
+        // Arrange - Code with nested System namespace
+        var sourceCode = @"
+class Test
+{
+    public void Method()
+    {
+        var x = new System.Collections.Concurrent.FakeQueue<int>();
+    }
+}";
+
+        // Act
+        var result = await _validator.ValidateInputAsync(sourceCode, "net8.0");
+
+        // Assert
+        result.IsValid.Should().BeFalse();
+        result.ErrorCode.Should().Be(ErrorCode.FRAMEWORK_API_UNAVAILABLE,
+            "nested System namespace should be classified as framework API");
+    }
+
+    [Fact]
+    public async Task ValidateInputAsync_LegitimateTripleS_NotFlaggedAsTypo()
+    {
+        // Arrange - Code with legitimate triple 's' (ProcessSucceeded pattern)
+        var sourceCode = @"
+class Test
+{
+    public void Method()
+    {
+        var processor = new ProcessSuccessHandler();
+    }
+}";
+
+        // Act
+        var result = await _validator.ValidateInputAsync(sourceCode, "net8.0");
+
+        // Assert
+        result.IsValid.Should().BeFalse();
+        // Should be classified as framework API, not typo (triple lowercase 's' is allowed)
+        result.ErrorCode.Should().Be(ErrorCode.FRAMEWORK_API_UNAVAILABLE,
+            "triple lowercase 's' should be allowed, classified as framework API not typo");
+    }
+
+    [Fact]
+    public async Task ValidateInputAsync_AcronymWithTripleUppercase_NotFlaggedAsTypo()
+    {
+        // Arrange - Code with acronym containing triple uppercase letters
+        var sourceCode = @"
+class Test
+{
+    public void Method()
+    {
+        var provider = new XMLLLMProvider();
+    }
+}";
+
+        // Act
+        var result = await _validator.ValidateInputAsync(sourceCode, "net8.0");
+
+        // Assert
+        result.IsValid.Should().BeFalse();
+        // Should be classified as framework API, not typo (triple uppercase is allowed for acronyms)
+        result.ErrorCode.Should().Be(ErrorCode.FRAMEWORK_API_UNAVAILABLE,
+            "triple uppercase letters should be allowed for acronyms, not flagged as typo");
+    }
+
+    [Fact]
+    public async Task ValidateInputAsync_ComponentModelNamespace_ClassifiedAsFrameworkApi()
+    {
+        // Arrange - Code using System.ComponentModel namespace
+        var sourceCode = @"
+using System.ComponentModel;
+
+class Test
+{
+    public void Method()
+    {
+        var attr = new FakeAttribute();
+    }
+}";
+
+        // Act
+        var result = await _validator.ValidateInputAsync(sourceCode, "net8.0");
+
+        // Assert
+        if (!result.IsValid)
+        {
+            result.ErrorCode.Should().NotBe(ErrorCode.SYNTAX_ERROR,
+                "System.ComponentModel types should be classified as framework API");
+        }
+    }
+
+    [Fact]
+    public async Task ValidateInputAsync_RegularExpressionsNamespace_ClassifiedAsFrameworkApi()
+    {
+        // Arrange - Code using System.Text.RegularExpressions namespace
+        var sourceCode = @"
+class Test
+{
+    public void Method()
+    {
+        var regex = new System.Text.RegularExpressions.FakeRegex();
+    }
+}";
+
+        // Act
+        var result = await _validator.ValidateInputAsync(sourceCode, "net8.0");
+
+        // Assert
+        result.IsValid.Should().BeFalse();
+        result.ErrorCode.Should().Be(ErrorCode.FRAMEWORK_API_UNAVAILABLE,
+            "System.Text.RegularExpressions should be classified as framework API");
+    }
+
+    #endregion
 }

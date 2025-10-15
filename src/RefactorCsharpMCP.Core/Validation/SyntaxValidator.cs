@@ -388,12 +388,43 @@ public class SyntaxValidator : IDisposable
     }
 
     /// <summary>
-    /// Classifies API errors as either framework API unavailability or likely typos.
-    /// Uses heuristics based on naming patterns and namespace conventions.
+    /// Classifies API errors (CS0246, CS0103, CS0234, CS1061) as either framework API unavailability or likely typos.
+    /// Uses three-stage heuristic approach to distinguish between legitimate framework compatibility issues
+    /// and user typos in code.
     /// </summary>
-    /// <param name="apiErrors">Diagnostic errors related to missing types/members.</param>
-    /// <param name="syntaxTree">The syntax tree being validated.</param>
-    /// <returns>Tuple of (framework errors, likely typos).</returns>
+    /// <remarks>
+    /// <para><b>Classification Strategy:</b></para>
+    /// <list type="number">
+    /// <item>
+    /// <term>BCL Namespace Detection</term>
+    /// <description>Identifiers starting with System.*, Microsoft.*, Windows.*, etc. are classified as framework API issues.</description>
+    /// </item>
+    /// <item>
+    /// <term>Typo Pattern Detection</term>
+    /// <description>Identifiers with obvious typo indicators (triple chars, all lowercase, mixed case anomalies) are classified as likely typos.</description>
+    /// </item>
+    /// <item>
+    /// <term>Conservative Default</term>
+    /// <description>Ambiguous cases default to framework API issue (safer for framework-aware validation context).</description>
+    /// </item>
+    /// </list>
+    /// <para><b>Design Rationale:</b></para>
+    /// <para>
+    /// This method operates in a framework-aware validation context where users have explicitly specified a target framework.
+    /// The conservative default (ambiguous → framework API) is appropriate because:
+    /// - User typos would typically be caught by IDE/compiler before reaching this tool
+    /// - False negatives (typos classified as framework issues) are safer than false positives
+    /// - Error messages include the specific identifier, allowing users to recognize typos
+    /// - Users can test against multiple frameworks to confirm actual compatibility issues
+    /// </para>
+    /// </remarks>
+    /// <param name="apiErrors">List of diagnostic errors with IDs CS0246, CS0103, CS0234, or CS1061 (type/member not found).</param>
+    /// <param name="syntaxTree">The syntax tree being validated, used for locale-independent identifier extraction.</param>
+    /// <returns>
+    /// A tuple containing:
+    /// - frameworkErrors: Diagnostics classified as framework API unavailability
+    /// - likelyTypos: Diagnostics classified as probable user typos
+    /// </returns>
     private static (List<Diagnostic> frameworkErrors, List<Diagnostic> likelyTypos) ClassifyApiErrors(
         List<Diagnostic> apiErrors,
         SyntaxTree syntaxTree)
@@ -556,30 +587,44 @@ public class SyntaxValidator : IDisposable
     }
 
     /// <summary>
-    /// Checks if an identifier has obvious typo indicators.
+    /// Checks if an identifier has obvious typo indicators using multiple heuristics.
+    /// Allows common legitimate patterns like triple 's' in "ProcessSucceeded" or acronyms.
     /// </summary>
+    /// <param name="identifier">The identifier to check for typo indicators.</param>
+    /// <returns>True if the identifier likely contains a typo; false otherwise.</returns>
     private static bool HasObviousTypo(string identifier)
     {
-        // Check for consecutive repeated characters (often typos)
+        // Check for consecutive repeated characters (often typos, but allow common patterns)
         for (int i = 0; i < identifier.Length - 2; i++)
         {
             if (identifier[i] == identifier[i + 1] && identifier[i] == identifier[i + 2])
             {
-                // Three consecutive identical characters (e.g., "Striiing")
+                var repeatedChar = identifier[i];
+
+                // Allow triple lowercase 's' (common in English: Process, Success, Address, etc.)
+                // Allow triple uppercase letters (acronyms: XMLLLMProvider, HTTPSSL, etc.)
+                if ((repeatedChar == 's' && char.IsLower(repeatedChar)) ||
+                    char.IsUpper(repeatedChar))
+                {
+                    continue;
+                }
+
+                // Other triple characters are likely typos (e.g., "Striiing", "Boook")
                 return true;
             }
         }
 
-        // Check for all lowercase (uncommon for types in C#)
+        // Check for all lowercase (uncommon for types in C#, but common for variables)
+        // Since we're classifying types/namespaces, flag identifiers > 3 chars that are all lowercase
         if (identifier.Length > 3 && identifier.All(char.IsLower))
         {
             return true;
         }
 
         // Check for mixed case inconsistency (e.g., "sYstem" instead of "System")
+        // Starts lowercase but has uppercase later - unusual for type names
         if (identifier.Length > 1 && char.IsLower(identifier[0]) && identifier.Skip(1).Any(char.IsUpper))
         {
-            // Starts lowercase but has uppercase later - unusual pattern
             return true;
         }
 

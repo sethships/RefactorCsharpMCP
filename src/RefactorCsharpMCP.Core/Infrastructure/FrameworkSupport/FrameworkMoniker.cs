@@ -287,9 +287,10 @@ public static class FrameworkMoniker
                 break;
 
             default:
-                // Unknown framework - add minimal symbol for identification
-                symbols.Add($"UNKNOWN_{normalized.ToUpperInvariant().Replace(".", "_")}");
-                break;
+                // Unknown framework - this should be caught by IsSupported() earlier in validation
+                // Return empty list to avoid invalid compilation contexts
+                // Defensive: if this is reached, validation has a bug that should be fixed
+                return Enumerable.Empty<string>();
         }
 
         return symbols;
