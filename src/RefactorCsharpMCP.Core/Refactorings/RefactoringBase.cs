@@ -23,7 +23,13 @@ public abstract class RefactoringBase
         {
             return RefactoringResult.Failure($"{parameterName} cannot be empty.");
         }
-        return RefactoringResult.Success(string.Empty, "Validation passed");
+        // Return validation success without refactored code (validation helper, not actual refactoring)
+        return new RefactoringResult
+        {
+            IsSuccess = true,
+            RefactoredCode = null,
+            Message = "Validation passed"
+        };
     }
 
     /// <summary>
@@ -55,7 +61,13 @@ public abstract class RefactoringBase
                 return RefactoringResult.Failure($"Syntax errors in source code: {errorMessages}");
             }
 
-            return RefactoringResult.Success(string.Empty, "Syntax validation passed");
+            // Return validation success without refactored code (validation helper, not actual refactoring)
+            return new RefactoringResult
+            {
+                IsSuccess = true,
+                RefactoredCode = null,
+                Message = "Syntax validation passed"
+            };
         }
         catch (Exception ex)
         {
@@ -135,34 +147,47 @@ public abstract class RefactoringBase
     protected async Task<RefactoringResult> ExecuteWithValidationAsync(
         string sourceCode,
         string targetFramework,
-        Func<RefactoringResult> refactoringOperation)
+        Func<Task<RefactoringResult>> refactoringOperation)
     {
         // Step 1: Validate input code against target framework
-        using var validator = new SyntaxValidator();
-        var inputValidation = await validator.ValidateInputAsync(sourceCode, targetFramework);
-
-        if (!inputValidation.IsValid)
+        var validator = new SyntaxValidator();
+        try
         {
-            return RefactoringResult.ValidationFailure(inputValidation);
-        }
+            var inputValidation = await validator.ValidateInputAsync(sourceCode, targetFramework);
 
-        // Step 2: Perform refactoring (delegate to provided operation)
-        var refactoringResult = refactoringOperation();
+            if (!inputValidation.IsValid)
+            {
+                return RefactoringResult.ValidationFailure(inputValidation);
+            }
 
-        if (!refactoringResult.IsSuccess)
-        {
+            // Step 2: Perform refactoring (delegate to provided operation)
+            var refactoringResult = await refactoringOperation();
+
+            if (!refactoringResult.IsSuccess)
+            {
+                return refactoringResult;
+            }
+
+            // Step 3: Validate refactored code is not empty
+            if (string.IsNullOrWhiteSpace(refactoringResult.RefactoredCode))
+            {
+                return RefactoringResult.Failure("Refactoring succeeded but produced no output code.");
+            }
+
+            // Step 4: Validate output code against target framework
+            var outputValidation = await validator.ValidateOutputAsync(refactoringResult.RefactoredCode, targetFramework);
+
+            if (!outputValidation.IsValid)
+            {
+                return RefactoringResult.ValidationFailure(outputValidation);
+            }
+
             return refactoringResult;
         }
-
-        // Step 3: Validate output code against target framework
-        var outputValidation = await validator.ValidateOutputAsync(refactoringResult.RefactoredCode!, targetFramework);
-
-        if (!outputValidation.IsValid)
+        finally
         {
-            return RefactoringResult.ValidationFailure(outputValidation);
+            validator.Dispose();
         }
-
-        return refactoringResult;
     }
 
     /// <summary>

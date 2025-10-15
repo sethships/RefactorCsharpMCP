@@ -27,7 +27,7 @@ public class MakeFieldReadonly : RefactoringBase
         return await ExecuteWithValidationAsync(
             sourceCode,
             targetFramework,
-            () => Execute(sourceCode, className, fieldName));
+            async () => await Task.Run(() => Execute(sourceCode, className, fieldName)));
     }
 
     /// <summary>

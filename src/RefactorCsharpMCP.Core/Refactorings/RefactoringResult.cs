@@ -38,8 +38,14 @@ public class RefactoringResult
     /// <param name="refactoredCode">The refactored source code.</param>
     /// <param name="message">A success message describing the refactoring.</param>
     /// <returns>A successful <see cref="RefactoringResult"/>.</returns>
+    /// <exception cref="ArgumentException">Thrown when refactoredCode is null or empty.</exception>
     public static RefactoringResult Success(string refactoredCode, string message)
     {
+        if (string.IsNullOrWhiteSpace(refactoredCode))
+        {
+            throw new ArgumentException("Successful refactoring must produce non-empty code.", nameof(refactoredCode));
+        }
+
         return new RefactoringResult
         {
             IsSuccess = true,

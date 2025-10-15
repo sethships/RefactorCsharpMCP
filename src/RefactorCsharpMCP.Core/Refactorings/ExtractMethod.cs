@@ -30,7 +30,7 @@ public class ExtractMethod : RefactoringBase
         return await ExecuteWithValidationAsync(
             sourceCode,
             targetFramework,
-            () => Execute(sourceCode, startLine, endLine, newMethodName));
+            async () => await Task.Run(() => Execute(sourceCode, startLine, endLine, newMethodName)));
     }
 
     /// <summary>

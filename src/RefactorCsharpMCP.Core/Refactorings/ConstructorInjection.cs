@@ -31,7 +31,7 @@ public class ConstructorInjection : RefactoringBase
         return await ExecuteWithValidationAsync(
             sourceCode,
             targetFramework,
-            () => Execute(sourceCode, className, methodName, parameterNames, useProperties));
+            async () => await Task.Run(() => Execute(sourceCode, className, methodName, parameterNames, useProperties)));
     }
 
     /// <summary>

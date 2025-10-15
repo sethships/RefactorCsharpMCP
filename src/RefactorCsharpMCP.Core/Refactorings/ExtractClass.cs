@@ -31,7 +31,7 @@ public class ExtractClass : RefactoringBase
         return await ExecuteWithValidationAsync(
             sourceCode,
             targetFramework,
-            () => Execute(sourceCode, className, newClassName, fieldNames, methodNames));
+            async () => await Task.Run(() => Execute(sourceCode, className, newClassName, fieldNames, methodNames)));
     }
 
     /// <summary>

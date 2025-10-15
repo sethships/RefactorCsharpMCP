@@ -30,7 +30,7 @@ public class SafeDelete : RefactoringBase
         return await ExecuteWithValidationAsync(
             sourceCode,
             targetFramework,
-            () => Execute(sourceCode, className, methodName));
+            async () => await Task.Run(() => Execute(sourceCode, className, methodName)));
     }
 
     /// <summary>

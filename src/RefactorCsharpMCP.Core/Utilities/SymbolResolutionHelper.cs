@@ -150,7 +150,15 @@ public class SymbolResolutionHelper
         }
         catch (Exception ex)
         {
-            return SymbolResolutionResult.Failed($"Error resolving symbol: {ex.Message}");
+            // Sanitize exception message to avoid leaking internal details
+            var errorCategory = ex switch
+            {
+                ArgumentOutOfRangeException => "InvalidPosition",
+                ArgumentException => "InvalidArgument",
+                InvalidOperationException => "InvalidState",
+                _ => "InternalError"
+            };
+            return SymbolResolutionResult.Failed($"Error resolving symbol ({errorCategory}). Verify source code syntax and position.");
         }
     }
 
@@ -177,11 +185,15 @@ public class SymbolResolutionHelper
 
         try
         {
-            var conflicts = new List<ISymbol>();
+            // Use HashSet to automatically handle uniqueness and avoid duplicates
+            var conflicts = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
 
             // Check for local variables with the same name
             var localSymbols = semanticModel.LookupSymbols(scopeNode.SpanStart, name: symbolName);
-            conflicts.AddRange(localSymbols.Where(s => s.Kind == SymbolKind.Local || s.Kind == SymbolKind.Parameter));
+            foreach (var symbol in localSymbols.Where(s => s.Kind == SymbolKind.Local || s.Kind == SymbolKind.Parameter))
+            {
+                conflicts.Add(symbol);
+            }
 
             // Check for methods with the same name
             if (scopeNode is ClassDeclarationSyntax classDeclaration)
@@ -192,13 +204,21 @@ public class SymbolResolutionHelper
                     .Select(m => semanticModel.GetDeclaredSymbol(m))
                     .Where(s => s != null)
                     .Cast<ISymbol>();
-                conflicts.AddRange(methodSymbols);
+
+                foreach (var symbol in methodSymbols)
+                {
+                    conflicts.Add(symbol);
+                }
             }
 
             // Check for fields with the same name
             var fieldSymbols = semanticModel.LookupSymbols(scopeNode.SpanStart, name: symbolName)
                 .Where(s => s.Kind == SymbolKind.Field || s.Kind == SymbolKind.Property);
-            conflicts.AddRange(fieldSymbols);
+
+            foreach (var symbol in fieldSymbols)
+            {
+                conflicts.Add(symbol);
+            }
 
             if (conflicts.Any())
             {
@@ -206,7 +226,7 @@ public class SymbolResolutionHelper
                 return new ConflictDetectionResult
                 {
                     HasConflicts = true,
-                    Conflicts = conflicts.Distinct(SymbolEqualityComparer.Default).ToList(),
+                    Conflicts = conflicts.ToList(),
                     ConflictDescription = $"Name '{symbolName}' conflicts with existing symbols: {conflictTypes}"
                 };
             }
@@ -219,10 +239,17 @@ public class SymbolResolutionHelper
         }
         catch (Exception ex)
         {
+            // Sanitize exception message to avoid leaking internal details
+            var errorCategory = ex switch
+            {
+                ArgumentException => "InvalidArgument",
+                InvalidOperationException => "InvalidState",
+                _ => "InternalError"
+            };
             return new ConflictDetectionResult
             {
                 HasConflicts = false,
-                ConflictDescription = $"Error detecting conflicts: {ex.Message}"
+                ConflictDescription = $"Error detecting conflicts ({errorCategory}). Unable to determine if conflicts exist."
             };
         }
     }
@@ -304,9 +331,15 @@ public class SymbolResolutionHelper
 
             return references;
         }
-        catch
+        catch (Exception ex)
         {
-            // If we can't find references, return empty list
+            // Log the exception for debugging purposes
+            // Debug.WriteLine is compiled out in Release builds
+            System.Diagnostics.Debug.WriteLine($"Error finding references for symbol '{symbol?.Name}': {ex.GetType().Name} - {ex.Message}");
+
+            // Return empty list as fallback
+            // Note: This risks false negatives in SafeDelete (deleting methods that are actually referenced)
+            // Consider alternative: throw exception or return Result<List<Location>, string>
             return new List<Location>();
         }
     }
