@@ -32,8 +32,11 @@ public class SyntaxValidator : IDisposable
     /// <param name="sourceCode">The C# source code to validate.</param>
     /// <param name="targetFramework">The target framework moniker (e.g., "net8.0", "net48").</param>
     /// <returns>A ValidationResult indicating success or describing the incompatibility.</returns>
+    /// <exception cref="ObjectDisposedException">Thrown if the validator has been disposed.</exception>
     public async Task<ValidationResult> ValidateInputAsync(string sourceCode, string targetFramework)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
         return await ValidateCompilationAsync(
             sourceCode,
             targetFramework,
@@ -48,8 +51,11 @@ public class SyntaxValidator : IDisposable
     /// <param name="sourceCode">The refactored C# source code to validate.</param>
     /// <param name="targetFramework">The target framework moniker (e.g., "net8.0", "net48").</param>
     /// <returns>A ValidationResult indicating success or describing the incompatibility.</returns>
+    /// <exception cref="ObjectDisposedException">Thrown if the validator has been disposed.</exception>
     public async Task<ValidationResult> ValidateOutputAsync(string sourceCode, string targetFramework)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
         return await ValidateCompilationAsync(
             sourceCode,
             targetFramework,
@@ -275,71 +281,62 @@ public class SyntaxValidator : IDisposable
     /// <summary>
     /// Detects the required C# version from a compiler error using diagnostic ID mapping.
     /// Uses comprehensive diagnostic ID table to avoid locale-dependent string matching.
+    /// Switch expression ensures compile-time checking and prevents duplicate diagnostic IDs.
     /// </summary>
     private static string DetectRequiredVersion(Diagnostic diagnostic)
     {
         var id = diagnostic.Id;
 
-        // Comprehensive diagnostic ID to C# version mapping
-        var versionMap = new Dictionary<string, string>
+        // Use switch expression for unambiguous, compile-time-checked mapping
+        // Note: Some diagnostic IDs cover multiple features from different versions
+        var version = id switch
         {
             // C# 13 features
-            { "CS9257", "C# 13" }, // Params collections
-            { "CS9258", "C# 13" }, // Params span
+            "CS9257" => "C# 13", // Params collections
+            "CS9258" => "C# 13", // Params span
 
             // C# 12 features
-            { "CS8652", "C# 12" }, // Collection expressions
-            { "CS9113", "C# 12" }, // Primary constructors (class)
-            { "CS8866", "C# 12" }, // Inline arrays
-            { "CS9175", "C# 12" }, // Using alias for any type
+            "CS8652" => "C# 12", // Collection expressions
+            "CS9113" => "C# 12", // Primary constructors (class)
+            "CS8866" => "C# 12", // Inline arrays
+            "CS9175" => "C# 12", // Using alias for any type
 
             // C# 11 features
-            { "CS9058", "C# 11" }, // Required members
-            { "CS8936", "C# 11" }, // File-scoped types
-            { "CS8773", "C# 11" }, // UTF-8 string literals
-            { "CS8981", "C# 11" }, // Generic attributes
+            "CS9058" => "C# 11", // Required members
+            "CS8936" => "C# 11", // File-scoped types
+            "CS8773" => "C# 11", // UTF-8 string literals / file-scoped namespaces (used by both C# 10 and 11)
+            "CS8981" => "C# 11", // Generic attributes
 
             // C# 10 features
-            { "CS8805", "C# 10" }, // Global using directives
-            { "CS8773", "C# 10" }, // File-scoped namespaces
-            { "CS8869", "C# 10" }, // Record structs
-            { "CS8910", "C# 10" }, // Extended property patterns
+            "CS8805" => "C# 10", // Global using directives / record types (maps to highest version)
+            "CS8869" => "C# 10", // Record structs
+            "CS8910" => "C# 10", // Extended property patterns
 
             // C# 9 features
-            { "CS8805", "C# 9" },  // Record types
-            { "CS8870", "C# 9" },  // Init-only setters
-            { "CS8400", "C# 9" },  // Top-level statements
-            { "CS8794", "C# 9" },  // Target-typed new
+            "CS8870" => "C# 9",  // Init-only setters
+            "CS8794" => "C# 9",  // Target-typed new
 
             // C# 8.0 features
-            { "CS8400", "C# 8.0" }, // Using declarations
-            { "CS8321", "C# 8.0" }, // Default interface members
-            { "CS8370", "C# 8.0" }, // Async streams
-            { "CS8302", "C# 8.0" }, // Nullable reference types
-            { "CS8625", "C# 8.0" }, // Nullable reference types
-            { "CS8632", "C# 8.0" }, // Nullable reference types
+            "CS8400" => "C# 8.0", // Using declarations / top-level statements (multiple features share this ID)
+            "CS8321" => "C# 8.0", // Default interface members
+            "CS8370" => "C# 8.0", // Async streams
+            "CS8302" => "C# 8.0", // Nullable reference types / in parameters / default literal (multiple features)
+            "CS8625" => "C# 8.0", // Nullable reference types (non-nullable to nullable conversion)
+            "CS8632" => "C# 8.0", // Nullable reference types (possible null reference)
 
             // C# 7.3 features
-            { "CS8107", "C# 7.3" }, // Ref structs
-            { "CS8350", "C# 7.3" }, // Unmanaged constraint
-
-            // C# 7.2 features
-            { "CS8107", "C# 7.2" }, // Ref readonly
-            { "CS8302", "C# 7.2" }, // In parameters
-
-            // C# 7.1 features
-            { "CS8107", "C# 7.1" }, // Async main
-            { "CS8302", "C# 7.1" }, // Default literal
+            "CS8107" => "C# 7.3", // Ref structs / ref readonly / async main (multiple features, maps to latest)
+            "CS8350" => "C# 7.3", // Unmanaged constraint
 
             // C# 7.0 features
-            { "CS8059", "C# 7.0" }, // Tuples
-            { "CS8070", "C# 7.0" }, // Pattern matching
-            { "CS8058", "C# 7.0" }, // Out variables
-            { "CS8059", "C# 7.0" }, // Local functions
+            "CS8059" => "C# 7.0", // Tuples / local functions (multiple features share this ID)
+            "CS8070" => "C# 7.0", // Pattern matching
+            "CS8058" => "C# 7.0", // Out variables
+
+            _ => null
         };
 
-        // Check if we have a known mapping
-        if (versionMap.TryGetValue(id, out var version))
+        if (version != null)
         {
             return version;
         }
