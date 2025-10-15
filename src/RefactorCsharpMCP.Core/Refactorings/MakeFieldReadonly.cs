@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using RefactorCsharpMCP.Core.Validation;
 
 namespace RefactorCsharpMCP.Core.Refactorings;
 
@@ -9,6 +10,48 @@ namespace RefactorCsharpMCP.Core.Refactorings;
 /// </summary>
 public class MakeFieldReadonly
 {
+    /// <summary>
+    /// Makes the specified field readonly if it's only assigned in constructors, with framework-aware validation.
+    /// </summary>
+    /// <param name="sourceCode">The source code containing the field.</param>
+    /// <param name="className">The name of the class containing the field.</param>
+    /// <param name="fieldName">The name of the field to make readonly.</param>
+    /// <param name="targetFramework">The target .NET framework (e.g., "net8.0", "net48").</param>
+    /// <returns>A result containing the refactored code or error information.</returns>
+    public async Task<RefactoringResult> ExecuteAsync(
+        string sourceCode,
+        string className,
+        string fieldName,
+        string targetFramework)
+    {
+        // Step 1: Validate input code against target framework
+        using var validator = new SyntaxValidator();
+        var inputValidation = await validator.ValidateInputAsync(sourceCode, targetFramework);
+
+        if (!inputValidation.IsValid)
+        {
+            return RefactoringResult.ValidationFailure(inputValidation);
+        }
+
+        // Step 2: Perform refactoring (delegate to existing logic)
+        var refactoringResult = Execute(sourceCode, className, fieldName);
+
+        if (!refactoringResult.IsSuccess)
+        {
+            return refactoringResult;
+        }
+
+        // Step 3: Validate output code against target framework
+        var outputValidation = await validator.ValidateOutputAsync(refactoringResult.RefactoredCode!, targetFramework);
+
+        if (!outputValidation.IsValid)
+        {
+            return RefactoringResult.ValidationFailure(outputValidation);
+        }
+
+        return refactoringResult;
+    }
+
     /// <summary>
     /// Makes the specified field readonly if it's only assigned in constructors.
     /// </summary>

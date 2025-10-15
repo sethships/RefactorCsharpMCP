@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using RefactorCsharpMCP.Core.Validation;
 using System.Text.RegularExpressions;
 
 namespace RefactorCsharpMCP.Core.Refactorings;
@@ -11,7 +12,52 @@ namespace RefactorCsharpMCP.Core.Refactorings;
 public class ExtractMethod
 {
     /// <summary>
-    /// Extracts the specified lines of code into a new method.
+    /// Extracts the specified lines of code into a new method with framework-aware validation.
+    /// </summary>
+    /// <param name="sourceCode">The source code containing the code to extract.</param>
+    /// <param name="startLine">The starting line number (1-based) of the code to extract.</param>
+    /// <param name="endLine">The ending line number (1-based) of the code to extract.</param>
+    /// <param name="newMethodName">The name for the new extracted method.</param>
+    /// <param name="targetFramework">The target framework moniker (e.g., "net8.0", "net48").</param>
+    /// <returns>A result containing the refactored code or error information.</returns>
+    public async Task<RefactoringResult> ExecuteAsync(
+        string sourceCode,
+        int startLine,
+        int endLine,
+        string newMethodName,
+        string targetFramework)
+    {
+        // Step 1: Validate input code against target framework
+        using var validator = new SyntaxValidator();
+        var inputValidation = await validator.ValidateInputAsync(sourceCode, targetFramework);
+
+        if (!inputValidation.IsValid)
+        {
+            return RefactoringResult.ValidationFailure(inputValidation);
+        }
+
+        // Step 2: Perform refactoring (delegate to existing logic)
+        var refactoringResult = Execute(sourceCode, startLine, endLine, newMethodName);
+
+        if (!refactoringResult.IsSuccess)
+        {
+            return refactoringResult;
+        }
+
+        // Step 3: Validate output code against target framework
+        var outputValidation = await validator.ValidateOutputAsync(refactoringResult.RefactoredCode!, targetFramework);
+
+        if (!outputValidation.IsValid)
+        {
+            return RefactoringResult.ValidationFailure(outputValidation);
+        }
+
+        return refactoringResult;
+    }
+
+    /// <summary>
+    /// Extracts the specified lines of code into a new method (without validation).
+    /// Use ExecuteAsync() for framework-aware validation.
     /// </summary>
     /// <param name="sourceCode">The source code containing the code to extract.</param>
     /// <param name="startLine">The starting line number (1-based) of the code to extract.</param>
@@ -414,6 +460,11 @@ public class RefactoringResult
     public string? ErrorMessage { get; init; }
 
     /// <summary>
+    /// Gets the validation result if the operation failed due to validation; otherwise, null.
+    /// </summary>
+    public Validation.ValidationResult? ValidationResult { get; init; }
+
+    /// <summary>
     /// Creates a successful refactoring result.
     /// </summary>
     /// <param name="refactoredCode">The refactored source code.</param>
@@ -441,6 +492,22 @@ public class RefactoringResult
             IsSuccess = false,
             ErrorMessage = errorMessage,
             Message = $"Refactoring failed: {errorMessage}"
+        };
+    }
+
+    /// <summary>
+    /// Creates a failed refactoring result from a validation failure.
+    /// </summary>
+    /// <param name="validationResult">The validation result that failed.</param>
+    /// <returns>A failed <see cref="RefactoringResult"/> with validation details.</returns>
+    public static RefactoringResult ValidationFailure(Validation.ValidationResult validationResult)
+    {
+        return new RefactoringResult
+        {
+            IsSuccess = false,
+            ErrorMessage = validationResult.ErrorMessage,
+            Message = $"Validation failed: {validationResult.ErrorMessage}",
+            ValidationResult = validationResult
         };
     }
 }

@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using RefactorCsharpMCP.Core.Validation;
 
 namespace RefactorCsharpMCP.Core.Refactorings;
 
@@ -9,6 +10,52 @@ namespace RefactorCsharpMCP.Core.Refactorings;
 /// </summary>
 public class ExtractClass
 {
+    /// <summary>
+    /// Extracts specified fields and methods into a new class with framework-aware validation.
+    /// </summary>
+    /// <param name="sourceCode">The source code containing the class.</param>
+    /// <param name="className">The name of the source class.</param>
+    /// <param name="newClassName">The name of the new class to create.</param>
+    /// <param name="fieldNames">Comma or semicolon-separated field names to extract.</param>
+    /// <param name="targetFramework">The target .NET framework (e.g., "net8.0", "net48").</param>
+    /// <param name="methodNames">Comma or semicolon-separated method names to extract (optional).</param>
+    /// <returns>A result containing the refactored code or error information.</returns>
+    public async Task<RefactoringResult> ExecuteAsync(
+        string sourceCode,
+        string className,
+        string newClassName,
+        string fieldNames,
+        string targetFramework,
+        string? methodNames = null)
+    {
+        // Step 1: Validate input code against target framework
+        using var validator = new SyntaxValidator();
+        var inputValidation = await validator.ValidateInputAsync(sourceCode, targetFramework);
+
+        if (!inputValidation.IsValid)
+        {
+            return RefactoringResult.ValidationFailure(inputValidation);
+        }
+
+        // Step 2: Perform refactoring (delegate to existing logic)
+        var refactoringResult = Execute(sourceCode, className, newClassName, fieldNames, methodNames);
+
+        if (!refactoringResult.IsSuccess)
+        {
+            return refactoringResult;
+        }
+
+        // Step 3: Validate output code against target framework
+        var outputValidation = await validator.ValidateOutputAsync(refactoringResult.RefactoredCode!, targetFramework);
+
+        if (!outputValidation.IsValid)
+        {
+            return RefactoringResult.ValidationFailure(outputValidation);
+        }
+
+        return refactoringResult;
+    }
+
     /// <summary>
     /// Extracts specified fields and methods into a new class.
     /// </summary>

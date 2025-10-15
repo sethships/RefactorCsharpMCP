@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
+using RefactorCsharpMCP.Core.Validation;
 
 namespace RefactorCsharpMCP.Core.Refactorings;
 
@@ -11,6 +12,49 @@ namespace RefactorCsharpMCP.Core.Refactorings;
 /// </summary>
 public class SafeDelete
 {
+    /// <summary>
+    /// Safely deletes a method if it has no references within the same file, with framework-aware validation.
+    /// LIMITATION: Only checks references in the provided source code. Does not analyze cross-file references.
+    /// </summary>
+    /// <param name="sourceCode">The source code containing the method.</param>
+    /// <param name="className">The name of the class containing the method.</param>
+    /// <param name="methodName">The name of the method to delete.</param>
+    /// <param name="targetFramework">The target .NET framework (e.g., "net8.0", "net48").</param>
+    /// <returns>A result containing the refactored code or error information.</returns>
+    public async Task<RefactoringResult> ExecuteAsync(
+        string sourceCode,
+        string className,
+        string methodName,
+        string targetFramework)
+    {
+        // Step 1: Validate input code against target framework
+        using var validator = new SyntaxValidator();
+        var inputValidation = await validator.ValidateInputAsync(sourceCode, targetFramework);
+
+        if (!inputValidation.IsValid)
+        {
+            return RefactoringResult.ValidationFailure(inputValidation);
+        }
+
+        // Step 2: Perform refactoring (delegate to existing logic)
+        var refactoringResult = Execute(sourceCode, className, methodName);
+
+        if (!refactoringResult.IsSuccess)
+        {
+            return refactoringResult;
+        }
+
+        // Step 3: Validate output code against target framework
+        var outputValidation = await validator.ValidateOutputAsync(refactoringResult.RefactoredCode!, targetFramework);
+
+        if (!outputValidation.IsValid)
+        {
+            return RefactoringResult.ValidationFailure(outputValidation);
+        }
+
+        return refactoringResult;
+    }
+
     /// <summary>
     /// Safely deletes a method if it has no references within the same file.
     /// LIMITATION: Only checks references in the provided source code. Does not analyze cross-file references.
