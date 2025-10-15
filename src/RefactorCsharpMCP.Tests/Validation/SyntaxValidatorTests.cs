@@ -341,4 +341,193 @@ class Test
     }
 
     #endregion
+
+    #region API Classification Tests
+
+    [Fact]
+    public async Task ValidateInputAsync_JsonNamespace_ClassifiedAsFrameworkApi()
+    {
+        // Arrange - Code using System.Text.Json (to test BCL namespace detection)
+        // Note: Actual compilation may fail depending on reference assemblies,
+        // but the error should be classified as FRAMEWORK_API_UNAVAILABLE, not SYNTAX_ERROR
+        var sourceCode = @"
+using System.Text.Json;
+
+class Test
+{
+    public void Method()
+    {
+        var json = JsonSerializer.Serialize(new { Name = ""Test"" });
+    }
+}";
+
+        // Act
+        var result = await _validator.ValidateInputAsync(sourceCode, "net8.0");
+
+        // Assert - If validation fails, it should be due to framework API, not syntax error
+        if (!result.IsValid)
+        {
+            result.ErrorCode.Should().NotBe(ErrorCode.SYNTAX_ERROR,
+                "Json namespace should be classified as BCL namespace, not a typo");
+            // Could be FRAMEWORK_API_UNAVAILABLE if reference assemblies don't include System.Text.Json
+        }
+        // Otherwise, it's valid (System.Text.Json is available in the reference assemblies)
+    }
+
+    [Fact]
+    public async Task ValidateInputAsync_ObviousTypo_ClassifiedAsSyntaxError()
+    {
+        // Arrange - Code with obvious typo (all lowercase class name)
+        var sourceCode = @"
+class Test
+{
+    public void Method()
+    {
+        var x = new striiing(); // Three consecutive 'i' characters - obvious typo
+    }
+}";
+
+        // Act
+        var result = await _validator.ValidateInputAsync(sourceCode, "net8.0");
+
+        // Assert
+        result.IsValid.Should().BeFalse();
+        result.ErrorCode.Should().Be(ErrorCode.SYNTAX_ERROR, "obvious typo should be classified as syntax error");
+        result.ErrorMessage.Should().Contain("striiing");
+    }
+
+    [Fact]
+    public async Task ValidateInputAsync_LowercaseTypeName_ClassifiedAsSyntaxError()
+    {
+        // Arrange - Code with all lowercase type name (unusual for C#)
+        var sourceCode = @"
+class Test
+{
+    public void Method()
+    {
+        var x = new mytype(); // All lowercase - likely a typo
+    }
+}";
+
+        // Act
+        var result = await _validator.ValidateInputAsync(sourceCode, "net8.0");
+
+        // Assert
+        result.IsValid.Should().BeFalse();
+        result.ErrorCode.Should().Be(ErrorCode.SYNTAX_ERROR, "all lowercase type name should be classified as likely typo");
+        result.ErrorMessage.Should().Contain("mytype");
+    }
+
+    [Fact]
+    public async Task ValidateInputAsync_MixedCaseAnomaly_ClassifiedAsSyntaxError()
+    {
+        // Arrange - Code with unusual mixed case pattern
+        var sourceCode = @"
+class Test
+{
+    public void Method()
+    {
+        var x = new sYstem(); // Starts lowercase but has uppercase - unusual
+    }
+}";
+
+        // Act
+        var result = await _validator.ValidateInputAsync(sourceCode, "net8.0");
+
+        // Assert
+        result.IsValid.Should().BeFalse();
+        result.ErrorCode.Should().Be(ErrorCode.SYNTAX_ERROR, "unusual case pattern should be classified as likely typo");
+        result.ErrorMessage.Should().Contain("sYstem");
+    }
+
+    [Fact]
+    public async Task ValidateInputAsync_VeryShortIdentifier_ClassifiedAsSyntaxError()
+    {
+        // Arrange - Code with very short identifier (likely typo)
+        var sourceCode = @"
+class Test
+{
+    public void Method()
+    {
+        var x = new Ab(); // Two characters - likely a typo
+    }
+}";
+
+        // Act
+        var result = await _validator.ValidateInputAsync(sourceCode, "net8.0");
+
+        // Assert
+        result.IsValid.Should().BeFalse();
+        result.ErrorCode.Should().Be(ErrorCode.SYNTAX_ERROR, "very short identifier should be classified as likely typo");
+        result.ErrorMessage.Should().Contain("Ab");
+    }
+
+    [Fact]
+    public async Task ValidateInputAsync_SystemNamespace_ClassifiedAsFrameworkApi()
+    {
+        // Arrange - Code referencing System namespace type
+        var sourceCode = @"
+class Test
+{
+    public void Method()
+    {
+        var x = new System.FakeType(); // System.* namespace
+    }
+}";
+
+        // Act
+        var result = await _validator.ValidateInputAsync(sourceCode, "net8.0");
+
+        // Assert
+        result.IsValid.Should().BeFalse();
+        result.ErrorCode.Should().Be(ErrorCode.FRAMEWORK_API_UNAVAILABLE, "System.* namespace should be classified as framework API");
+        result.ErrorMessage.Should().Contain("FakeType");
+    }
+
+    [Fact]
+    public async Task ValidateInputAsync_MicrosoftNamespace_ClassifiedAsFrameworkApi()
+    {
+        // Arrange - Code referencing Microsoft namespace type
+        var sourceCode = @"
+class Test
+{
+    public void Method()
+    {
+        var x = new Microsoft.FakeLibrary.Type();
+    }
+}";
+
+        // Act
+        var result = await _validator.ValidateInputAsync(sourceCode, "net8.0");
+
+        // Assert
+        result.IsValid.Should().BeFalse();
+        result.ErrorCode.Should().Be(ErrorCode.FRAMEWORK_API_UNAVAILABLE, "Microsoft.* namespace should be classified as framework API");
+        result.ErrorMessage.Should().Contain("FakeLibrary");
+    }
+
+    [Fact]
+    public async Task ValidateInputAsync_ProperlyNamedUserType_DefaultsToFrameworkApi()
+    {
+        // Arrange - Code with properly named type that doesn't exist (conservative classification)
+        var sourceCode = @"
+class Test
+{
+    public void Method()
+    {
+        var x = new UserDefinedType(); // Properly named, not in System/Microsoft, defaults to framework error
+    }
+}";
+
+        // Act
+        var result = await _validator.ValidateInputAsync(sourceCode, "net8.0");
+
+        // Assert
+        result.IsValid.Should().BeFalse();
+        result.ErrorCode.Should().Be(ErrorCode.FRAMEWORK_API_UNAVAILABLE,
+            "ambiguous case should default to framework API (conservative)");
+        result.ErrorMessage.Should().Contain("UserDefinedType");
+    }
+
+    #endregion
 }

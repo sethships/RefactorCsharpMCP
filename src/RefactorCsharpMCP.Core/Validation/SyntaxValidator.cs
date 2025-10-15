@@ -190,27 +190,34 @@ public class SyntaxValidator : IDisposable
 
                 if (apiErrors.Any())
                 {
-                    // These could be either:
-                    // 1. Typos in user code (syntax errors)
-                    // 2. APIs unavailable in target framework (framework limitation)
-                    //
-                    // We classify as FRAMEWORK_API_UNAVAILABLE because:
-                    // - We're validating against framework-specific reference assemblies
-                    // - If it's a typo, it would fail on ANY framework
-                    // - This context suggests it's a framework compatibility issue
-                    //
-                    // Users can distinguish by testing on multiple framework targets.
-                    var apiErrorDetails = string.Join(", ", apiErrors.Select(d => d.GetMessage()).Take(3));
-                    if (apiErrors.Count > 3)
+                    // Distinguish between typos and framework API unavailability using heuristics
+                    var (frameworkErrors, likelyTypos) = ClassifyApiErrors(apiErrors, syntaxTree);
+
+                    if (frameworkErrors.Any())
                     {
-                        apiErrorDetails += $" (and {apiErrors.Count - 3} more)";
+                        var apiErrorDetails = string.Join(", ", frameworkErrors.Select(d => d.GetMessage()).Take(3));
+                        if (frameworkErrors.Count > 3)
+                        {
+                            apiErrorDetails += $" (and {frameworkErrors.Count - 3} more)";
+                        }
+
+                        return ValidationResult.Failure(
+                            ErrorCode.FRAMEWORK_API_UNAVAILABLE,
+                            $"Code references types or members not available in {targetFramework}: {apiErrorDetails}",
+                            "Either target a newer framework version or replace with APIs available in the target framework. " +
+                            "Run validation against multiple frameworks to confirm compatibility.");
                     }
 
-                    return ValidationResult.Failure(
-                        ErrorCode.FRAMEWORK_API_UNAVAILABLE,
-                        $"Code references types or members not available in {targetFramework}: {apiErrorDetails}",
-                        "Either target a newer framework version or replace with APIs available in the target framework. " +
-                        "If these appear to be typos, check spelling and using directives.");
+                    if (likelyTypos.Any())
+                    {
+                        var typoDetails = string.Join(", ", likelyTypos.Select(d => d.GetMessage()).Take(3));
+                        if (likelyTypos.Count > 3)
+                        {
+                            typoDetails += $" (and {likelyTypos.Count - 3} more)";
+                        }
+
+                        return ValidationResult.SyntaxError(typoDetails);
+                    }
                 }
 
                 // Other semantic errors (not API availability)
@@ -378,6 +385,148 @@ public class SyntaxValidator : IDisposable
             LanguageVersion.CSharp3 => "C# 3.0",
             _ => version.ToString()
         };
+    }
+
+    /// <summary>
+    /// Classifies API errors as either framework API unavailability or likely typos.
+    /// Uses heuristics based on naming patterns and namespace conventions.
+    /// </summary>
+    /// <param name="apiErrors">Diagnostic errors related to missing types/members.</param>
+    /// <param name="syntaxTree">The syntax tree being validated.</param>
+    /// <returns>Tuple of (framework errors, likely typos).</returns>
+    private static (List<Diagnostic> frameworkErrors, List<Diagnostic> likelyTypos) ClassifyApiErrors(
+        List<Diagnostic> apiErrors,
+        SyntaxTree syntaxTree)
+    {
+        var frameworkErrors = new List<Diagnostic>();
+        var likelyTypos = new List<Diagnostic>();
+
+        foreach (var error in apiErrors)
+        {
+            var message = error.GetMessage();
+            var identifier = ExtractIdentifierFromError(error, syntaxTree);
+
+            if (string.IsNullOrEmpty(identifier))
+            {
+                // Cannot extract identifier - default to framework error (safer assumption)
+                frameworkErrors.Add(error);
+                continue;
+            }
+
+            // Heuristic 1: Check for known BCL namespace prefixes
+            if (IsKnownBclNamespace(identifier))
+            {
+                frameworkErrors.Add(error);
+                continue;
+            }
+
+            // Heuristic 2: Check for improper naming conventions (likely typos)
+            if (HasObviousTypo(identifier))
+            {
+                likelyTypos.Add(error);
+                continue;
+            }
+
+            // Heuristic 3: Check for very short identifiers (often typos)
+            if (identifier.Length <= 2)
+            {
+                likelyTypos.Add(error);
+                continue;
+            }
+
+            // Default: Classify as framework error (conservative approach)
+            // If uncertain, treat as framework issue since validation is framework-specific
+            frameworkErrors.Add(error);
+        }
+
+        return (frameworkErrors, likelyTypos);
+    }
+
+    /// <summary>
+    /// Extracts the identifier name from a diagnostic error message or location.
+    /// </summary>
+    private static string ExtractIdentifierFromError(Diagnostic diagnostic, SyntaxTree syntaxTree)
+    {
+        var message = diagnostic.GetMessage();
+
+        // CS0246: The type or namespace name 'Foo' could not be found
+        // CS0103: The name 'bar' does not exist in the current context
+        // CS0234: The type or namespace name 'Baz' does not exist in the namespace 'System'
+        // CS1061: 'Type' does not contain a definition for 'Method'
+
+        // Extract quoted identifier from error message
+        var startQuote = message.IndexOf('\'');
+        if (startQuote >= 0)
+        {
+            var endQuote = message.IndexOf('\'', startQuote + 1);
+            if (endQuote > startQuote)
+            {
+                return message.Substring(startQuote + 1, endQuote - startQuote - 1);
+            }
+        }
+
+        return string.Empty;
+    }
+
+    /// <summary>
+    /// Checks if an identifier belongs to a known BCL namespace.
+    /// </summary>
+    private static bool IsKnownBclNamespace(string identifier)
+    {
+        // Known BCL and Microsoft framework namespace prefixes
+        var bclPrefixes = new[]
+        {
+            "System.",
+            "Microsoft.",
+            "Windows.",
+            "Internal.",
+            "Collections.",
+            "Threading.",
+            "Linq.",
+            "Text.",
+            "IO.",
+            "Net.",
+            "Diagnostics.",
+            "Reflection.",
+            "Runtime.",
+            "Security.",
+            "Data.",
+            "Xml.",
+            "Json"
+        };
+
+        return bclPrefixes.Any(prefix => identifier.StartsWith(prefix, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Checks if an identifier has obvious typo indicators.
+    /// </summary>
+    private static bool HasObviousTypo(string identifier)
+    {
+        // Check for consecutive repeated characters (often typos)
+        for (int i = 0; i < identifier.Length - 2; i++)
+        {
+            if (identifier[i] == identifier[i + 1] && identifier[i] == identifier[i + 2])
+            {
+                // Three consecutive identical characters (e.g., "Striiing")
+                return true;
+            }
+        }
+
+        // Check for all lowercase (uncommon for types in C#)
+        if (identifier.Length > 3 && identifier.All(char.IsLower))
+        {
+            return true;
+        }
+
+        // Check for mixed case inconsistency (e.g., "sYstem" instead of "System")
+        if (identifier.Length > 1 && char.IsLower(identifier[0]) && identifier.Skip(1).Any(char.IsUpper))
+        {
+            // Starts lowercase but has uppercase later - unusual pattern
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>
