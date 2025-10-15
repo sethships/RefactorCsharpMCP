@@ -10,7 +10,7 @@ namespace RefactorCsharpMCP.Core.Refactorings;
 /// Provides functionality to safely delete code elements with dependency analysis.
 /// LIMITATION: Only analyzes references within the same source file. Cross-file references are not detected.
 /// </summary>
-public class SafeDelete
+public class SafeDelete : RefactoringBase
 {
     /// <summary>
     /// Safely deletes a method if it has no references within the same file, with framework-aware validation.
@@ -27,32 +27,10 @@ public class SafeDelete
         string methodName,
         string targetFramework)
     {
-        // Step 1: Validate input code against target framework
-        using var validator = new SyntaxValidator();
-        var inputValidation = await validator.ValidateInputAsync(sourceCode, targetFramework);
-
-        if (!inputValidation.IsValid)
-        {
-            return RefactoringResult.ValidationFailure(inputValidation);
-        }
-
-        // Step 2: Perform refactoring (delegate to existing logic)
-        var refactoringResult = Execute(sourceCode, className, methodName);
-
-        if (!refactoringResult.IsSuccess)
-        {
-            return refactoringResult;
-        }
-
-        // Step 3: Validate output code against target framework
-        var outputValidation = await validator.ValidateOutputAsync(refactoringResult.RefactoredCode!, targetFramework);
-
-        if (!outputValidation.IsValid)
-        {
-            return RefactoringResult.ValidationFailure(outputValidation);
-        }
-
-        return refactoringResult;
+        return await ExecuteWithValidationAsync(
+            sourceCode,
+            targetFramework,
+            async () => await Task.Run(() => Execute(sourceCode, className, methodName)));
     }
 
     /// <summary>
@@ -65,61 +43,41 @@ public class SafeDelete
     /// <returns>A result containing the refactored code or error information.</returns>
     public RefactoringResult Execute(string sourceCode, string className, string methodName)
     {
-        if (string.IsNullOrWhiteSpace(sourceCode))
-        {
-            return RefactoringResult.Failure("Source code cannot be empty.");
-        }
+        // Validate inputs
+        var sourceValidation = ValidateNonEmpty(sourceCode, "Source code");
+        if (!sourceValidation.IsSuccess) return sourceValidation;
 
-        if (string.IsNullOrWhiteSpace(className))
-        {
-            return RefactoringResult.Failure("Class name cannot be empty.");
-        }
+        var classValidation = ValidateNonEmpty(className, "Class name");
+        if (!classValidation.IsSuccess) return classValidation;
 
-        if (string.IsNullOrWhiteSpace(methodName))
-        {
-            return RefactoringResult.Failure("Method name cannot be empty.");
-        }
+        var methodValidation = ValidateNonEmpty(methodName, "Method name");
+        if (!methodValidation.IsSuccess) return methodValidation;
 
         try
         {
-            // Parse the source code into a syntax tree
-            var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);
-            var root = (CompilationUnitSyntax)syntaxTree.GetRoot();
-
-            // Check for parse errors
-            var diagnostics = syntaxTree.GetDiagnostics();
-            var errors = diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
-            if (errors.Any())
+            // Parse and validate syntax
+            var parseResult = ParseAndValidateSyntax(sourceCode, out var root, out var syntaxTree);
+            if (!parseResult.IsSuccess || root == null || syntaxTree == null)
             {
-                var errorMessages = string.Join(", ", errors.Select(e => e.GetMessage()).Take(3));
-                return RefactoringResult.Failure($"Syntax errors in source code: {errorMessages}");
+                return parseResult;
             }
 
             // Find the class declaration
-            var classDeclaration = root.DescendantNodes()
-                .OfType<ClassDeclarationSyntax>()
-                .FirstOrDefault(c => c.Identifier.Text == className);
-
+            var classDeclaration = FindClass(root, className);
             if (classDeclaration == null)
             {
                 return RefactoringResult.Failure($"Class '{className}' not found in source code.");
             }
 
             // Find the method declaration
-            var methodDeclaration = classDeclaration.DescendantNodes()
-                .OfType<MethodDeclarationSyntax>()
-                .FirstOrDefault(m => m.Identifier.Text == methodName);
-
+            var methodDeclaration = FindMethod(classDeclaration, methodName);
             if (methodDeclaration == null)
             {
                 return RefactoringResult.Failure($"Method '{methodName}' not found in class '{className}'.");
             }
 
             // Create compilation for semantic analysis
-            var compilation = CSharpCompilation.Create("temp")
-                .AddReferences(MetadataReference.CreateFromFile(typeof(object).Assembly.Location))
-                .AddSyntaxTrees(syntaxTree);
-
+            var compilation = CreateCompilation(syntaxTree);
             var semanticModel = compilation.GetSemanticModel(syntaxTree);
 
             // Check for references to this method
@@ -149,7 +107,7 @@ public class SafeDelete
             var newRoot = root.ReplaceNode(classDeclaration, updatedClass);
 
             // Normalize whitespace to ensure proper formatting
-            newRoot = newRoot.NormalizeWhitespace();
+            newRoot = NormalizeWhitespace(newRoot);
 
             return RefactoringResult.Success(
                 newRoot.ToFullString(),
@@ -158,15 +116,7 @@ public class SafeDelete
         }
         catch (Exception ex)
         {
-            // Sanitize exception message for security
-            var errorCategory = ex switch
-            {
-                ArgumentException => "InvalidInput",
-                InvalidOperationException => "InvalidState",
-                FormatException => "ParseError",
-                _ => "UnexpectedError"
-            };
-            return RefactoringResult.Failure($"An error occurred during the refactoring ({errorCategory}). Please check the code syntax and try again.");
+            return HandleException(ex, "safe delete");
         }
     }
 
