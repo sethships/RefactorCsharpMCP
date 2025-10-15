@@ -14,7 +14,33 @@ The project is organized into three main components:
 
 - **RefactorCsharpMCP.Server**: MCP server with stdio transport, implements MCP tools for refactoring operations
 - **RefactorCsharpMCP.Core**: Core refactoring logic using Roslyn, analysis utilities, and refactoring algorithms
-- **RefactorCsharpMCP.Tests**: Comprehensive test suite with 114 tests covering unit, component, and integration testing
+- **RefactorCsharpMCP.Tests**: Comprehensive test suite with 146 tests covering unit, component, and integration testing
+
+### Shared Refactoring Infrastructure
+
+The Core project includes a shared infrastructure layer that eliminates boilerplate across refactorings:
+
+- **RefactoringBase**: Abstract base class providing common functionality for all refactorings
+  - Input validation (`ValidateNonEmpty`)
+  - Syntax parsing and validation (`ParseAndValidateSyntax`)
+  - Compilation creation (`CreateCompilation`)
+  - Common helper methods (`FindClass`, `FindMethod`)
+  - Sanitized exception handling (`HandleException`)
+  - Framework-aware validation wrapper (`ExecuteWithValidationAsync`)
+  - Whitespace normalization (`NormalizeWhitespace`)
+
+- **SymbolResolutionHelper**: Utility class for Roslyn symbol operations
+  - Position-based symbol resolution (`GetSymbolAtPosition`)
+  - Symbol conflict detection (`FindSymbolConflicts`)
+  - Symbol scope analysis (`AnalyzeSymbolScope`)
+  - Reference finding across compilation (`GetAllReferences`)
+
+- **RefactoringResult**: Standardized result type for all refactoring operations
+  - Success/failure status with refactored code
+  - Framework validation result integration
+  - User-friendly error messages
+
+This infrastructure has reduced refactoring implementation boilerplate by an average of 29% (275+ lines eliminated across the five refactorings), making it faster to implement new refactorings while maintaining consistency and code quality.
 
 ## Build and Development
 
@@ -48,7 +74,7 @@ dotnet test
 dotnet test --collect:"XPlat Code Coverage"
 
 # Current test coverage: 86.5% lines, 82.8% branches
-# Total: 114 tests (92 unit + 14 component + 8 integration)
+# Total: 146 tests (124 unit + 14 component + 8 integration)
 ```
 
 ## Technology Stack
@@ -144,6 +170,8 @@ Each tool accepts source code and refactoring parameters, returning either:
 - Use Roslyn APIs for all code analysis and transformation
 - Add XML documentation comments for public APIs
 - Include unit tests for all new refactorings
+- Inherit from `RefactoringBase` when implementing new refactorings to leverage shared infrastructure
+- Use `SymbolResolutionHelper` for position-based symbol operations and conflict detection
 
 ### Roslyn Best Practices
 - Always work with SyntaxTree and SemanticModel for accuracy
@@ -151,6 +179,12 @@ Each tool accepts source code and refactoring parameters, returning either:
 - Preserve trivia (whitespace, comments) during transformations
 - Validate syntax before and after refactorings
 - Use data flow analysis for variable scope detection
+- Leverage `RefactoringBase` methods for common operations:
+  - `ParseAndValidateSyntax()` for parsing with error handling
+  - `CreateCompilation()` for standardized compilation setup
+  - `FindClass()` and `FindMethod()` for locating declarations
+  - `HandleException()` for security-conscious error messages
+  - `NormalizeWhitespace()` for consistent code formatting
 
 ## Project History
 

@@ -8,7 +8,7 @@ namespace RefactorCsharpMCP.Core.Refactorings;
 /// <summary>
 /// Provides functionality to convert method parameters to constructor-injected fields or properties using Roslyn.
 /// </summary>
-public class ConstructorInjection
+public class ConstructorInjection : RefactoringBase
 {
     /// <summary>
     /// Converts specified method parameters to constructor-injected fields or properties with framework-aware validation.
@@ -28,32 +28,10 @@ public class ConstructorInjection
         string targetFramework,
         bool useProperties = false)
     {
-        // Step 1: Validate input code against target framework
-        using var validator = new SyntaxValidator();
-        var inputValidation = await validator.ValidateInputAsync(sourceCode, targetFramework);
-
-        if (!inputValidation.IsValid)
-        {
-            return RefactoringResult.ValidationFailure(inputValidation);
-        }
-
-        // Step 2: Perform refactoring (delegate to existing logic)
-        var refactoringResult = Execute(sourceCode, className, methodName, parameterNames, useProperties);
-
-        if (!refactoringResult.IsSuccess)
-        {
-            return refactoringResult;
-        }
-
-        // Step 3: Validate output code against target framework
-        var outputValidation = await validator.ValidateOutputAsync(refactoringResult.RefactoredCode!, targetFramework);
-
-        if (!outputValidation.IsValid)
-        {
-            return RefactoringResult.ValidationFailure(outputValidation);
-        }
-
-        return refactoringResult;
+        return await ExecuteWithValidationAsync(
+            sourceCode,
+            targetFramework,
+            () => Execute(sourceCode, className, methodName, parameterNames, useProperties));
     }
 
     /// <summary>
@@ -72,20 +50,15 @@ public class ConstructorInjection
         string[] parameterNames,
         bool useProperties = false)
     {
-        if (string.IsNullOrWhiteSpace(sourceCode))
-        {
-            return RefactoringResult.Failure("Source code cannot be empty.");
-        }
+        // Validate inputs
+        var sourceValidation = ValidateNonEmpty(sourceCode, "Source code");
+        if (!sourceValidation.IsSuccess) return sourceValidation;
 
-        if (string.IsNullOrWhiteSpace(className))
-        {
-            return RefactoringResult.Failure("Class name cannot be empty.");
-        }
+        var classValidation = ValidateNonEmpty(className, "Class name");
+        if (!classValidation.IsSuccess) return classValidation;
 
-        if (string.IsNullOrWhiteSpace(methodName))
-        {
-            return RefactoringResult.Failure("Method name cannot be empty.");
-        }
+        var methodValidation = ValidateNonEmpty(methodName, "Method name");
+        if (!methodValidation.IsSuccess) return methodValidation;
 
         if (parameterNames == null || parameterNames.Length == 0)
         {
@@ -94,34 +67,22 @@ public class ConstructorInjection
 
         try
         {
-            // Parse the source code into a syntax tree
-            var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);
-            var root = (CompilationUnitSyntax)syntaxTree.GetRoot();
-
-            // Check for parse errors
-            var diagnostics = syntaxTree.GetDiagnostics();
-            var errors = diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
-            if (errors.Any())
+            // Parse and validate syntax
+            var parseResult = ParseAndValidateSyntax(sourceCode, out var root, out var syntaxTree);
+            if (!parseResult.IsSuccess || root == null || syntaxTree == null)
             {
-                var errorMessages = string.Join(", ", errors.Select(e => e.GetMessage()).Take(3));
-                return RefactoringResult.Failure($"Syntax errors in source code: {errorMessages}");
+                return parseResult;
             }
 
             // Find the class declaration
-            var classDeclaration = root.DescendantNodes()
-                .OfType<ClassDeclarationSyntax>()
-                .FirstOrDefault(c => c.Identifier.Text == className);
-
+            var classDeclaration = FindClass(root, className);
             if (classDeclaration == null)
             {
                 return RefactoringResult.Failure($"Class '{className}' not found in source code.");
             }
 
             // Find the method declaration
-            var methodDeclaration = classDeclaration.DescendantNodes()
-                .OfType<MethodDeclarationSyntax>()
-                .FirstOrDefault(m => m.Identifier.Text == methodName);
-
+            var methodDeclaration = FindMethod(classDeclaration, methodName);
             if (methodDeclaration == null)
             {
                 return RefactoringResult.Failure($"Method '{methodName}' not found in class '{className}'.");
@@ -292,7 +253,7 @@ public class ConstructorInjection
             var newRoot = root.ReplaceNode(classDeclaration, updatedClass);
 
             // Normalize whitespace to ensure proper formatting
-            newRoot = newRoot.NormalizeWhitespace();
+            newRoot = NormalizeWhitespace(newRoot);
 
             var injectionType = useProperties ? "properties" : "fields";
             return RefactoringResult.Success(
@@ -302,15 +263,7 @@ public class ConstructorInjection
         }
         catch (Exception ex)
         {
-            // Sanitize exception message for security
-            var errorCategory = ex switch
-            {
-                ArgumentException => "InvalidInput",
-                InvalidOperationException => "InvalidState",
-                FormatException => "ParseError",
-                _ => "UnexpectedError"
-            };
-            return RefactoringResult.Failure($"An error occurred during constructor injection ({errorCategory}). Please check the code syntax and try again.");
+            return HandleException(ex, "constructor injection");
         }
     }
 

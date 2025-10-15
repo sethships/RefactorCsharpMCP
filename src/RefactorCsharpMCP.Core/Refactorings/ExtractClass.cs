@@ -8,7 +8,7 @@ namespace RefactorCsharpMCP.Core.Refactorings;
 /// <summary>
 /// Provides functionality to extract fields and methods into a new class.
 /// </summary>
-public class ExtractClass
+public class ExtractClass : RefactoringBase
 {
     /// <summary>
     /// Extracts specified fields and methods into a new class with framework-aware validation.
@@ -28,32 +28,10 @@ public class ExtractClass
         string targetFramework,
         string? methodNames = null)
     {
-        // Step 1: Validate input code against target framework
-        using var validator = new SyntaxValidator();
-        var inputValidation = await validator.ValidateInputAsync(sourceCode, targetFramework);
-
-        if (!inputValidation.IsValid)
-        {
-            return RefactoringResult.ValidationFailure(inputValidation);
-        }
-
-        // Step 2: Perform refactoring (delegate to existing logic)
-        var refactoringResult = Execute(sourceCode, className, newClassName, fieldNames, methodNames);
-
-        if (!refactoringResult.IsSuccess)
-        {
-            return refactoringResult;
-        }
-
-        // Step 3: Validate output code against target framework
-        var outputValidation = await validator.ValidateOutputAsync(refactoringResult.RefactoredCode!, targetFramework);
-
-        if (!outputValidation.IsValid)
-        {
-            return RefactoringResult.ValidationFailure(outputValidation);
-        }
-
-        return refactoringResult;
+        return await ExecuteWithValidationAsync(
+            sourceCode,
+            targetFramework,
+            () => Execute(sourceCode, className, newClassName, fieldNames, methodNames));
     }
 
     /// <summary>
@@ -72,25 +50,18 @@ public class ExtractClass
         string fieldNames,
         string? methodNames = null)
     {
-        if (string.IsNullOrWhiteSpace(sourceCode))
-        {
-            return RefactoringResult.Failure("Source code cannot be empty.");
-        }
+        // Validate inputs
+        var sourceValidation = ValidateNonEmpty(sourceCode, "Source code");
+        if (!sourceValidation.IsSuccess) return sourceValidation;
 
-        if (string.IsNullOrWhiteSpace(className))
-        {
-            return RefactoringResult.Failure("Class name cannot be empty.");
-        }
+        var classValidation = ValidateNonEmpty(className, "Class name");
+        if (!classValidation.IsSuccess) return classValidation;
 
-        if (string.IsNullOrWhiteSpace(newClassName))
-        {
-            return RefactoringResult.Failure("New class name cannot be empty.");
-        }
+        var newClassValidation = ValidateNonEmpty(newClassName, "New class name");
+        if (!newClassValidation.IsSuccess) return newClassValidation;
 
-        if (string.IsNullOrWhiteSpace(fieldNames))
-        {
-            return RefactoringResult.Failure("Field names cannot be empty.");
-        }
+        var fieldValidation = ValidateNonEmpty(fieldNames, "Field names");
+        if (!fieldValidation.IsSuccess) return fieldValidation;
 
         try
         {
@@ -105,24 +76,15 @@ public class ExtractClass
                 return RefactoringResult.Failure("At least one field name must be specified.");
             }
 
-            // Parse the source code into a syntax tree
-            var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);
-            var root = (CompilationUnitSyntax)syntaxTree.GetRoot();
-
-            // Check for parse errors
-            var diagnostics = syntaxTree.GetDiagnostics();
-            var errors = diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
-            if (errors.Any())
+            // Parse and validate syntax
+            var parseResult = ParseAndValidateSyntax(sourceCode, out var root, out var syntaxTree);
+            if (!parseResult.IsSuccess || root == null || syntaxTree == null)
             {
-                var errorMessages = string.Join(", ", errors.Select(e => e.GetMessage()).Take(3));
-                return RefactoringResult.Failure($"Syntax errors in source code: {errorMessages}");
+                return parseResult;
             }
 
             // Find the class declaration
-            var classDeclaration = root.DescendantNodes()
-                .OfType<ClassDeclarationSyntax>()
-                .FirstOrDefault(c => c.Identifier.Text == className);
-
+            var classDeclaration = FindClass(root, className);
             if (classDeclaration == null)
             {
                 return RefactoringResult.Failure($"Class '{className}' not found in source code.");
@@ -230,7 +192,7 @@ public class ExtractClass
             }
 
             // Normalize whitespace to ensure proper formatting
-            newRoot = newRoot.NormalizeWhitespace();
+            newRoot = NormalizeWhitespace(newRoot);
 
             // Build warning message about manual updates needed
             var warningMessage = $"Extracted {fieldsToExtract.Count} field(s) and {methodsToExtract.Count} method(s) into new class '{newClassName}'. " +
@@ -243,15 +205,7 @@ public class ExtractClass
         }
         catch (Exception ex)
         {
-            // Sanitize exception message for security
-            var errorCategory = ex switch
-            {
-                ArgumentException => "InvalidInput",
-                InvalidOperationException => "InvalidState",
-                FormatException => "ParseError",
-                _ => "UnexpectedError"
-            };
-            return RefactoringResult.Failure($"An error occurred during the refactoring ({errorCategory}). Please check the code syntax and try again.");
+            return HandleException(ex, "extract class");
         }
     }
 

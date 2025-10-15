@@ -9,7 +9,7 @@ namespace RefactorCsharpMCP.Core.Refactorings;
 /// <summary>
 /// Provides functionality to extract a block of code into a new method using Roslyn semantic analysis.
 /// </summary>
-public class ExtractMethod
+public class ExtractMethod : RefactoringBase
 {
     /// <summary>
     /// Extracts the specified lines of code into a new method with framework-aware validation.
@@ -27,32 +27,10 @@ public class ExtractMethod
         string newMethodName,
         string targetFramework)
     {
-        // Step 1: Validate input code against target framework
-        using var validator = new SyntaxValidator();
-        var inputValidation = await validator.ValidateInputAsync(sourceCode, targetFramework);
-
-        if (!inputValidation.IsValid)
-        {
-            return RefactoringResult.ValidationFailure(inputValidation);
-        }
-
-        // Step 2: Perform refactoring (delegate to existing logic)
-        var refactoringResult = Execute(sourceCode, startLine, endLine, newMethodName);
-
-        if (!refactoringResult.IsSuccess)
-        {
-            return refactoringResult;
-        }
-
-        // Step 3: Validate output code against target framework
-        var outputValidation = await validator.ValidateOutputAsync(refactoringResult.RefactoredCode!, targetFramework);
-
-        if (!outputValidation.IsValid)
-        {
-            return RefactoringResult.ValidationFailure(outputValidation);
-        }
-
-        return refactoringResult;
+        return await ExecuteWithValidationAsync(
+            sourceCode,
+            targetFramework,
+            () => Execute(sourceCode, startLine, endLine, newMethodName));
     }
 
     /// <summary>
@@ -66,15 +44,12 @@ public class ExtractMethod
     /// <returns>A result containing the refactored code or error information.</returns>
     public RefactoringResult Execute(string sourceCode, int startLine, int endLine, string newMethodName)
     {
-        if (string.IsNullOrWhiteSpace(sourceCode))
-        {
-            return RefactoringResult.Failure("Source code cannot be empty.");
-        }
+        // Validate inputs
+        var sourceValidation = ValidateNonEmpty(sourceCode, "Source code");
+        if (!sourceValidation.IsSuccess) return sourceValidation;
 
-        if (string.IsNullOrWhiteSpace(newMethodName))
-        {
-            return RefactoringResult.Failure("Method name cannot be empty.");
-        }
+        var methodValidation = ValidateNonEmpty(newMethodName, "Method name");
+        if (!methodValidation.IsSuccess) return methodValidation;
 
         // Validate method name format using shared compiled regex
         // Note: Validation also performed in ExtractMethodTool, this is defense-in-depth
@@ -90,17 +65,11 @@ public class ExtractMethod
 
         try
         {
-            // Parse the source code into a syntax tree
-            var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);
-            var root = (CompilationUnitSyntax)syntaxTree.GetRoot();
-
-            // Check for parse errors
-            var diagnostics = syntaxTree.GetDiagnostics();
-            var errors = diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
-            if (errors.Any())
+            // Parse and validate syntax
+            var parseResult = ParseAndValidateSyntax(sourceCode, out var root, out var syntaxTree);
+            if (!parseResult.IsSuccess || root == null || syntaxTree == null)
             {
-                var errorMessages = string.Join(", ", errors.Select(e => e.GetMessage()).Take(3));
-                return RefactoringResult.Failure($"Syntax errors in source code: {errorMessages}");
+                return parseResult;
             }
 
             // Find the method containing the lines to extract
@@ -117,15 +86,8 @@ public class ExtractMethod
                 return RefactoringResult.Failure($"No statements found in line range {startLine}-{endLine}.");
             }
 
-            // Create compilation for semantic analysis with common assembly references
-            var compilation = CSharpCompilation.Create("temp")
-                .AddReferences(
-                    MetadataReference.CreateFromFile(typeof(object).Assembly.Location), // mscorlib/System.Private.CoreLib
-                    MetadataReference.CreateFromFile(typeof(System.Collections.Generic.List<>).Assembly.Location), // System.Collections
-                    MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location) // System.Linq
-                )
-                .AddSyntaxTrees(syntaxTree);
-
+            // Create compilation for semantic analysis
+            var compilation = CreateCompilation(syntaxTree);
             var semanticModel = compilation.GetSemanticModel(syntaxTree);
 
             // Analyze data flow for the selected statements
@@ -168,7 +130,7 @@ public class ExtractMethod
             var newRoot = root.ReplaceNode(containingClass, updatedClass);
 
             // Normalize whitespace to ensure proper formatting
-            newRoot = newRoot.NormalizeWhitespace();
+            newRoot = NormalizeWhitespace(newRoot);
 
             return RefactoringResult.Success(
                 newRoot.ToFullString(),
@@ -177,15 +139,7 @@ public class ExtractMethod
         }
         catch (Exception ex)
         {
-            // Sanitize exception message for security
-            var errorCategory = ex switch
-            {
-                ArgumentException => "InvalidInput",
-                InvalidOperationException => "InvalidState",
-                FormatException => "ParseError",
-                _ => "UnexpectedError"
-            };
-            return RefactoringResult.Failure($"An error occurred during extraction ({errorCategory}). Please check the code syntax and try again.");
+            return HandleException(ex, "extract method");
         }
     }
 
@@ -431,83 +385,5 @@ public class ExtractMethod
     {
         public string Name { get; set; } = string.Empty;
         public string Type { get; set; } = "object";
-    }
-}
-
-/// <summary>
-/// Represents the result of a refactoring operation.
-/// </summary>
-public class RefactoringResult
-{
-    /// <summary>
-    /// Gets a value indicating whether the refactoring operation was successful.
-    /// </summary>
-    public bool IsSuccess { get; init; }
-
-    /// <summary>
-    /// Gets the refactored code if the operation was successful; otherwise, null.
-    /// </summary>
-    public string? RefactoredCode { get; init; }
-
-    /// <summary>
-    /// Gets a message describing the result of the refactoring operation.
-    /// </summary>
-    public string Message { get; init; } = string.Empty;
-
-    /// <summary>
-    /// Gets the error message if the operation failed; otherwise, null.
-    /// </summary>
-    public string? ErrorMessage { get; init; }
-
-    /// <summary>
-    /// Gets the validation result if the operation failed due to validation; otherwise, null.
-    /// </summary>
-    public Validation.ValidationResult? ValidationResult { get; init; }
-
-    /// <summary>
-    /// Creates a successful refactoring result.
-    /// </summary>
-    /// <param name="refactoredCode">The refactored source code.</param>
-    /// <param name="message">A success message describing the refactoring.</param>
-    /// <returns>A successful <see cref="RefactoringResult"/>.</returns>
-    public static RefactoringResult Success(string refactoredCode, string message)
-    {
-        return new RefactoringResult
-        {
-            IsSuccess = true,
-            RefactoredCode = refactoredCode,
-            Message = message
-        };
-    }
-
-    /// <summary>
-    /// Creates a failed refactoring result.
-    /// </summary>
-    /// <param name="errorMessage">The error message describing why the refactoring failed.</param>
-    /// <returns>A failed <see cref="RefactoringResult"/>.</returns>
-    public static RefactoringResult Failure(string errorMessage)
-    {
-        return new RefactoringResult
-        {
-            IsSuccess = false,
-            ErrorMessage = errorMessage,
-            Message = $"Refactoring failed: {errorMessage}"
-        };
-    }
-
-    /// <summary>
-    /// Creates a failed refactoring result from a validation failure.
-    /// </summary>
-    /// <param name="validationResult">The validation result that failed.</param>
-    /// <returns>A failed <see cref="RefactoringResult"/> with validation details.</returns>
-    public static RefactoringResult ValidationFailure(Validation.ValidationResult validationResult)
-    {
-        return new RefactoringResult
-        {
-            IsSuccess = false,
-            ErrorMessage = validationResult.ErrorMessage,
-            Message = $"Validation failed: {validationResult.ErrorMessage}",
-            ValidationResult = validationResult
-        };
     }
 }
