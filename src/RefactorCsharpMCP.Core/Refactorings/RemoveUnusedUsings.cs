@@ -118,7 +118,11 @@ public class RemoveUnusedUsings : RefactoringBase
             }
 
             // Remove unused using directives
-            var newRoot = root.RemoveNodes(usingsToRemove, SyntaxRemoveOptions.KeepLeadingTrivia)!;
+            var newRoot = root.RemoveNodes(usingsToRemove, SyntaxRemoveOptions.KeepLeadingTrivia);
+            if (newRoot == null)
+            {
+                return RefactoringResult.Failure("Failed to remove using directives. The syntax tree transformation returned null.");
+            }
 
             // Normalize whitespace to ensure proper formatting
             newRoot = NormalizeWhitespace(newRoot);

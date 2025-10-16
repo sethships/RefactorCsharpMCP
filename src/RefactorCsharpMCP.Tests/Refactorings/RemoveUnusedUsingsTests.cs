@@ -90,9 +90,37 @@ public class Calculator
     }
 
     [Fact]
-    public async Task ExecuteAsync_WithGlobalUsingsOnNet48_ShouldRemoveThem()
+    public async Task ExecuteAsync_WithOnlyUnusedGlobalUsingsOnNet80_ShouldPreserveAllAndReportNoChanges()
     {
-        // Arrange - global using syntax is invalid in net48 (C# 7.3), but we test the logic
+        // Arrange - all usings are global and unused, should preserve all
+        var sourceCode = @"global using System;
+global using System.Collections.Generic;
+global using System.Linq;
+
+public class Calculator
+{
+    public int Add(int a, int b)
+    {
+        return a + b;
+    }
+}";
+        var refactoring = new RemoveUnusedUsings();
+
+        // Act
+        var result = await refactoring.ExecuteAsync(sourceCode, "net8.0");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("global using System;");
+        result.RefactoredCode.Should().Contain("global using System.Collections.Generic;");
+        result.RefactoredCode.Should().Contain("global using System.Linq;");
+        result.Message.Should().Contain("No unused using directives can be safely removed");
+    }
+
+    [Fact]
+    public void Execute_WithNet48_ShouldRemoveUnusedUsings()
+    {
+        // Arrange - net48 uses C# 7.3 which doesn't support global using
         var sourceCode = @"using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -107,7 +135,7 @@ public class Calculator
         var refactoring = new RemoveUnusedUsings();
 
         // Act
-        var result = await refactoring.ExecuteAsync(sourceCode, "net48");
+        var result = refactoring.Execute(sourceCode, "net48");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
