@@ -15,8 +15,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Test filter for cache-related tests
-$Filter = "FullyQualifiedName~ReferenceAssemblyCache|FullyQualifiedName~FrameworkTestFixture|FullyQualifiedName~TupleReturnConverter|FullyQualifiedName~NullableReferenceTypeStripper"
+# Test filter for cache-related tests (all classes with [Collection("CacheTests")])
+$Filter = "FullyQualifiedName~ReferenceAssemblyCache|FullyQualifiedName~ReferenceAssemblyResolver|FullyQualifiedName~ReferenceAssemblyErrorScenario|FullyQualifiedName~FrameworkTestFixture|FullyQualifiedName~TupleReturnConverter|FullyQualifiedName~NullableReferenceTypeStripper"
 
 Write-Host ""
 Write-Host "==== Cache Stability Test - $Iterations Iterations ====" -ForegroundColor Cyan

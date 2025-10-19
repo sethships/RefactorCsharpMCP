@@ -37,9 +37,10 @@ try {
     exit $LASTEXITCODE
 }
 
-# Get the script directory in WSL format
+# Get the script directory in WSL format (support any drive letter)
 $scriptDir = $PSScriptRoot
-$wslScriptDir = $scriptDir -replace '\\', '/' -replace 'C:', '/mnt/c'
+$driveLetter = ($scriptDir -split ':')[0].ToLower()
+$wslScriptDir = $scriptDir -replace '\\', '/' -replace "^${driveLetter}:", "/mnt/${driveLetter}"
 
 # Build the bash script path
 $bashScript = "$wslScriptDir/test-cache-stability.sh"

@@ -45,8 +45,8 @@ info() { echo -e "${GRAY}  $1${NC}"; }
 
 header "Cache Stability Test - $ITERATIONS Iterations"
 
-# Test filter for cache-related tests
-FILTER="FullyQualifiedName~ReferenceAssemblyCache|FullyQualifiedName~FrameworkTestFixture|FullyQualifiedName~TupleReturnConverter|FullyQualifiedName~NullableReferenceTypeStripper"
+# Test filter for cache-related tests (all classes with [Collection("CacheTests")])
+FILTER="FullyQualifiedName~ReferenceAssemblyCache|FullyQualifiedName~ReferenceAssemblyResolver|FullyQualifiedName~ReferenceAssemblyErrorScenario|FullyQualifiedName~FrameworkTestFixture|FullyQualifiedName~TupleReturnConverter|FullyQualifiedName~NullableReferenceTypeStripper"
 
 echo "Start time: $(date)"
 echo "Iterations: $ITERATIONS"
@@ -111,7 +111,8 @@ for duration in "${DURATIONS[@]}"; do
   SUM_SQUARED_DIFF=$((SUM_SQUARED_DIFF + SQUARED_DIFF))
 done
 VARIANCE=$((SUM_SQUARED_DIFF / ITERATIONS))
-STDDEV=$(echo "sqrt($VARIANCE)" | bc)
+# Use awk for square root (no external dependencies)
+STDDEV=$(awk "BEGIN {print int(sqrt($VARIANCE))}")
 
 # Calculate pass rate
 PASS_RATE=$((PASS_COUNT * 100 / ITERATIONS))

@@ -1,5 +1,9 @@
 name: Cache Stability Tests
 
+permissions:
+  contents: read
+  pull-requests: write
+
 on:
   pull_request:
     branches: [ master, main ]
@@ -106,6 +110,7 @@ jobs:
         run: dotnet build --no-restore
 
       - name: Setup WSL
+        # Third-party action - reviewed and deemed safe, consider pinning to commit SHA for supply chain security
         uses: Vampire/setup-wsl@v3
         with:
           distribution: Ubuntu-22.04
