@@ -81,6 +81,7 @@ To verify that cache concurrency fixes remain stable over time, specialized stab
 ```powershell
 .\scripts\test-cache-stability-wsl.ps1 [-Iterations N]
 ```
+⚠️ **Note**: WSL script requires .NET SDK installed in WSL. For local Windows testing, use the PowerShell script instead. The WSL script is primarily for CI/CD environments.
 
 Default: 10 iterations
 
