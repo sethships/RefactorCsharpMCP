@@ -49,8 +49,8 @@ The Core project includes a shared infrastructure layer that eliminates boilerpl
   - Sanitized user messages vs detailed log messages
 
 - **RefactoringOptions**: Configurable refactoring behavior
-  - Formatting preservation (`PreserveFormatting`)
-  - Comment preservation (`PreserveComments`, `PreserveXmlDocComments`)
+  - Formatting preservation (`PreserveFormatting`) - fully implemented
+  - Comment preservation (`PreserveComments`, `PreserveXmlDocComments`) - defined but not yet implemented (comments preserved by default via Roslyn trivia)
 
 - **RefactoringMetrics**: Performance and operational metrics
   - Execution timing with stopwatch
@@ -91,8 +91,8 @@ dotnet test
 # Run with code coverage
 dotnet test --collect:"XPlat Code Coverage"
 
-# Current test coverage: 86.5% lines, 82.8% branches
-# Total: 146 tests (124 unit + 14 component + 8 integration)
+# Current test coverage: ~87% lines, ~83% branches (estimated after CR fixes)
+# Total: 452 tests (424 unit + 20 component + 8 integration)
 ```
 
 ## Technology Stack

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.CodeAnalysis.Text;
 
 namespace RefactorCsharpMCP.Core.Refactorings;
 
@@ -25,8 +26,9 @@ public class RefactoringMetrics
 
     /// <summary>
     /// Gets the elapsed time for the refactoring operation.
+    /// Populated by RefactoringMetricsTracker when Stop() is called.
     /// </summary>
-    public TimeSpan? ElapsedTime => EndTime.HasValue ? EndTime.Value - StartTime : null;
+    public TimeSpan? ElapsedTime { get; set; }
 
     /// <summary>
     /// Gets or sets whether the refactoring succeeded.
@@ -160,7 +162,7 @@ public class RefactoringMetricsTracker : IDisposable
     /// <param name="sourceCode">The input source code.</param>
     public void RecordInput(string sourceCode)
     {
-        _metrics.InputLineCount = sourceCode.Split('\n').Length;
+        _metrics.InputLineCount = SourceText.From(sourceCode).Lines.Count;
     }
 
     /// <summary>
@@ -169,7 +171,7 @@ public class RefactoringMetricsTracker : IDisposable
     /// <param name="sourceCode">The output source code.</param>
     public void RecordOutput(string sourceCode)
     {
-        _metrics.OutputLineCount = sourceCode.Split('\n').Length;
+        _metrics.OutputLineCount = SourceText.From(sourceCode).Lines.Count;
     }
 
     /// <summary>
@@ -205,6 +207,7 @@ public class RefactoringMetricsTracker : IDisposable
         {
             _stopwatch.Stop();
             _metrics.EndTime = DateTime.UtcNow;
+            _metrics.ElapsedTime = _stopwatch.Elapsed;
         }
     }
 

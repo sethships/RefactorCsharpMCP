@@ -8,8 +8,9 @@ public class RefactoringOptions
 {
     /// <summary>
     /// Gets the default refactoring options with standard settings.
+    /// Returns a new instance each time to prevent shared mutable state.
     /// </summary>
-    public static RefactoringOptions Default { get; } = new RefactoringOptions();
+    public static RefactoringOptions Default => new RefactoringOptions();
 
     /// <summary>
     /// Gets or sets whether to preserve the original code formatting.
@@ -26,12 +27,14 @@ public class RefactoringOptions
     /// <summary>
     /// Gets or sets whether to preserve comments during refactoring.
     /// Default is true to avoid losing important code documentation.
+    /// NOTE: This feature is not yet implemented. Comments are currently preserved by default via Roslyn trivia.
     /// </summary>
     public bool PreserveComments { get; set; } = true;
 
     /// <summary>
     /// Gets or sets whether to preserve XML documentation comments.
     /// Default is true to maintain API documentation.
+    /// NOTE: This feature is not yet implemented. XML doc comments are currently preserved by default via Roslyn trivia.
     /// </summary>
     public bool PreserveXmlDocComments { get; set; } = true;
 

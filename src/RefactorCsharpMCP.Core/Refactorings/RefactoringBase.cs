@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -16,10 +16,11 @@ namespace RefactorCsharpMCP.Core.Refactorings;
 public abstract class RefactoringBase
 {
     /// <summary>
-    /// Cache for compilations using weak references to allow garbage collection.
-    /// Key is hash of source code content, value is weak reference to compilation.
+    /// Cache for compilations using ConditionalWeakTable for object identity caching.
+    /// Automatically manages lifetime and prevents hash collision issues.
+    /// Thread-safe and allows garbage collection when SyntaxTree is no longer referenced.
     /// </summary>
-    private static readonly ConcurrentDictionary<int, WeakReference<CSharpCompilation>> _compilationCache = new();
+    private static readonly ConditionalWeakTable<SyntaxTree, CSharpCompilation> _compilationCache = new();
 
     /// <summary>
     /// Optional logger for structured error logging and telemetry.
@@ -104,43 +105,30 @@ public abstract class RefactoringBase
 
     /// <summary>
     /// Gets or creates a compilation for semantic analysis with common assembly references.
-    /// Uses caching with weak references to improve performance when processing the same source code multiple times.
-    /// The cache allows garbage collection to reclaim memory when under pressure.
+    /// Uses ConditionalWeakTable for object identity caching to improve performance when processing
+    /// the same syntax tree multiple times. The cache automatically handles garbage collection and
+    /// prevents hash collision issues.
     /// </summary>
     /// <param name="syntaxTree">The syntax tree to include in the compilation.</param>
     /// <returns>A CSharpCompilation instance configured with standard references.</returns>
     /// <remarks>
-    /// The cache key is based on the source code content hash. If the compilation is found in cache
-    /// and has not been garbage collected, it is returned. Otherwise, a new compilation is created
-    /// and cached with a weak reference.
+    /// The cache uses the SyntaxTree instance as the key (object identity), ensuring no hash collisions.
+    /// Compilations are automatically removed when the SyntaxTree is garbage collected.
+    /// This approach is thread-safe and requires no manual cache management.
     /// </remarks>
     protected CSharpCompilation CreateCompilation(SyntaxTree syntaxTree)
     {
-        // Get source code for cache key
-        var sourceCode = syntaxTree.ToString();
-        var cacheKey = sourceCode.GetHashCode();
-
-        // Try to get from cache
-        if (_compilationCache.TryGetValue(cacheKey, out var weakRef) &&
-            weakRef.TryGetTarget(out var cachedCompilation))
+        return _compilationCache.GetValue(syntaxTree, tree =>
         {
-            // Cache hit - reuse existing compilation
-            return cachedCompilation;
-        }
-
-        // Cache miss - create new compilation
-        var compilation = CSharpCompilation.Create("temp")
-            .AddReferences(
-                MetadataReference.CreateFromFile(typeof(object).Assembly.Location), // mscorlib/System.Private.CoreLib
-                MetadataReference.CreateFromFile(typeof(System.Collections.Generic.List<>).Assembly.Location), // System.Collections
-                MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location) // System.Linq
-            )
-            .AddSyntaxTrees(syntaxTree);
-
-        // Store in cache with weak reference
-        _compilationCache[cacheKey] = new WeakReference<CSharpCompilation>(compilation);
-
-        return compilation;
+            // Create new compilation with standard references
+            return CSharpCompilation.Create("temp")
+                .AddReferences(
+                    MetadataReference.CreateFromFile(typeof(object).Assembly.Location), // mscorlib/System.Private.CoreLib
+                    MetadataReference.CreateFromFile(typeof(System.Collections.Generic.List<>).Assembly.Location), // System.Collections
+                    MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location) // System.Linq
+                )
+                .AddSyntaxTrees(tree);
+        });
     }
 
     /// <summary>
@@ -188,10 +176,7 @@ public abstract class RefactoringBase
         errorContext.AdditionalContext["Operation"] = operationName;
 
         // Log detailed error information (full exception) for debugging
-        if (Logger != null)
-        {
-            Logger.LogError(ex, errorContext.ToLogMessage());
-        }
+        Logger?.LogError(ex, errorContext.ToLogMessage());
 
         // Determine error category string for backwards compatibility with existing tests
         var errorCategory = errorContext.Category switch
@@ -222,11 +207,12 @@ public abstract class RefactoringBase
         string targetFramework,
         Func<Task<RefactoringResult>> refactoringOperation)
     {
-        // Record input metrics
-        MetricsTracker?.RecordInput(sourceCode);
-        if (MetricsTracker != null)
+        // Single null-check pattern: cache tracker reference to avoid repeated null checks
+        var tracker = MetricsTracker;
+        if (tracker != null)
         {
-            MetricsTracker.Metrics.TargetFramework = targetFramework;
+            tracker.RecordInput(sourceCode);
+            tracker.Metrics.TargetFramework = targetFramework;
         }
 
         // Step 1: Validate input code against target framework
@@ -240,7 +226,7 @@ public abstract class RefactoringBase
             {
                 Logger?.LogWarning("Input validation failed for framework {Framework}: {Error}",
                     targetFramework, inputValidation.ErrorMessage);
-                MetricsTracker?.RecordFailure(ErrorCategory.ValidationFailure, CurrentPhase);
+                tracker?.RecordFailure(ErrorCategory.ValidationFailure, CurrentPhase);
                 return RefactoringResult.ValidationFailure(inputValidation);
             }
 
@@ -250,7 +236,7 @@ public abstract class RefactoringBase
 
             if (!refactoringResult.IsSuccess)
             {
-                MetricsTracker?.RecordFailure(ErrorCategory.UnexpectedError, CurrentPhase);
+                tracker?.RecordFailure(ErrorCategory.UnexpectedError, CurrentPhase);
                 return refactoringResult;
             }
 
@@ -259,12 +245,12 @@ public abstract class RefactoringBase
             if (string.IsNullOrWhiteSpace(refactoringResult.RefactoredCode))
             {
                 Logger?.LogError("Refactoring succeeded but produced no output code");
-                MetricsTracker?.RecordFailure(ErrorCategory.InvalidState, CurrentPhase);
+                tracker?.RecordFailure(ErrorCategory.InvalidState, CurrentPhase);
                 return RefactoringResult.Failure("Refactoring succeeded but produced no output code.");
             }
 
             // Record output metrics
-            MetricsTracker?.RecordOutput(refactoringResult.RefactoredCode);
+            tracker?.RecordOutput(refactoringResult.RefactoredCode);
 
             // Step 4: Validate output code against target framework
             var outputValidation = await validator.ValidateOutputAsync(refactoringResult.RefactoredCode, targetFramework);
@@ -273,14 +259,14 @@ public abstract class RefactoringBase
             {
                 Logger?.LogWarning("Output validation failed for framework {Framework}: {Error}",
                     targetFramework, outputValidation.ErrorMessage);
-                MetricsTracker?.RecordFailure(ErrorCategory.ValidationFailure, CurrentPhase);
+                tracker?.RecordFailure(ErrorCategory.ValidationFailure, CurrentPhase);
                 return RefactoringResult.ValidationFailure(outputValidation);
             }
 
             CurrentPhase = "Completed";
-            MetricsTracker?.RecordSuccess(CurrentPhase);
+            tracker?.RecordSuccess(CurrentPhase);
             Logger?.LogInformation("Refactoring completed successfully for framework {Framework}. {Metrics}",
-                targetFramework, MetricsTracker?.Metrics.ToSummary() ?? "No metrics");
+                targetFramework, tracker?.Metrics.ToSummary() ?? "No metrics");
             return refactoringResult;
         }
         finally
