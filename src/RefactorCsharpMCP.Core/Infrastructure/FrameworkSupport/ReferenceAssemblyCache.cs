@@ -189,30 +189,46 @@ public class ReferenceAssemblyCache
     }
 
     /// <summary>
-    /// Clears cache for a specific framework.
+    /// Clears cache for a specific framework (synchronous version).
     /// </summary>
     public void ClearCache(string targetFramework)
+    {
+        ClearCacheAsync(targetFramework, CancellationToken.None).GetAwaiter().GetResult();
+    }
+
+    /// <summary>
+    /// Clears cache for a specific framework (async version).
+    /// </summary>
+    public async Task ClearCacheAsync(string targetFramework, CancellationToken cancellationToken = default)
     {
         var frameworkDir = GetFrameworkCacheDirectory(targetFramework);
         if (Directory.Exists(frameworkDir))
         {
-            Directory.Delete(frameworkDir, recursive: true);
+            await FileSystemRetryHelper.SafeDeleteDirectoryAsync(frameworkDir, _logger, cancellationToken: cancellationToken);
         }
 
         // Update manifest
-        var manifest = LoadManifest();
+        var manifest = await LoadManifestAsync(cancellationToken);
         manifest.Frameworks.Remove(targetFramework.ToLowerInvariant());
-        SaveManifest(manifest);
+        await SaveManifestAsync(manifest, cancellationToken);
     }
 
     /// <summary>
-    /// Clears all cached reference assemblies.
+    /// Clears all cached reference assemblies (synchronous version).
     /// </summary>
     public void ClearAllCache()
     {
+        ClearAllCacheAsync(CancellationToken.None).GetAwaiter().GetResult();
+    }
+
+    /// <summary>
+    /// Clears all cached reference assemblies (async version).
+    /// </summary>
+    public async Task ClearAllCacheAsync(CancellationToken cancellationToken = default)
+    {
         if (Directory.Exists(CacheRoot))
         {
-            Directory.Delete(CacheRoot, recursive: true);
+            await FileSystemRetryHelper.SafeDeleteDirectoryAsync(CacheRoot, _logger, cancellationToken: cancellationToken);
         }
     }
 
@@ -264,22 +280,41 @@ public class ReferenceAssemblyCache
             return new CacheManifest();
         }
 
-        try
-        {
-            var json = File.ReadAllText(_manifestPath);
-            return JsonSerializer.Deserialize<CacheManifest>(json) ?? new CacheManifest();
-        }
-        catch
+        // Use synchronous helper for backward compatibility
+        return LoadManifestAsync(CancellationToken.None).GetAwaiter().GetResult();
+    }
+
+    private async Task<CacheManifest> LoadManifestAsync(CancellationToken cancellationToken = default)
+    {
+        if (!File.Exists(_manifestPath))
         {
             return new CacheManifest();
         }
+
+        return await FileSystemRetryHelper.RetryFileOperationAsync(async () =>
+        {
+            // Use FileStream with FileShare.Read to allow concurrent reads
+            using var stream = new FileStream(_manifestPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            return await JsonSerializer.DeserializeAsync<CacheManifest>(stream, cancellationToken: cancellationToken) ?? new CacheManifest();
+        }, defaultValue: new CacheManifest(), logger: _logger, cancellationToken: cancellationToken);
     }
 
     private void SaveManifest(CacheManifest manifest)
     {
+        // Use async helper for backward compatibility
+        SaveManifestAsync(manifest, CancellationToken.None).GetAwaiter().GetResult();
+    }
+
+    private async Task SaveManifestAsync(CacheManifest manifest, CancellationToken cancellationToken = default)
+    {
         Directory.CreateDirectory(CacheRoot);
-        var json = JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(_manifestPath, json);
+
+        await FileSystemRetryHelper.RetryFileOperationAsync(async () =>
+        {
+            // Use FileStream with FileShare.None for exclusive write access
+            using var stream = new FileStream(_manifestPath, FileMode.Create, FileAccess.Write, FileShare.None);
+            await JsonSerializer.SerializeAsync(stream, manifest, new JsonSerializerOptions { WriteIndented = true }, cancellationToken);
+        }, logger: _logger, cancellationToken: cancellationToken);
     }
 
     private static long GetDirectorySize(string directoryPath)

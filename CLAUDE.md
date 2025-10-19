@@ -23,15 +23,17 @@ The Core project includes a shared infrastructure layer that eliminates boilerpl
 - **RefactoringBase**: Abstract base class providing common functionality for all refactorings
   - Input validation (`ValidateNonEmpty`)
   - Syntax parsing and validation (`ParseAndValidateSyntax`)
-  - Compilation creation (`CreateCompilation`)
+  - **Compilation caching** with weak references for improved performance (`CreateCompilation`)
   - Common helper methods (`FindClass`, `FindMethod`)
-  - Sanitized exception handling (`HandleException`)
+  - **Structured error logging** with sanitized exception handling (`HandleException`, `RefactoringErrorContext`)
   - Framework-aware validation wrapper (`ExecuteWithValidationAsync`)
-  - Whitespace normalization (`NormalizeWhitespace`)
+  - **Formatting preservation options** for whitespace normalization (`NormalizeWhitespace`, `RefactoringOptions`)
+  - **Optional metrics tracking** for performance monitoring (`RefactoringMetrics`, `MetricsTracker`)
+  - **Optional ILogger integration** for telemetry and diagnostics
 
 - **SymbolResolutionHelper**: Utility class for Roslyn symbol operations
   - Position-based symbol resolution (`GetSymbolAtPosition`)
-  - Symbol conflict detection (`FindSymbolConflicts`)
+  - Symbol conflict detection with HashSet optimization (`FindSymbolConflicts`)
   - Symbol scope analysis (`AnalyzeSymbolScope`)
   - Reference finding across compilation (`GetAllReferences`)
 
@@ -40,7 +42,23 @@ The Core project includes a shared infrastructure layer that eliminates boilerpl
   - Framework validation result integration
   - User-friendly error messages
 
-This infrastructure has reduced refactoring implementation boilerplate by an average of 29% (275+ lines eliminated across the five refactorings), making it faster to implement new refactorings while maintaining consistency and code quality.
+- **RefactoringErrorContext**: Structured error context for debugging and telemetry
+  - Error categorization (InvalidInput, InvalidState, ParseError, etc.)
+  - Phase tracking (Validation, Parsing, Analysis, Transformation)
+  - Source location capture
+  - Sanitized user messages vs detailed log messages
+
+- **RefactoringOptions**: Configurable refactoring behavior
+  - Formatting preservation (`PreserveFormatting`) - fully implemented
+  - Comment preservation - always enabled via Roslyn trivia (explicit options may be added in future versions)
+
+- **RefactoringMetrics**: Performance and operational metrics
+  - Execution timing with stopwatch
+  - Success/failure counts and categorization
+  - Complexity metrics (lines changed, nodes affected)
+  - Framework-specific tracking
+
+This infrastructure has reduced refactoring implementation boilerplate by an average of 29% (275+ lines eliminated across the five refactorings), making it faster to implement new refactorings while maintaining consistency, code quality, and observability.
 
 ## Build and Development
 
@@ -73,8 +91,8 @@ dotnet test
 # Run with code coverage
 dotnet test --collect:"XPlat Code Coverage"
 
-# Current test coverage: 86.5% lines, 82.8% branches
-# Total: 165 tests (143 unit + 14 component + 8 integration)
+# Current test coverage: ~87% lines, ~83% branches (estimated after CR fixes)
+# Total: 452 tests (424 unit + 20 component + 8 integration)
 ```
 
 ## Technology Stack
