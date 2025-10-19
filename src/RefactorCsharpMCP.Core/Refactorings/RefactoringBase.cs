@@ -1,6 +1,8 @@
+using System.Collections.Concurrent;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.Extensions.Logging;
 using RefactorCsharpMCP.Core.Validation;
 
 namespace RefactorCsharpMCP.Core.Refactorings;
@@ -8,9 +10,32 @@ namespace RefactorCsharpMCP.Core.Refactorings;
 /// <summary>
 /// Base class for all refactoring operations, providing common infrastructure and utilities.
 /// Reduces boilerplate by centralizing validation, error handling, and Roslyn operations.
+/// Includes compilation caching to improve performance when processing the same source code multiple times.
+/// Provides structured error logging with context for debugging while returning sanitized user messages.
 /// </summary>
 public abstract class RefactoringBase
 {
+    /// <summary>
+    /// Cache for compilations using weak references to allow garbage collection.
+    /// Key is hash of source code content, value is weak reference to compilation.
+    /// </summary>
+    private static readonly ConcurrentDictionary<int, WeakReference<CSharpCompilation>> _compilationCache = new();
+
+    /// <summary>
+    /// Optional logger for structured error logging and telemetry.
+    /// </summary>
+    protected ILogger? Logger { get; set; }
+
+    /// <summary>
+    /// Tracks the current phase of the refactoring operation for error context.
+    /// </summary>
+    protected string CurrentPhase { get; set; } = "Initialization";
+
+    /// <summary>
+    /// Optional metrics tracker for performance monitoring.
+    /// When set, refactoring operations will automatically record timing and complexity metrics.
+    /// </summary>
+    protected RefactoringMetricsTracker? MetricsTracker { get; set; }
     /// <summary>
     /// Validates that a string parameter is not null or whitespace.
     /// </summary>
@@ -44,6 +69,7 @@ public abstract class RefactoringBase
         out CompilationUnitSyntax? root,
         out SyntaxTree? syntaxTree)
     {
+        CurrentPhase = "Syntax Parsing";
         root = null;
         syntaxTree = null;
 
@@ -58,6 +84,7 @@ public abstract class RefactoringBase
             if (errors.Any())
             {
                 var errorMessages = string.Join(", ", errors.Select(e => e.GetMessage()).Take(3));
+                Logger?.LogWarning("Syntax parsing found {Count} errors: {Errors}", errors.Count, errorMessages);
                 return RefactoringResult.Failure($"Syntax errors in source code: {errorMessages}");
             }
 
@@ -76,19 +103,44 @@ public abstract class RefactoringBase
     }
 
     /// <summary>
-    /// Creates a compilation for semantic analysis with common assembly references.
+    /// Gets or creates a compilation for semantic analysis with common assembly references.
+    /// Uses caching with weak references to improve performance when processing the same source code multiple times.
+    /// The cache allows garbage collection to reclaim memory when under pressure.
     /// </summary>
     /// <param name="syntaxTree">The syntax tree to include in the compilation.</param>
     /// <returns>A CSharpCompilation instance configured with standard references.</returns>
+    /// <remarks>
+    /// The cache key is based on the source code content hash. If the compilation is found in cache
+    /// and has not been garbage collected, it is returned. Otherwise, a new compilation is created
+    /// and cached with a weak reference.
+    /// </remarks>
     protected CSharpCompilation CreateCompilation(SyntaxTree syntaxTree)
     {
-        return CSharpCompilation.Create("temp")
+        // Get source code for cache key
+        var sourceCode = syntaxTree.ToString();
+        var cacheKey = sourceCode.GetHashCode();
+
+        // Try to get from cache
+        if (_compilationCache.TryGetValue(cacheKey, out var weakRef) &&
+            weakRef.TryGetTarget(out var cachedCompilation))
+        {
+            // Cache hit - reuse existing compilation
+            return cachedCompilation;
+        }
+
+        // Cache miss - create new compilation
+        var compilation = CSharpCompilation.Create("temp")
             .AddReferences(
                 MetadataReference.CreateFromFile(typeof(object).Assembly.Location), // mscorlib/System.Private.CoreLib
                 MetadataReference.CreateFromFile(typeof(System.Collections.Generic.List<>).Assembly.Location), // System.Collections
                 MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location) // System.Linq
             )
             .AddSyntaxTrees(syntaxTree);
+
+        // Store in cache with weak reference
+        _compilationCache[cacheKey] = new WeakReference<CSharpCompilation>(compilation);
+
+        return compilation;
     }
 
     /// <summary>
@@ -118,22 +170,43 @@ public abstract class RefactoringBase
     }
 
     /// <summary>
-    /// Handles exceptions by categorizing and sanitizing error messages for security.
+    /// Handles exceptions by creating structured error context, logging details, and returning sanitized messages.
     /// </summary>
     /// <param name="ex">The exception to handle.</param>
     /// <param name="operationName">The name of the operation (for error messages).</param>
+    /// <param name="sourceLocation">Optional source location where the error occurred.</param>
     /// <returns>A RefactoringResult with a sanitized error message.</returns>
-    protected RefactoringResult HandleException(Exception ex, string operationName = "refactoring")
+    protected RefactoringResult HandleException(
+        Exception ex,
+        string operationName = "refactoring",
+        Microsoft.CodeAnalysis.Text.LinePosition? sourceLocation = null)
     {
-        // Sanitize exception message for security
-        var errorCategory = ex switch
+        // Create structured error context
+        var errorContext = RefactoringErrorContext.FromException(ex, CurrentPhase, sourceLocation);
+
+        // Add operation name to additional context
+        errorContext.AdditionalContext["Operation"] = operationName;
+
+        // Log detailed error information (full exception) for debugging
+        if (Logger != null)
         {
-            ArgumentException => "InvalidInput",
-            InvalidOperationException => "InvalidState",
-            FormatException => "ParseError",
+            Logger.LogError(ex, errorContext.ToLogMessage());
+        }
+
+        // Determine error category string for backwards compatibility with existing tests
+        var errorCategory = errorContext.Category switch
+        {
+            ErrorCategory.InvalidInput => "InvalidInput",
+            ErrorCategory.InvalidState => "InvalidState",
+            ErrorCategory.ParseError => "ParseError",
+            ErrorCategory.SymbolResolution => "SymbolResolution",
+            ErrorCategory.ValidationFailure => "ValidationFailure",
             _ => "UnexpectedError"
         };
-        return RefactoringResult.Failure($"An error occurred during {operationName} ({errorCategory}). Please check the code syntax and try again.");
+
+        // Return sanitized user-friendly message with error category (for backwards compatibility)
+        var userMessage = $"An error occurred during {operationName} ({errorCategory}). Please check the code syntax and try again.";
+        return RefactoringResult.Failure(userMessage);
     }
 
     /// <summary>
@@ -149,7 +222,15 @@ public abstract class RefactoringBase
         string targetFramework,
         Func<Task<RefactoringResult>> refactoringOperation)
     {
+        // Record input metrics
+        MetricsTracker?.RecordInput(sourceCode);
+        if (MetricsTracker != null)
+        {
+            MetricsTracker.Metrics.TargetFramework = targetFramework;
+        }
+
         // Step 1: Validate input code against target framework
+        CurrentPhase = "Input Validation";
         var validator = new SyntaxValidator();
         try
         {
@@ -157,31 +238,49 @@ public abstract class RefactoringBase
 
             if (!inputValidation.IsValid)
             {
+                Logger?.LogWarning("Input validation failed for framework {Framework}: {Error}",
+                    targetFramework, inputValidation.ErrorMessage);
+                MetricsTracker?.RecordFailure(ErrorCategory.ValidationFailure, CurrentPhase);
                 return RefactoringResult.ValidationFailure(inputValidation);
             }
 
             // Step 2: Perform refactoring (delegate to provided operation)
+            CurrentPhase = "Refactoring Execution";
             var refactoringResult = await refactoringOperation();
 
             if (!refactoringResult.IsSuccess)
             {
+                MetricsTracker?.RecordFailure(ErrorCategory.UnexpectedError, CurrentPhase);
                 return refactoringResult;
             }
 
             // Step 3: Validate refactored code is not empty
+            CurrentPhase = "Output Validation";
             if (string.IsNullOrWhiteSpace(refactoringResult.RefactoredCode))
             {
+                Logger?.LogError("Refactoring succeeded but produced no output code");
+                MetricsTracker?.RecordFailure(ErrorCategory.InvalidState, CurrentPhase);
                 return RefactoringResult.Failure("Refactoring succeeded but produced no output code.");
             }
+
+            // Record output metrics
+            MetricsTracker?.RecordOutput(refactoringResult.RefactoredCode);
 
             // Step 4: Validate output code against target framework
             var outputValidation = await validator.ValidateOutputAsync(refactoringResult.RefactoredCode, targetFramework);
 
             if (!outputValidation.IsValid)
             {
+                Logger?.LogWarning("Output validation failed for framework {Framework}: {Error}",
+                    targetFramework, outputValidation.ErrorMessage);
+                MetricsTracker?.RecordFailure(ErrorCategory.ValidationFailure, CurrentPhase);
                 return RefactoringResult.ValidationFailure(outputValidation);
             }
 
+            CurrentPhase = "Completed";
+            MetricsTracker?.RecordSuccess(CurrentPhase);
+            Logger?.LogInformation("Refactoring completed successfully for framework {Framework}. {Metrics}",
+                targetFramework, MetricsTracker?.Metrics.ToSummary() ?? "No metrics");
             return refactoringResult;
         }
         finally
@@ -191,12 +290,22 @@ public abstract class RefactoringBase
     }
 
     /// <summary>
-    /// Normalizes whitespace in a syntax node to ensure proper formatting.
+    /// Normalizes whitespace in a syntax node to ensure proper formatting, or preserves original formatting based on options.
     /// </summary>
-    /// <param name="node">The syntax node to normalize.</param>
-    /// <returns>The normalized syntax node.</returns>
-    protected T NormalizeWhitespace<T>(T node) where T : SyntaxNode
+    /// <param name="node">The syntax node to process.</param>
+    /// <param name="options">Optional refactoring options controlling formatting behavior. If null, uses default (normalize whitespace).</param>
+    /// <returns>The processed syntax node with whitespace normalized or preserved based on options.</returns>
+    protected T NormalizeWhitespace<T>(T node, RefactoringOptions? options = null) where T : SyntaxNode
     {
+        options ??= RefactoringOptions.Default;
+
+        // If preserving formatting, return node as-is
+        if (options.PreserveFormatting)
+        {
+            return node;
+        }
+
+        // Otherwise, normalize whitespace for consistent formatting
         return node.NormalizeWhitespace();
     }
 }
