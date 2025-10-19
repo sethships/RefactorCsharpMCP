@@ -63,6 +63,35 @@ dotnet build
 dotnet test
 ```
 
+### Running Cache Stability Tests
+
+To verify that cache concurrency fixes remain stable over time, specialized stability test scripts are available:
+
+**Linux/macOS:**
+```bash
+./scripts/test-cache-stability.sh [--iterations N]
+```
+
+**Windows (PowerShell):**
+```powershell
+.\scripts\test-cache-stability.ps1 [-Iterations N]
+```
+
+**Windows (WSL):**
+```powershell
+.\scripts\test-cache-stability-wsl.ps1 [-Iterations N]
+```
+
+Default: 10 iterations
+
+These scripts run cache-related tests multiple times and report:
+- Pass/fail rate
+- Average execution time
+- Statistical metrics (min/max/std deviation)
+- Exit with error if any run fails
+
+**Automated CI/CD**: The GitHub Actions workflow `.github/workflows/cache-stability.yml` runs these tests automatically on every PR and weekly schedule.
+
 ### Running the MCP Server
 
 ```bash
