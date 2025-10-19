@@ -10,6 +10,7 @@ namespace RefactorCsharpMCP.Tests.SyntaxConversion;
 /// Tests for NullableReferenceTypeStripper that removes C# 8.0 nullable annotations
 /// for older frameworks.
 /// </summary>
+[Collection("ReferenceAssemblyTests")]
 public class NullableReferenceTypeStripperTests : FrameworkTestFixture
 {
     private readonly NullableReferenceTypeStripper _converter;
