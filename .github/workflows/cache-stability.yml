@@ -1,0 +1,185 @@
+name: Cache Stability Tests
+
+permissions:
+  contents: read
+  pull-requests: write
+
+on:
+  pull_request:
+    branches: [ master, main ]
+    paths:
+      - 'src/RefactorCsharpMCP.Tests/**'
+      - 'src/RefactorCsharpMCP.Core/Infrastructure/FrameworkSupport/**'
+      - 'scripts/test-cache-stability.*'
+      - '.github/workflows/cache-stability.yml'
+  push:
+    branches:
+      - 'fix/**'
+      - 'feature/**'
+      - 'refactor/**'
+      - 'docs/**'
+    paths:
+      - 'src/RefactorCsharpMCP.Tests/**'
+      - 'src/RefactorCsharpMCP.Core/Infrastructure/FrameworkSupport/**'
+      - 'scripts/test-cache-stability.*'
+      - '.github/workflows/cache-stability.yml'
+  workflow_dispatch:
+    inputs:
+      iterations:
+        description: 'Number of test iterations'
+        required: false
+        default: '10'
+  schedule:
+    # Run every Monday at 3 AM UTC
+    - cron: '0 3 * * 1'
+
+jobs:
+  cache-stability-linux:
+    name: Cache Stability (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore
+
+      - name: Make script executable
+        run: chmod +x scripts/test-cache-stability.sh
+
+      - name: Run cache stability tests
+        run: ./scripts/test-cache-stability.sh --iterations ${{ github.event.inputs.iterations || '10' }}
+
+      - name: Upload test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cache-stability-logs-linux
+          path: /tmp/cache-stability-run-*.txt
+          retention-days: 7
+
+  cache-stability-windows:
+    name: Cache Stability (Windows - PowerShell)
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore
+
+      - name: Run cache stability tests (PowerShell)
+        shell: pwsh
+        run: .\scripts\test-cache-stability.ps1 -Iterations ${{ github.event.inputs.iterations || '10' }}
+
+      - name: Upload test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cache-stability-logs-windows-pwsh
+          path: ${{ runner.temp }}\cache-stability-run-*.txt
+          retention-days: 7
+
+  cache-stability-windows-wsl:
+    name: Cache Stability (Windows - WSL)
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore
+
+      - name: Setup WSL
+        # Third-party action pinned to v3.1.4 commit SHA for supply chain security
+        # Version: v3.1.4 (2024-12-03) - https://github.com/Vampire/setup-wsl/releases/tag/v3.1.4
+        uses: Vampire/setup-wsl@6c400b755bcd0583e60c2e7aa0cdc61794355c9b
+        with:
+          distribution: Ubuntu-22.04
+
+      - name: Run cache stability tests (WSL)
+        shell: pwsh
+        run: .\scripts\test-cache-stability-wsl.ps1 -Iterations ${{ github.event.inputs.iterations || '10' }}
+
+      - name: Upload test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cache-stability-logs-windows-wsl
+          path: /tmp/cache-stability-run-*.txt
+          retention-days: 7
+
+  post-results:
+    name: Post Results to PR
+    runs-on: ubuntu-latest
+    needs: [cache-stability-linux, cache-stability-windows, cache-stability-windows-wsl]
+    if: github.event_name == 'pull_request' && github.event.pull_request.number != null
+
+    steps:
+      - name: Post success comment
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## ✅ Cache Stability Tests Passed
+
+All cache stability tests passed successfully across all platforms:
+
+- ✅ **Linux** (bash): 100% pass rate
+- ✅ **Windows** (PowerShell): 100% pass rate
+- ✅ **Windows** (WSL): 100% pass rate
+
+The cache concurrency fix remains stable!`
+            })
+
+      - name: Post failure comment
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## ❌ Cache Stability Tests Failed
+
+Cache stability issues detected. Check the workflow logs for details:
+
+[View workflow run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+Test logs are available as artifacts for debugging.`
+            })

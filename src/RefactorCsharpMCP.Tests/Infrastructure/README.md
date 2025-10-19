@@ -276,9 +276,13 @@ The `ReferenceAssemblyResolver` caches assemblies in memory and on disk:
 ### Test Collection
 If tests interfere with each other due to caching, use xUnit collections:
 ```csharp
-[Collection("FrameworkTests")]
+[Collection("CacheTests")]
 public class MyTests : FrameworkTestFixture { }
 ```
+
+**IMPORTANT**: All classes inheriting from `FrameworkTestFixture` MUST use the
+`[Collection("CacheTests")]` attribute to prevent cache concurrency issues. See the
+warning in `FrameworkTestFixture.cs` for details.
 
 ## Dependencies
 

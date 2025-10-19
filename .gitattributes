@@ -1,0 +1,31 @@
+# Set default behavior to automatically normalize line endings
+* text=auto
+
+# Bash scripts must have LF line endings (for WSL/Linux compatibility)
+*.sh text eol=lf
+
+# PowerShell scripts can have CRLF line endings
+*.ps1 text eol=crlf
+
+# Windows batch files must have CRLF line endings
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Explicitly declare text files you want to always be normalized and converted to native line endings on checkout
+*.cs text diff=csharp
+*.csproj text
+*.sln text
+*.md text
+*.yml text
+*.yaml text
+*.json text
+
+# Binary files
+*.dll binary
+*.exe binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
