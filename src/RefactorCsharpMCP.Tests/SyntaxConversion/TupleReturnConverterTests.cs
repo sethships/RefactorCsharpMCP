@@ -9,6 +9,7 @@ namespace RefactorCsharpMCP.Tests.SyntaxConversion;
 /// <summary>
 /// Tests for TupleReturnConverter that converts C# 7.0 tuple returns to out parameters.
 /// </summary>
+[Collection("CacheTests")]
 public class TupleReturnConverterTests : FrameworkTestFixture
 {
     private readonly TupleReturnConverter _converter;

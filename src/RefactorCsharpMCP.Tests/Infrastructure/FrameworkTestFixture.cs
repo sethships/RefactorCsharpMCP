@@ -5,6 +5,11 @@ namespace RefactorCsharpMCP.Tests.Infrastructure;
 /// <summary>
 /// Base class for all framework-aware tests.
 /// Provides shared infrastructure for testing across multiple .NET frameworks.
+///
+/// IMPORTANT: All test classes inheriting from this fixture MUST add the attribute
+/// [Collection("CacheTests")] to serialize access to the shared reference assembly cache.
+/// Failure to do so will cause intermittent test failures due to cache concurrency issues.
+///
 /// Inherit from this class to get access to CompilationFactory and ReferenceAssemblyResolver.
 /// </summary>
 public abstract class FrameworkTestFixture : IDisposable

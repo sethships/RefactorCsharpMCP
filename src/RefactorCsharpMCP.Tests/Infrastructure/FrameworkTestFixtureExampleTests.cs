@@ -7,7 +7,7 @@ namespace RefactorCsharpMCP.Tests.Infrastructure;
 /// Example tests demonstrating the use of FrameworkTestFixture and FrameworkMatrixAttribute.
 /// These tests showcase how to write framework-aware tests that run across all supported frameworks.
 /// </summary>
-[Collection("ReferenceAssemblyTests")]
+[Collection("CacheTests")]
 public class FrameworkTestFixtureExampleTests : FrameworkTestFixture
 {
     [Theory]
