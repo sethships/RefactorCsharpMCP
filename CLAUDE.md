@@ -50,7 +50,7 @@ The Core project includes a shared infrastructure layer that eliminates boilerpl
 
 - **RefactoringOptions**: Configurable refactoring behavior
   - Formatting preservation (`PreserveFormatting`) - fully implemented
-  - Comment preservation (`PreserveComments`, `PreserveXmlDocComments`) - defined but not yet implemented (comments preserved by default via Roslyn trivia)
+  - Comment preservation - always enabled via Roslyn trivia (explicit options may be added in future versions)
 
 - **RefactoringMetrics**: Performance and operational metrics
   - Execution timing with stopwatch

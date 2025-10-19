@@ -17,8 +17,6 @@ public class RefactoringOptionsTests
 
         // Assert
         Assert.False(options.PreserveFormatting);
-        Assert.True(options.PreserveComments);
-        Assert.True(options.PreserveXmlDocComments);
     }
 
     [Fact]
@@ -43,13 +41,10 @@ public class RefactoringOptionsTests
 
         // Act
         default1.PreserveFormatting = true;
-        default1.PreserveComments = false;
 
         // Assert
         Assert.True(default1.PreserveFormatting);
-        Assert.False(default1.PreserveComments);
         Assert.False(default2.PreserveFormatting); // Unaffected
-        Assert.True(default2.PreserveComments); // Unaffected
     }
 
     [Fact]
@@ -60,8 +55,6 @@ public class RefactoringOptionsTests
 
         // Assert
         Assert.True(options.PreserveFormatting);
-        Assert.True(options.PreserveComments); // Other defaults unchanged
-        Assert.True(options.PreserveXmlDocComments);
     }
 
     [Fact]
@@ -72,8 +65,6 @@ public class RefactoringOptionsTests
 
         // Assert
         Assert.False(options.PreserveFormatting);
-        Assert.True(options.PreserveComments); // Other defaults unchanged
-        Assert.True(options.PreserveXmlDocComments);
     }
 
     [Fact]
@@ -82,9 +73,7 @@ public class RefactoringOptionsTests
         // Arrange
         var original = new RefactoringOptions
         {
-            PreserveFormatting = true,
-            PreserveComments = false,
-            PreserveXmlDocComments = false
+            PreserveFormatting = true
         };
 
         // Act
@@ -93,8 +82,6 @@ public class RefactoringOptionsTests
         // Assert
         Assert.NotSame(original, clone);
         Assert.Equal(original.PreserveFormatting, clone.PreserveFormatting);
-        Assert.Equal(original.PreserveComments, clone.PreserveComments);
-        Assert.Equal(original.PreserveXmlDocComments, clone.PreserveXmlDocComments);
     }
 
     [Fact]
@@ -103,21 +90,16 @@ public class RefactoringOptionsTests
         // Arrange
         var original = new RefactoringOptions
         {
-            PreserveFormatting = false,
-            PreserveComments = true,
-            PreserveXmlDocComments = true
+            PreserveFormatting = false
         };
 
         // Act
         var clone = original.Clone();
         clone.PreserveFormatting = true;
-        clone.PreserveComments = false;
 
         // Assert
         Assert.False(original.PreserveFormatting); // Unchanged
-        Assert.True(original.PreserveComments); // Unchanged
         Assert.True(clone.PreserveFormatting); // Modified
-        Assert.False(clone.PreserveComments); // Modified
     }
 
     [Fact]
@@ -128,13 +110,9 @@ public class RefactoringOptionsTests
 
         // Act
         options.PreserveFormatting = true;
-        options.PreserveComments = false;
-        options.PreserveXmlDocComments = false;
 
         // Assert
         Assert.True(options.PreserveFormatting);
-        Assert.False(options.PreserveComments);
-        Assert.False(options.PreserveXmlDocComments);
     }
 
     [Fact]
