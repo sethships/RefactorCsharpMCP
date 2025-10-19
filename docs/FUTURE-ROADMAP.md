@@ -249,6 +249,63 @@ This roadmap explores opportunities for V2.0 and beyond, prioritized by user val
 
 ---
 
+## V2.3: Production Deployment Optimization
+
+**Timeline:** Post-V1.0 release (1-2 weeks)
+**Theme:** Optimize container image for production workloads
+
+### 2.3.1 Minimal Linux Container Base
+
+**Motivation:**
+- Performance testing shows .NET runs **40% faster on Linux** vs Windows
+- Smaller container images reduce deployment time and storage costs
+- Alpine Linux provides minimal attack surface for security
+
+**Benchmark Results** (from WSL testing):
+- **Windows PowerShell**: ~45 seconds per iteration
+- **Linux (WSL)**: ~27 seconds per iteration
+- **Performance improvement**: 40% faster
+
+**Planned Improvements:**
+- Switch from Debian-based images to Alpine Linux
+- Reduce image size from ~200MB to ~100MB
+- Document performance benchmarks (Linux vs Windows)
+- Provide multi-architecture builds (amd64, arm64)
+
+**Alpine-based Production Dockerfile:**
+```dockerfile
+FROM mcr.microsoft.com/dotnet/sdk:8.0-alpine AS build
+WORKDIR /src
+COPY . .
+RUN dotnet restore
+RUN dotnet publish -c Release -o /app
+
+FROM mcr.microsoft.com/dotnet/runtime:8.0-alpine
+WORKDIR /app
+COPY --from=build /app .
+ENTRYPOINT ["dotnet", "RefactorCsharpMCP.Server.dll"]
+```
+
+**Performance Targets:**
+- **Image size**: <100MB (50% reduction)
+- **Cold start time**: <2 seconds
+- **Memory footprint**: <50MB base + workload
+- **Refactoring throughput**: 40% improvement over Windows
+
+**Benefits:**
+- **Cost savings**: 50% less storage and bandwidth
+- **Faster CI/CD**: Smaller images deploy faster
+- **Security**: Minimal attack surface
+- **Performance**: 40% faster execution confirmed by testing
+
+**Effort Estimate:** 2-3 days
+**Priority:** P1 (High value for production deployments)
+
+**User Story (DevOps Engineer):**
+> "I need to deploy RefactorCsharpMCP in Kubernetes. Smaller images mean faster pod startup and lower storage costs across 100+ nodes."
+
+---
+
 ## V2.5: Linter Support & Advanced Diagnostics
 
 **Timeline:** 6-8 weeks after V2.0 release

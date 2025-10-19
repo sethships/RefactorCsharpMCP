@@ -45,6 +45,7 @@ Add comprehensive .NET framework version detection and C# language version enfor
 - 🔮 **End-of-life framework support** - Support EOL versions with warnings (requires considered support strategy and resource commitment)
 - 🔮 **Request throttling** - Rate limiting per client/agent to prevent abuse and ensure fair resource usage
 - 🔮 **Response caching** - Cache refactoring results for identical inputs to improve performance and reduce compute costs
+- 🔮 **Alpine Linux production images** - Switch to minimal Alpine-based containers for 40% performance improvement and 50% smaller image size (~100MB vs ~200MB)
 - 🔮 Framework version upgrading (e.g., .NET Framework 4.6.2 → .NET 8)
 - 🔮 Code modernization suggestions
 - 🔮 Migration tooling or recommendations
