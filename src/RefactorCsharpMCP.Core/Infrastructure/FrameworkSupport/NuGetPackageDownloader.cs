@@ -370,62 +370,27 @@ public class NuGetPackageDownloader : IDisposable
     }
 
     /// <summary>
-    /// Clears downloaded packages cache.
+    /// Clears downloaded packages cache (synchronous version).
     /// Uses retry logic to handle file locks (e.g., assemblies loaded by concurrent tests).
     /// </summary>
     public void ClearCache()
     {
+        ClearCacheAsync(CancellationToken.None).GetAwaiter().GetResult();
+    }
+
+    /// <summary>
+    /// Clears downloaded packages cache (async version).
+    /// Uses retry logic to handle file locks (e.g., assemblies loaded by concurrent tests).
+    /// </summary>
+    public async Task ClearCacheAsync(CancellationToken cancellationToken = default)
+    {
         if (Directory.Exists(_packagesDirectory))
         {
-            SafeDeleteDirectory(_packagesDirectory);
+            await FileSystemRetryHelper.SafeDeleteDirectoryAsync(_packagesDirectory, _logger, cancellationToken: cancellationToken);
             Directory.CreateDirectory(_packagesDirectory);
         }
     }
 
-    /// <summary>
-    /// Safely deletes a directory with retry logic to handle locked files (e.g., DLLs loaded by tests).
-    /// </summary>
-    private void SafeDeleteDirectory(string path, int maxAttempts = 3)
-    {
-        for (int attempt = 0; attempt < maxAttempts; attempt++)
-        {
-            try
-            {
-                if (Directory.Exists(path))
-                {
-                    Directory.Delete(path, recursive: true);
-                }
-                return; // Success
-            }
-            catch (IOException ex) when (attempt < maxAttempts - 1)
-            {
-                // File locked (likely DLL loaded by another test) - wait and retry
-                _logger?.LogWarning(ex, "Failed to delete directory {Path} (attempt {Attempt}/{Max}), retrying after GC",
-                    path, attempt + 1, maxAttempts);
-
-                // Help release file handles by triggering GC
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-                Thread.Sleep(200 * (attempt + 1)); // 200ms, 400ms, 600ms
-            }
-            catch (UnauthorizedAccessException ex) when (attempt < maxAttempts - 1)
-            {
-                _logger?.LogWarning(ex, "Access denied deleting {Path} (attempt {Attempt}/{Max}), retrying",
-                    path, attempt + 1, maxAttempts);
-                Thread.Sleep(200 * (attempt + 1));
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogWarning(ex, "Could not delete directory {Path} after {Attempt} attempts - ignoring",
-                    path, attempt + 1);
-                return; // Don't throw - graceful degradation
-            }
-        }
-
-        // Final attempt failed but didn't throw - log and continue
-        _logger?.LogWarning("Could not delete directory {Path} after {Max} attempts - cache may be incomplete",
-            path, maxAttempts);
-    }
 
     /// <summary>
     /// Checks if a DLL file is a valid managed .NET assembly that can be used by Roslyn.

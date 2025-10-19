@@ -189,76 +189,47 @@ public class ReferenceAssemblyCache
     }
 
     /// <summary>
-    /// Clears cache for a specific framework.
+    /// Clears cache for a specific framework (synchronous version).
     /// </summary>
     public void ClearCache(string targetFramework)
+    {
+        ClearCacheAsync(targetFramework, CancellationToken.None).GetAwaiter().GetResult();
+    }
+
+    /// <summary>
+    /// Clears cache for a specific framework (async version).
+    /// </summary>
+    public async Task ClearCacheAsync(string targetFramework, CancellationToken cancellationToken = default)
     {
         var frameworkDir = GetFrameworkCacheDirectory(targetFramework);
         if (Directory.Exists(frameworkDir))
         {
-            SafeDeleteDirectory(frameworkDir);
+            await FileSystemRetryHelper.SafeDeleteDirectoryAsync(frameworkDir, _logger, cancellationToken: cancellationToken);
         }
 
         // Update manifest
-        var manifest = LoadManifest();
+        var manifest = await LoadManifestAsync(cancellationToken);
         manifest.Frameworks.Remove(targetFramework.ToLowerInvariant());
-        SaveManifest(manifest);
+        await SaveManifestAsync(manifest, cancellationToken);
     }
 
     /// <summary>
-    /// Clears all cached reference assemblies.
+    /// Clears all cached reference assemblies (synchronous version).
     /// </summary>
     public void ClearAllCache()
     {
-        if (Directory.Exists(CacheRoot))
-        {
-            SafeDeleteDirectory(CacheRoot);
-        }
+        ClearAllCacheAsync(CancellationToken.None).GetAwaiter().GetResult();
     }
 
     /// <summary>
-    /// Safely deletes a directory with retry logic to handle locked files (e.g., DLLs loaded by tests).
+    /// Clears all cached reference assemblies (async version).
     /// </summary>
-    private void SafeDeleteDirectory(string path, int maxAttempts = 3)
+    public async Task ClearAllCacheAsync(CancellationToken cancellationToken = default)
     {
-        for (int attempt = 0; attempt < maxAttempts; attempt++)
+        if (Directory.Exists(CacheRoot))
         {
-            try
-            {
-                if (Directory.Exists(path))
-                {
-                    Directory.Delete(path, recursive: true);
-                }
-                return; // Success
-            }
-            catch (IOException ex) when (attempt < maxAttempts - 1)
-            {
-                // File locked (likely DLL loaded by another test) - wait and retry
-                _logger?.LogWarning(ex, "Failed to delete directory {Path} (attempt {Attempt}/{Max}), retrying after GC",
-                    path, attempt + 1, maxAttempts);
-
-                // Help release file handles by triggering GC
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-                Thread.Sleep(200 * (attempt + 1)); // 200ms, 400ms, 600ms
-            }
-            catch (UnauthorizedAccessException ex) when (attempt < maxAttempts - 1)
-            {
-                _logger?.LogWarning(ex, "Access denied deleting {Path} (attempt {Attempt}/{Max}), retrying",
-                    path, attempt + 1, maxAttempts);
-                Thread.Sleep(200 * (attempt + 1));
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogWarning(ex, "Could not delete directory {Path} after {Attempt} attempts - ignoring (cache will be overwritten)",
-                    path, attempt + 1);
-                return; // Don't throw - cache will be overwritten on next write anyway
-            }
+            await FileSystemRetryHelper.SafeDeleteDirectoryAsync(CacheRoot, _logger, cancellationToken: cancellationToken);
         }
-
-        // Failed all attempts - log but don't throw (graceful degradation)
-        _logger?.LogWarning("Could not delete directory {Path} after {MaxAttempts} attempts - cache may contain stale files",
-            path, maxAttempts);
     }
 
     /// <summary>
@@ -309,72 +280,41 @@ public class ReferenceAssemblyCache
             return new CacheManifest();
         }
 
-        return RetryFileOperation(() =>
+        // Use synchronous helper for backward compatibility
+        return LoadManifestAsync(CancellationToken.None).GetAwaiter().GetResult();
+    }
+
+    private async Task<CacheManifest> LoadManifestAsync(CancellationToken cancellationToken = default)
+    {
+        if (!File.Exists(_manifestPath))
+        {
+            return new CacheManifest();
+        }
+
+        return await FileSystemRetryHelper.RetryFileOperationAsync(async () =>
         {
             // Use FileStream with FileShare.Read to allow concurrent reads
             using var stream = new FileStream(_manifestPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-            return JsonSerializer.Deserialize<CacheManifest>(stream) ?? new CacheManifest();
-        }, defaultValue: new CacheManifest());
+            return await JsonSerializer.DeserializeAsync<CacheManifest>(stream, cancellationToken: cancellationToken) ?? new CacheManifest();
+        }, defaultValue: new CacheManifest(), logger: _logger, cancellationToken: cancellationToken);
     }
 
     private void SaveManifest(CacheManifest manifest)
     {
+        // Use async helper for backward compatibility
+        SaveManifestAsync(manifest, CancellationToken.None).GetAwaiter().GetResult();
+    }
+
+    private async Task SaveManifestAsync(CacheManifest manifest, CancellationToken cancellationToken = default)
+    {
         Directory.CreateDirectory(CacheRoot);
 
-        RetryFileOperation(() =>
+        await FileSystemRetryHelper.RetryFileOperationAsync(async () =>
         {
             // Use FileStream with FileShare.None for exclusive write access
             using var stream = new FileStream(_manifestPath, FileMode.Create, FileAccess.Write, FileShare.None);
-            JsonSerializer.Serialize(stream, manifest, new JsonSerializerOptions { WriteIndented = true });
-        });
-    }
-
-    /// <summary>
-    /// Retries a file operation with exponential backoff to handle transient file system errors.
-    /// </summary>
-    private T RetryFileOperation<T>(Func<T> operation, T defaultValue = default, int maxAttempts = 3)
-    {
-        var delays = new[] { 50, 200, 500 }; // Exponential backoff in milliseconds
-
-        for (int attempt = 0; attempt < maxAttempts; attempt++)
-        {
-            try
-            {
-                return operation();
-            }
-            catch (IOException ex) when (attempt < maxAttempts - 1)
-            {
-                _logger?.LogWarning(ex, "File operation failed (attempt {Attempt}/{Max}), retrying after {Delay}ms",
-                    attempt + 1, maxAttempts, delays[attempt]);
-                Thread.Sleep(delays[attempt]);
-            }
-            catch (UnauthorizedAccessException ex) when (attempt < maxAttempts - 1)
-            {
-                _logger?.LogWarning(ex, "File access denied (attempt {Attempt}/{Max}), retrying after {Delay}ms",
-                    attempt + 1, maxAttempts, delays[attempt]);
-                Thread.Sleep(delays[attempt]);
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError(ex, "File operation failed permanently after {Attempt} attempts", attempt + 1);
-                return defaultValue;
-            }
-        }
-
-        _logger?.LogError("File operation failed after {MaxAttempts} attempts, returning default value", maxAttempts);
-        return defaultValue;
-    }
-
-    /// <summary>
-    /// Retries a void file operation with exponential backoff.
-    /// </summary>
-    private void RetryFileOperation(Action operation, int maxAttempts = 3)
-    {
-        RetryFileOperation<object>(() =>
-        {
-            operation();
-            return null;
-        }, maxAttempts: maxAttempts);
+            await JsonSerializer.SerializeAsync(stream, manifest, new JsonSerializerOptions { WriteIndented = true }, cancellationToken);
+        }, logger: _logger, cancellationToken: cancellationToken);
     }
 
     private static long GetDirectorySize(string directoryPath)

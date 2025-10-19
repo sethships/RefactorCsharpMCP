@@ -23,6 +23,16 @@ public abstract class RefactoringBase
     private static readonly ConditionalWeakTable<SyntaxTree, CSharpCompilation> _compilationCache = new();
 
     /// <summary>
+    /// Number of successful cache hits (thread-safe counter).
+    /// </summary>
+    private static int _cacheHits = 0;
+
+    /// <summary>
+    /// Number of cache misses requiring new compilation creation (thread-safe counter).
+    /// </summary>
+    private static int _cacheMisses = 0;
+
+    /// <summary>
     /// Optional logger for structured error logging and telemetry.
     /// </summary>
     protected ILogger? Logger { get; set; }
@@ -107,7 +117,7 @@ public abstract class RefactoringBase
     /// Gets or creates a compilation for semantic analysis with common assembly references.
     /// Uses ConditionalWeakTable for object identity caching to improve performance when processing
     /// the same syntax tree multiple times. The cache automatically handles garbage collection and
-    /// prevents hash collision issues.
+    /// prevents hash collision issues. Tracks cache hit/miss metrics for performance monitoring.
     /// </summary>
     /// <param name="syntaxTree">The syntax tree to include in the compilation.</param>
     /// <returns>A CSharpCompilation instance configured with standard references.</returns>
@@ -115,11 +125,30 @@ public abstract class RefactoringBase
     /// The cache uses the SyntaxTree instance as the key (object identity), ensuring no hash collisions.
     /// Compilations are automatically removed when the SyntaxTree is garbage collected.
     /// This approach is thread-safe and requires no manual cache management.
+    /// Cache metrics are logged at Debug level when a logger is available.
     /// </remarks>
     protected CSharpCompilation CreateCompilation(SyntaxTree syntaxTree)
     {
-        return _compilationCache.GetValue(syntaxTree, tree =>
+        // Check if compilation exists in cache
+        bool cacheHit = _compilationCache.TryGetValue(syntaxTree, out var cachedCompilation);
+
+        if (cacheHit)
         {
+            // Cache hit - return existing compilation
+            System.Threading.Interlocked.Increment(ref _cacheHits);
+            Logger?.LogDebug("Compilation cache hit (total hits: {Hits}, misses: {Misses}, hit rate: {HitRate:P1})",
+                _cacheHits, _cacheMisses, (double)_cacheHits / (_cacheHits + _cacheMisses));
+            return cachedCompilation!;
+        }
+
+        // Cache miss - create new compilation
+        System.Threading.Interlocked.Increment(ref _cacheMisses);
+
+        var newCompilation = _compilationCache.GetValue(syntaxTree, tree =>
+        {
+            Logger?.LogDebug("Creating new compilation (total hits: {Hits}, misses: {Misses}, hit rate: {HitRate:P1})",
+                _cacheHits, _cacheMisses, (double)_cacheHits / Math.Max(1, _cacheHits + _cacheMisses));
+
             // Create new compilation with standard references
             return CSharpCompilation.Create("temp")
                 .AddReferences(
@@ -129,6 +158,8 @@ public abstract class RefactoringBase
                 )
                 .AddSyntaxTrees(tree);
         });
+
+        return newCompilation;
     }
 
     /// <summary>
