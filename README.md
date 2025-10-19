@@ -83,6 +83,13 @@ To verify that cache concurrency fixes remain stable over time, specialized stab
 ```
 ⚠️ **Note**: WSL script requires .NET SDK installed in WSL. For local Windows testing, use the PowerShell script instead. The WSL script is primarily for CI/CD environments.
 
+To install .NET SDK in WSL (Ubuntu 24.04):
+```bash
+# In your WSL terminal
+sudo apt-get update
+sudo apt-get install -y dotnet-sdk-8.0
+```
+
 Default: 10 iterations
 
 These scripts run cache-related tests multiple times and report:
