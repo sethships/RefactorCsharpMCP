@@ -196,7 +196,7 @@ public class ReferenceAssemblyCache
         var frameworkDir = GetFrameworkCacheDirectory(targetFramework);
         if (Directory.Exists(frameworkDir))
         {
-            Directory.Delete(frameworkDir, recursive: true);
+            SafeDeleteDirectory(frameworkDir);
         }
 
         // Update manifest
@@ -212,8 +212,53 @@ public class ReferenceAssemblyCache
     {
         if (Directory.Exists(CacheRoot))
         {
-            Directory.Delete(CacheRoot, recursive: true);
+            SafeDeleteDirectory(CacheRoot);
         }
+    }
+
+    /// <summary>
+    /// Safely deletes a directory with retry logic to handle locked files (e.g., DLLs loaded by tests).
+    /// </summary>
+    private void SafeDeleteDirectory(string path, int maxAttempts = 3)
+    {
+        for (int attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            try
+            {
+                if (Directory.Exists(path))
+                {
+                    Directory.Delete(path, recursive: true);
+                }
+                return; // Success
+            }
+            catch (IOException ex) when (attempt < maxAttempts - 1)
+            {
+                // File locked (likely DLL loaded by another test) - wait and retry
+                _logger?.LogWarning(ex, "Failed to delete directory {Path} (attempt {Attempt}/{Max}), retrying after GC",
+                    path, attempt + 1, maxAttempts);
+
+                // Help release file handles by triggering GC
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                Thread.Sleep(200 * (attempt + 1)); // 200ms, 400ms, 600ms
+            }
+            catch (UnauthorizedAccessException ex) when (attempt < maxAttempts - 1)
+            {
+                _logger?.LogWarning(ex, "Access denied deleting {Path} (attempt {Attempt}/{Max}), retrying",
+                    path, attempt + 1, maxAttempts);
+                Thread.Sleep(200 * (attempt + 1));
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Could not delete directory {Path} after {Attempt} attempts - ignoring (cache will be overwritten)",
+                    path, attempt + 1);
+                return; // Don't throw - cache will be overwritten on next write anyway
+            }
+        }
+
+        // Failed all attempts - log but don't throw (graceful degradation)
+        _logger?.LogWarning("Could not delete directory {Path} after {MaxAttempts} attempts - cache may contain stale files",
+            path, maxAttempts);
     }
 
     /// <summary>
@@ -264,22 +309,72 @@ public class ReferenceAssemblyCache
             return new CacheManifest();
         }
 
-        try
+        return RetryFileOperation(() =>
         {
-            var json = File.ReadAllText(_manifestPath);
-            return JsonSerializer.Deserialize<CacheManifest>(json) ?? new CacheManifest();
-        }
-        catch
-        {
-            return new CacheManifest();
-        }
+            // Use FileStream with FileShare.Read to allow concurrent reads
+            using var stream = new FileStream(_manifestPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            return JsonSerializer.Deserialize<CacheManifest>(stream) ?? new CacheManifest();
+        }, defaultValue: new CacheManifest());
     }
 
     private void SaveManifest(CacheManifest manifest)
     {
         Directory.CreateDirectory(CacheRoot);
-        var json = JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(_manifestPath, json);
+
+        RetryFileOperation(() =>
+        {
+            // Use FileStream with FileShare.None for exclusive write access
+            using var stream = new FileStream(_manifestPath, FileMode.Create, FileAccess.Write, FileShare.None);
+            JsonSerializer.Serialize(stream, manifest, new JsonSerializerOptions { WriteIndented = true });
+        });
+    }
+
+    /// <summary>
+    /// Retries a file operation with exponential backoff to handle transient file system errors.
+    /// </summary>
+    private T RetryFileOperation<T>(Func<T> operation, T defaultValue = default, int maxAttempts = 3)
+    {
+        var delays = new[] { 50, 200, 500 }; // Exponential backoff in milliseconds
+
+        for (int attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            try
+            {
+                return operation();
+            }
+            catch (IOException ex) when (attempt < maxAttempts - 1)
+            {
+                _logger?.LogWarning(ex, "File operation failed (attempt {Attempt}/{Max}), retrying after {Delay}ms",
+                    attempt + 1, maxAttempts, delays[attempt]);
+                Thread.Sleep(delays[attempt]);
+            }
+            catch (UnauthorizedAccessException ex) when (attempt < maxAttempts - 1)
+            {
+                _logger?.LogWarning(ex, "File access denied (attempt {Attempt}/{Max}), retrying after {Delay}ms",
+                    attempt + 1, maxAttempts, delays[attempt]);
+                Thread.Sleep(delays[attempt]);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "File operation failed permanently after {Attempt} attempts", attempt + 1);
+                return defaultValue;
+            }
+        }
+
+        _logger?.LogError("File operation failed after {MaxAttempts} attempts, returning default value", maxAttempts);
+        return defaultValue;
+    }
+
+    /// <summary>
+    /// Retries a void file operation with exponential backoff.
+    /// </summary>
+    private void RetryFileOperation(Action operation, int maxAttempts = 3)
+    {
+        RetryFileOperation<object>(() =>
+        {
+            operation();
+            return null;
+        }, maxAttempts: maxAttempts);
     }
 
     private static long GetDirectorySize(string directoryPath)
