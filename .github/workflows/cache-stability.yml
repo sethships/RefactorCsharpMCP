@@ -121,8 +121,9 @@ jobs:
         run: dotnet build --no-restore
 
       - name: Setup WSL
-        # Third-party action - reviewed and deemed safe, consider pinning to commit SHA for supply chain security
-        uses: Vampire/setup-wsl@v3
+        # Third-party action pinned to v3.1.4 commit SHA for supply chain security
+        # Version: v3.1.4 (2024-12-03) - https://github.com/Vampire/setup-wsl/releases/tag/v3.1.4
+        uses: Vampire/setup-wsl@6c400b755bcd0583e60c2e7aa0cdc61794355c9b
         with:
           distribution: Ubuntu-22.04
 
