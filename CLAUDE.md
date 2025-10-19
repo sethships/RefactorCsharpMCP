@@ -14,7 +14,7 @@ The project is organized into three main components:
 
 - **RefactorCsharpMCP.Server**: MCP server with stdio transport, implements MCP tools for refactoring operations
 - **RefactorCsharpMCP.Core**: Core refactoring logic using Roslyn, analysis utilities, and refactoring algorithms
-- **RefactorCsharpMCP.Tests**: Comprehensive test suite with 146 tests covering unit, component, and integration testing
+- **RefactorCsharpMCP.Tests**: Comprehensive test suite with 165 tests covering unit, component, and integration testing
 
 ### Shared Refactoring Infrastructure
 
@@ -116,6 +116,7 @@ dotnet test --collect:"XPlat Code Coverage"
 3. **Make Field Readonly**: Make fields readonly if only assigned in constructors
 4. **Safe Delete**: Delete methods/classes after verifying no references exist
 5. **Extract Class**: Extract fields and methods into a new class with composition pattern
+6. **Remove Unused Usings**: Remove unused using directives detected via Roslyn diagnostics (IDE0005, CS8019), with framework-aware handling of global usings (C# 10+)
 
 ### Phase 2 (Planned - See docs/SDD-Framework-Version-Awareness.md)
 - Framework Version Awareness: Support for targeting different .NET framework versions (net8.0, net48, netstandard2.0, etc.)
@@ -168,6 +169,7 @@ The server exposes MCP tools that can be called from Claude Code:
 3. `make_field_readonly`: Make fields readonly where safe
 4. `safe_delete_method`: Delete methods with reference checking
 5. `extract_class`: Extract fields/methods into a new class
+6. `remove_unused_usings`: Remove unused using directives with framework-aware global using preservation
 
 Each tool accepts source code and refactoring parameters, returning either:
 - Success: Refactored source code
