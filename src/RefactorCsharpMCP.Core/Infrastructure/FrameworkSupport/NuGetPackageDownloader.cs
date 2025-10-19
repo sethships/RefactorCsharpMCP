@@ -75,26 +75,58 @@ public class NuGetPackageDownloader : IDisposable
             // Download the package
             var packagePath = Path.Combine(_packagesDirectory, $"{packageId}.{latestVersion}.nupkg");
 
+            _logger?.LogInformation("Downloading NuGet package {PackageId} version {Version} to {Path}",
+                packageId, latestVersion, packagePath);
+
             if (!File.Exists(packagePath))
             {
-                using var packageStream = File.Create(packagePath);
-                var success = await findPackageResource.CopyNupkgToStreamAsync(
-                    packageId,
-                    latestVersion,
-                    packageStream,
-                    _cache,
-                    _nugetLogger,
-                    CancellationToken.None
-                );
-
-                if (!success)
+                // Use explicit using block and flush for Windows compatibility
+                using (var packageStream = File.Create(packagePath))
                 {
-                    throw new InvalidOperationException($"Failed to download package: {packageId}");
+                    var success = await findPackageResource.CopyNupkgToStreamAsync(
+                        packageId,
+                        latestVersion,
+                        packageStream,
+                        _cache,
+                        _nugetLogger,
+                        CancellationToken.None
+                    );
+
+                    if (!success)
+                    {
+                        throw new InvalidOperationException($"Failed to download package: {packageId}");
+                    }
+
+                    // Explicitly flush to ensure data is written to disk (Windows requirement)
+                    await packageStream.FlushAsync();
+                } // Stream disposed here, ensuring file handle is released
+
+                // Verify file was actually written to disk
+                if (!File.Exists(packagePath))
+                {
+                    throw new InvalidOperationException($"Package file was not created: {packagePath}");
                 }
+
+                var fileInfo = new FileInfo(packagePath);
+                if (fileInfo.Length == 0)
+                {
+                    throw new InvalidOperationException($"Package file is empty: {packagePath}");
+                }
+
+                _logger?.LogInformation("Downloaded {PackageId} successfully ({Bytes} bytes)",
+                    packageId, fileInfo.Length);
+            }
+            else
+            {
+                _logger?.LogInformation("Package {PackageId} already exists at {Path}",
+                    packageId, packagePath);
             }
 
             // Extract reference assemblies
-            return ExtractReferenceAssemblies(packagePath, targetFramework, latestVersion.ToString());
+            var result = ExtractReferenceAssemblies(packagePath, targetFramework, latestVersion.ToString());
+            _logger?.LogInformation("Extraction complete: {Count} assemblies extracted for {TargetFramework}",
+                result.Count, targetFramework);
+            return result;
         }
         catch (Exception ex)
         {
@@ -117,53 +149,156 @@ public class NuGetPackageDownloader : IDisposable
         Directory.CreateDirectory(extractDir);
 
         using var packageReader = new PackageArchiveReader(packagePath);
-        var packageFiles = packageReader.GetFiles();
+        var packageFiles = packageReader.GetFiles().ToList();
+
+        _logger?.LogDebug("Package contains {Count} total files", packageFiles.Count);
+        if (packageFiles.Count > 0)
+        {
+            var dllFiles = packageFiles.Where(f => f.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)).ToList();
+            _logger?.LogDebug("Found {DllCount} DLL files in package", dllFiles.Count);
+            foreach (var dll in dllFiles.Take(5))
+            {
+                _logger?.LogDebug("  DLL: {Path}", dll);
+            }
+        }
 
         // Reference assemblies are typically in:
         // - ref/net48/ (for .NET Framework reference assemblies)
         // - lib/net48/ (fallback)
         // - build/net48/ (sometimes)
+        // - build/.NETFramework/v4.8/ (Microsoft.NETFramework.ReferenceAssemblies structure)
 
-        var refPaths = new[] { $"ref/{targetFramework}/", $"lib/{targetFramework}/", $"build/{targetFramework}/" };
+        // Map targetFramework to .NETFramework version string
+        var dotNetFrameworkVersion = targetFramework switch
+        {
+            "net481" => "v4.8.1",
+            "net48" => "v4.8",
+            "net472" => "v4.7.2",
+            "net471" => "v4.7.1",
+            "net47" => "v4.7",
+            "net462" => "v4.6.2",
+            "net35" => "v3.5",
+            _ => null
+        };
+
+        var refPaths = new List<string>
+        {
+            $"ref/{targetFramework}/",
+            $"lib/{targetFramework}/",
+            $"build/{targetFramework}/"
+        };
+
+        // Add .NETFramework-style paths if applicable (including Facades subdirectory)
+        if (dotNetFrameworkVersion != null)
+        {
+            refPaths.Add($"build/.NETFramework/{dotNetFrameworkVersion}/");
+            refPaths.Add($"build/.NETFramework/{dotNetFrameworkVersion}/Facades/");
+            refPaths.Add($"ref/.NETFramework/{dotNetFrameworkVersion}/");
+            refPaths.Add($"ref/.NETFramework/{dotNetFrameworkVersion}/Facades/");
+        }
 
         foreach (var file in packageFiles)
         {
-            // Check if file is in reference assembly directory and is a .dll
-            if (refPaths.Any(p => file.StartsWith(p, StringComparison.OrdinalIgnoreCase)) &&
-                file.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+            if (!file.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // Check if file is in reference assembly directory
+            // Use path-agnostic matching (works with both / and \ separators)
+            var normalizedFile = file.Replace('\\', '/');
+
+            bool isInRefPath = false;
+            foreach (var refPath in refPaths)
             {
-                var fileName = Path.GetFileName(file);
-                if (string.IsNullOrEmpty(fileName))
+                // Case-insensitive match for the path
+                if (normalizedFile.StartsWith(refPath, StringComparison.OrdinalIgnoreCase))
                 {
-                    _logger?.LogWarning("Skipping file with invalid path: {FilePath}", file);
-                    continue;
+                    isInRefPath = true;
+                    break;
                 }
+            }
 
-                var destinationPath = Path.Combine(extractDir, fileName);
+            if (!isInRefPath)
+                continue;
 
-                // Extract the file
+            var fileName = Path.GetFileName(file);
+            if (string.IsNullOrEmpty(fileName))
+            {
+                _logger?.LogWarning("Skipping file with invalid path: {FilePath}", file);
+                continue;
+            }
+
+            var destinationPath = Path.Combine(extractDir, fileName);
+
+            // Skip if already extracted (avoid duplicates from multiple paths)
+            if (File.Exists(destinationPath))
+            {
+                // If file exists, still add it to the list if it's a managed assembly
+                if (IsManagedAssembly(destinationPath))
+                {
+                    extractedAssemblies.Add(destinationPath);
+                }
+                continue;
+            }
+
+            // Extract the file with explicit flushing for Windows compatibility
+            try
+            {
                 using (var sourceStream = packageReader.GetStream(file))
                 using (var destinationStream = File.Create(destinationPath))
                 {
                     sourceStream.CopyTo(destinationStream);
-                }
+                    // Explicitly flush to ensure data is written to disk (Windows requirement)
+                    destinationStream.Flush();
+                } // Streams disposed here, ensuring file handles are released
 
-                // Validate that the DLL is a valid managed assembly for use as a reference
-                if (!IsManagedAssembly(destinationPath))
+                // Verify file was actually written
+                if (!File.Exists(destinationPath))
                 {
-                    _logger?.LogDebug("Skipping unmanaged/problematic assembly as reference: {FileName}", fileName);
-                    // Don't delete the file - leave it for transitive dependency resolution
-                    // But don't add it to the reference list
+                    _logger?.LogWarning("File was not created after extraction: {FilePath}", destinationPath);
                     continue;
                 }
 
-                extractedAssemblies.Add(destinationPath);
+                var fileInfo = new FileInfo(destinationPath);
+                if (fileInfo.Length == 0)
+                {
+                    _logger?.LogWarning("Extracted file is empty: {FilePath}", destinationPath);
+                    continue;
+                }
             }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to extract {FilePath}", file);
+                continue;
+            }
+
+            // Validate that the DLL is a valid managed assembly for use as a reference
+            if (!IsManagedAssembly(destinationPath))
+            {
+                _logger?.LogDebug("Skipping unmanaged/problematic assembly as reference: {FileName}", fileName);
+                // Don't delete the file - leave it for transitive dependency resolution
+                // But don't add it to the reference list
+                continue;
+            }
+
+            extractedAssemblies.Add(destinationPath);
         }
 
-        // If no assemblies found in ref/ or lib/, look for any .dll files
-        if (extractedAssemblies.Count == 0)
+        _logger?.LogInformation("Extracted {Count} assemblies for {TargetFramework} from standard paths",
+            extractedAssemblies.Count, targetFramework);
+
+        // For .NET Framework packages, if no assemblies found with specific paths,
+        // fall back to extracting ALL DLLs from the package (IsManagedAssembly will filter)
+        if (extractedAssemblies.Count == 0 && dotNetFrameworkVersion != null)
         {
+            _logger?.LogInformation("No assemblies found in standard paths for {TargetFramework}, extracting all DLLs from package",
+                targetFramework);
+
+            _logger?.LogDebug("Searched paths: {Paths}", string.Join(", ", refPaths));
+
+            var sampleFiles = packageFiles.Take(10).ToList();
+            _logger?.LogDebug("Sample files in package ({Total} total): {SampleFiles}",
+                packageFiles.Count(), string.Join(", ", sampleFiles));
+
             foreach (var file in packageFiles.Where(f => f.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)))
             {
                 var fileName = Path.GetFileName(file);
@@ -178,13 +313,35 @@ public class NuGetPackageDownloader : IDisposable
                 // Skip if file already exists (already extracted in previous section)
                 if (File.Exists(destinationPath))
                 {
+                    // Still add to list if it's a managed assembly
+                    if (IsManagedAssembly(destinationPath))
+                    {
+                        extractedAssemblies.Add(destinationPath);
+                    }
                     continue;
                 }
 
-                using (var sourceStream = packageReader.GetStream(file))
-                using (var destinationStream = File.Create(destinationPath))
+                // Extract with explicit flushing for Windows
+                try
                 {
-                    sourceStream.CopyTo(destinationStream);
+                    using (var sourceStream = packageReader.GetStream(file))
+                    using (var destinationStream = File.Create(destinationPath))
+                    {
+                        sourceStream.CopyTo(destinationStream);
+                        destinationStream.Flush();
+                    }
+
+                    // Verify file was written
+                    if (!File.Exists(destinationPath) || new FileInfo(destinationPath).Length == 0)
+                    {
+                        _logger?.LogWarning("Fallback extraction failed for {FileName}", fileName);
+                        continue;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "Failed to extract {FileName} in fallback", fileName);
+                    continue;
                 }
 
                 // Validate that the DLL is a valid managed assembly for use as a reference
@@ -214,14 +371,60 @@ public class NuGetPackageDownloader : IDisposable
 
     /// <summary>
     /// Clears downloaded packages cache.
+    /// Uses retry logic to handle file locks (e.g., assemblies loaded by concurrent tests).
     /// </summary>
     public void ClearCache()
     {
         if (Directory.Exists(_packagesDirectory))
         {
-            Directory.Delete(_packagesDirectory, recursive: true);
+            SafeDeleteDirectory(_packagesDirectory);
             Directory.CreateDirectory(_packagesDirectory);
         }
+    }
+
+    /// <summary>
+    /// Safely deletes a directory with retry logic to handle locked files (e.g., DLLs loaded by tests).
+    /// </summary>
+    private void SafeDeleteDirectory(string path, int maxAttempts = 3)
+    {
+        for (int attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            try
+            {
+                if (Directory.Exists(path))
+                {
+                    Directory.Delete(path, recursive: true);
+                }
+                return; // Success
+            }
+            catch (IOException ex) when (attempt < maxAttempts - 1)
+            {
+                // File locked (likely DLL loaded by another test) - wait and retry
+                _logger?.LogWarning(ex, "Failed to delete directory {Path} (attempt {Attempt}/{Max}), retrying after GC",
+                    path, attempt + 1, maxAttempts);
+
+                // Help release file handles by triggering GC
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                Thread.Sleep(200 * (attempt + 1)); // 200ms, 400ms, 600ms
+            }
+            catch (UnauthorizedAccessException ex) when (attempt < maxAttempts - 1)
+            {
+                _logger?.LogWarning(ex, "Access denied deleting {Path} (attempt {Attempt}/{Max}), retrying",
+                    path, attempt + 1, maxAttempts);
+                Thread.Sleep(200 * (attempt + 1));
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Could not delete directory {Path} after {Attempt} attempts - ignoring",
+                    path, attempt + 1);
+                return; // Don't throw - graceful degradation
+            }
+        }
+
+        // Final attempt failed but didn't throw - log and continue
+        _logger?.LogWarning("Could not delete directory {Path} after {Max} attempts - cache may be incomplete",
+            path, maxAttempts);
     }
 
     /// <summary>
