@@ -74,7 +74,7 @@ public class RenameSymbolTool
             return Task.FromResult<object>(new
             {
                 success = false,
-                error = "New name must be a valid C# identifier",
+                error = "New name must be a valid C# identifier (start with letter or underscore, followed by letters, digits, or underscores)",
                 message = "Refactoring failed: New name must be a valid C# identifier (start with letter or underscore, followed by letters, digits, or underscores)"
             });
         }

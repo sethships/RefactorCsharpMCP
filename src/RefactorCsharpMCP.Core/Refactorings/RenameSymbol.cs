@@ -3,7 +3,6 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.Extensions.Logging;
 using RefactorCsharpMCP.Core.Utilities;
-using System.Text.RegularExpressions;
 
 namespace RefactorCsharpMCP.Core.Refactorings;
 
@@ -14,12 +13,6 @@ namespace RefactorCsharpMCP.Core.Refactorings;
 public class RenameSymbol : RefactoringBase
 {
     private readonly SymbolResolutionHelper _symbolHelper = new();
-
-    // Regex pattern for valid C# identifiers (compiled for performance)
-    private static readonly Regex IdentifierRegex = new(
-        @"^[a-zA-Z_][a-zA-Z0-9_]*$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant,
-        TimeSpan.FromMilliseconds(100));
 
     /// <summary>
     /// Renames a symbol at the specified position with framework-aware validation.
@@ -139,8 +132,9 @@ public class RenameSymbol : RefactoringBase
             var references = _symbolHelper.GetAllReferences(symbol, compilation);
 
             // Also include the declaration node itself
+            var referenceSpans = new HashSet<Microsoft.CodeAnalysis.Text.TextSpan>(references.Select(r => r.SourceSpan));
             var declarationLocation = symbol.Locations.FirstOrDefault(loc => loc.IsInSource && loc.SourceTree == syntaxTree);
-            if (declarationLocation != null && !references.Any(r => r.SourceSpan == declarationLocation.SourceSpan))
+            if (declarationLocation != null && !referenceSpans.Contains(declarationLocation.SourceSpan))
             {
                 references.Add(declarationLocation);
             }
@@ -176,7 +170,7 @@ public class RenameSymbol : RefactoringBase
     /// </summary>
     private bool IsValidIdentifier(string name)
     {
-        return IdentifierRegex.IsMatch(name);
+        return McpToolConstants.CSharpIdentifierRegex.IsMatch(name);
     }
 
     /// <summary>

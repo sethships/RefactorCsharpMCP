@@ -221,12 +221,12 @@ public class SymbolResolutionHelper
     {
         if (semanticModel == null)
         {
-            return SymbolResolutionResult.Failed("Semantic model cannot be null.");
+            return SymbolResolutionResult.Failed("Semantic model must not be null.");
         }
 
         if (syntaxTree == null)
         {
-            return SymbolResolutionResult.Failed("Syntax tree cannot be null.");
+            return SymbolResolutionResult.Failed("Syntax tree must not be null.");
         }
 
         if (lineNumber < 1 || columnNumber < 1)

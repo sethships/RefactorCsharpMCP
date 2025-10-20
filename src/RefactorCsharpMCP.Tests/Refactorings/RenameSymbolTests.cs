@@ -679,6 +679,109 @@ public class TestClass
         result.RefactoredCode.Should().NotContain("_oldField");
     }
 
+    [Fact]
+    public void Execute_WithThisQualifier_FindsAndRenamesAllReferences()
+    {
+        // Integration test verifying field renaming works with this. qualifier
+        var sourceCode = @"
+public class TestClass
+{
+    private int _value;
+
+    public void Method()
+    {
+        this._value = 10;
+        var x = this._value + 5;
+        Console.WriteLine(this._value);
+    }
+}";
+        var refactoring = new RenameSymbol();
+
+        // Act - Rename "_value" at line 4, column 17 (declaration)
+        var result = refactoring.Execute(sourceCode, 4, 17, "_newValue");
+
+        // Assert - Should succeed
+        result.IsSuccess.Should().BeTrue();
+        result.Message.Should().Contain("4 references updated");
+
+        // Assert - All occurrences including this. qualifier should be renamed
+        result.RefactoredCode.Should().Contain("private int _newValue;");
+        result.RefactoredCode.Should().Contain("this._newValue = 10;");
+        result.RefactoredCode.Should().Contain("var x = this._newValue + 5;");
+        result.RefactoredCode.Should().Contain("Console.WriteLine(this._newValue);");
+
+        // Assert - Old name should be gone
+        result.RefactoredCode.Should().NotContain("_value");
+    }
+
+    [Fact]
+    public void Execute_WithNestedScopes_RenamesOnlyTargetScope()
+    {
+        // Integration test verifying that renaming in nested scopes works correctly
+        // (local variable shadowing a field name - they are different symbols)
+        var sourceCode = @"
+public class TestClass
+{
+    private int count = 0;
+
+    public void Method()
+    {
+        int count = 5;  // Local variable shadows field
+        Console.WriteLine(count);
+        count = count + 1;
+    }
+}";
+        var refactoring = new RenameSymbol();
+
+        // Act - Rename local "count" at line 8, column 13 (local variable, not field)
+        var result = refactoring.Execute(sourceCode, 8, 13, "localCount");
+
+        // Assert - Should succeed
+        result.IsSuccess.Should().BeTrue();
+
+        // Assert - Only local variable should be renamed, field stays the same
+        result.RefactoredCode.Should().Contain("private int count = 0;"); // Field unchanged
+        result.RefactoredCode.Should().Contain("int localCount = 5;"); // Local renamed
+        result.RefactoredCode.Should().Contain("Console.WriteLine(localCount);");
+        result.RefactoredCode.Should().Contain("localCount = localCount + 1;");
+    }
+
+    [Fact]
+    public void Execute_WithTypeConversions_FindsAllReferences()
+    {
+        // Integration test verifying renaming works with implicit/explicit type conversions
+        var sourceCode = @"
+public class TestClass
+{
+    public void Method()
+    {
+        int value = 42;
+        long longValue = value;  // Implicit conversion
+        double doubleValue = (double)value;  // Explicit conversion
+        var result = value.ToString();
+    }
+}";
+        var refactoring = new RenameSymbol();
+
+        // Act - Rename "value" at line 6, column 13 (declaration)
+        var result = refactoring.Execute(sourceCode, 6, 13, "number");
+
+        // Assert - Should succeed and find all references
+        result.IsSuccess.Should().BeTrue();
+        result.Message.Should().Contain("4 references updated");
+
+        // Assert - All usages including conversions should be renamed
+        result.RefactoredCode.Should().Contain("int number = 42;");
+        result.RefactoredCode.Should().Contain("long longValue = number;");
+        result.RefactoredCode.Should().Contain("double doubleValue = (double)number;");
+        result.RefactoredCode.Should().Contain("var result = number.ToString();");
+
+        // Assert - Old name should be gone
+        result.RefactoredCode.Should().NotContain("int value");
+        result.RefactoredCode.Should().NotContain("= value");
+        result.RefactoredCode.Should().NotContain("value.");
+    }
+
     // ============================================================================
     // Out of Scope Tests (should fail for V1)
     // ============================================================================
