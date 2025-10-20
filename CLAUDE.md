@@ -206,6 +206,55 @@ Each tool accepts source code and refactoring parameters, returning either:
   - `HandleException()` for security-conscious error messages
   - `NormalizeWhitespace()` for consistent code formatting
 
+#### Canonical Pattern for Position-Based Refactorings
+
+**CRITICAL**: Roslyn's semantic analysis relies on **object identity** for SyntaxTree instances. When implementing position-based refactorings (e.g., RenameSymbol, ExtractMethodAtPosition), you must maintain the same SyntaxTree instance throughout the entire operation to ensure reference finding and symbol resolution work correctly.
+
+**The Pattern**:
+```csharp
+public RefactoringResult Execute(string sourceCode, int lineNumber, int columnNumber, ...)
+{
+    // STEP 1: Parse once and validate
+    CurrentPhase = "Syntax Parsing";
+    var parseResult = ParseAndValidateSyntax(sourceCode, out var root, out var syntaxTree);
+    if (!parseResult.IsSuccess || root == null || syntaxTree == null)
+        return parseResult;
+
+    // STEP 2: Create compilation (leverages cache if available)
+    CurrentPhase = "Semantic Analysis";
+    var compilation = CreateCompilation(syntaxTree);
+    var semanticModel = compilation.GetSemanticModel(syntaxTree);
+
+    // STEP 3: Resolve symbol using the SAME syntaxTree
+    CurrentPhase = "Symbol Resolution";
+    var symbolResult = _symbolHelper.GetSymbolAtPosition(
+        semanticModel,    // Pass existing semantic model
+        syntaxTree,       // Pass existing syntax tree
+        lineNumber,
+        columnNumber);
+
+    if (!symbolResult.Success)
+        return RefactoringResult.Failure(symbolResult.ErrorMessage);
+
+    // STEP 4: Find references using the SAME compilation
+    var references = _symbolHelper.GetAllReferences(symbolResult.Symbol, compilation);
+
+    // STEP 5: Transform the SAME root
+    var newRoot = TransformSyntax(root, ...);
+
+    return RefactoringResult.Success(newRoot.ToFullString(), message);
+}
+```
+
+**Key Principles**:
+1. **Single Parse**: Call `ParseAndValidateSyntax()` exactly once at the beginning
+2. **Identity Preservation**: Use the returned `syntaxTree` instance everywhere - never re-parse the same source code
+3. **Cache Leverage**: `CreateCompilation(syntaxTree)` uses `ConditionalWeakTable` for caching based on SyntaxTree object identity
+4. **Consistent Context**: All semantic operations (symbol resolution, reference finding) use the same `Compilation` and `SemanticModel`
+5. **Enhanced Helper**: Use `GetSymbolAtPosition(semanticModel, syntaxTree, ...)` overload to maintain SyntaxTree identity
+
+**Why This Matters**: If you create a new SyntaxTree from the same source code string, Roslyn treats it as a completely different tree (even though the content is identical). Symbol locations from one tree won't match nodes in another tree, causing reference finding to return zero results.
+
 ## Project History
 
 This project was created as part of the DevTools repository and later migrated to its own repository to allow:

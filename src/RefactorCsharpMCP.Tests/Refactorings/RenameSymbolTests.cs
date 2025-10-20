@@ -605,6 +605,81 @@ public class Test
     }
 
     // ============================================================================
+    // Integration Tests (SyntaxTree Identity and Reference Finding)
+    // ============================================================================
+
+    [Fact]
+    public void Execute_WithMultipleUsages_FindsAndRenamesAllReferences()
+    {
+        // Integration test verifying that SyntaxTree identity is maintained
+        // and all references are found and renamed (tests the fix for SyntaxTree mismatch bug)
+        var sourceCode = @"
+public class TestClass
+{
+    public void Method()
+    {
+        int oldName = 5;
+        Console.WriteLine(oldName);
+        Console.WriteLine(oldName + 10);
+        var result = oldName * 2;
+    }
+}";
+        var refactoring = new RenameSymbol();
+
+        // Act - Rename "oldName" at line 6, column 13 (declaration)
+        var result = refactoring.Execute(sourceCode, 6, 13, "newName");
+
+        // Assert - Should succeed and report correct reference count
+        result.IsSuccess.Should().BeTrue();
+        result.Message.Should().Contain("4 references updated"); // Declaration + 3 usages
+
+        // Assert - All occurrences should be renamed
+        result.RefactoredCode.Should().Contain("int newName = 5;");
+        result.RefactoredCode.Should().Contain("Console.WriteLine(newName);");
+        result.RefactoredCode.Should().Contain("Console.WriteLine(newName + 10);");
+        result.RefactoredCode.Should().Contain("var result = newName * 2;");
+
+        // Assert - Old name should be completely gone
+        result.RefactoredCode.Should().NotContain("oldName");
+    }
+
+    [Fact]
+    public void Execute_WithFieldMultipleUsages_FindsAndRenamesAllReferences()
+    {
+        // Integration test verifying field reference finding with SyntaxTree identity
+        // This test ensures the enhanced SymbolResolutionHelper maintains compilation context
+        var sourceCode = @"
+public class TestClass
+{
+    private int _oldField;
+
+    public void Method()
+    {
+        var x = _oldField;
+        var y = _oldField + 1;
+        Console.WriteLine(_oldField);
+    }
+}";
+        var refactoring = new RenameSymbol();
+
+        // Act - Rename "_oldField" at line 4, column 17 (declaration)
+        var result = refactoring.Execute(sourceCode, 4, 17, "_newField");
+
+        // Assert - Should succeed and report correct reference count
+        result.IsSuccess.Should().BeTrue();
+        result.Message.Should().Contain("4 references updated"); // Declaration + 3 usages
+
+        // Assert - All occurrences should be renamed
+        result.RefactoredCode.Should().Contain("private int _newField;");
+        result.RefactoredCode.Should().Contain("var x = _newField;");
+        result.RefactoredCode.Should().Contain("var y = _newField + 1;");
+        result.RefactoredCode.Should().Contain("Console.WriteLine(_newField);");
+
+        // Assert - Old name should be completely gone
+        result.RefactoredCode.Should().NotContain("_oldField");
+    }
+
+    // ============================================================================
     // Out of Scope Tests (should fail for V1)
     // ============================================================================
 

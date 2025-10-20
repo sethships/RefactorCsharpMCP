@@ -163,6 +163,127 @@ public class SymbolResolutionHelper
     }
 
     /// <summary>
+    /// Gets the symbol at a specific line and column position using an existing semantic model.
+    /// This overload maintains SyntaxTree identity for operations requiring consistent compilation context.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <strong>SyntaxTree Identity Requirements:</strong>
+    /// </para>
+    /// <para>
+    /// Roslyn's semantic analysis relies on object identity for SyntaxTree instances. When you create
+    /// a SemanticModel from a Compilation, that model is bound to specific SyntaxTree objects.
+    /// Operations like finding references, analyzing symbols, or detecting conflicts must use the
+    /// SAME SyntaxTree instances throughout the entire refactoring operation.
+    /// </para>
+    /// <para>
+    /// <strong>When to use this overload:</strong>
+    /// </para>
+    /// <list type="bullet">
+    /// <item>You already have a parsed SyntaxTree from a previous operation</item>
+    /// <item>You need to find references after resolving a symbol</item>
+    /// <item>You're implementing a position-based refactoring (e.g., RenameSymbol)</item>
+    /// <item>You want to leverage compilation caching for performance</item>
+    /// </list>
+    /// <para>
+    /// <strong>When to use the string-based overload:</strong>
+    /// </para>
+    /// <list type="bullet">
+    /// <item>Standalone symbol lookup without existing compilation context</item>
+    /// <item>Quick diagnostic or validation checks</item>
+    /// <item>You don't need to perform further operations on the symbol</item>
+    /// </list>
+    /// </remarks>
+    /// <example>
+    /// <code>
+    /// // Canonical pattern for position-based refactorings:
+    /// var parseResult = ParseAndValidateSyntax(sourceCode, out var root, out var syntaxTree);
+    /// var compilation = CreateCompilation(syntaxTree);  // Leverages cache
+    /// var semanticModel = compilation.GetSemanticModel(syntaxTree);
+    ///
+    /// // Use THIS overload to maintain SyntaxTree identity
+    /// var symbolResult = helper.GetSymbolAtPosition(semanticModel, syntaxTree, line, column);
+    ///
+    /// // Now find references using the SAME compilation
+    /// var references = helper.GetAllReferences(symbolResult.Symbol, compilation);
+    /// </code>
+    /// </example>
+    /// <param name="semanticModel">The semantic model to use for symbol resolution (must not be null).</param>
+    /// <param name="syntaxTree">The syntax tree containing the position (must match semantic model's tree).</param>
+    /// <param name="lineNumber">1-based line number.</param>
+    /// <param name="columnNumber">1-based column number.</param>
+    /// <returns>A result containing the symbol at the position, or an error.</returns>
+    public SymbolResolutionResult GetSymbolAtPosition(
+        SemanticModel semanticModel,
+        SyntaxTree syntaxTree,
+        int lineNumber,
+        int columnNumber)
+    {
+        if (semanticModel == null)
+        {
+            return SymbolResolutionResult.Failed("Semantic model cannot be null.");
+        }
+
+        if (syntaxTree == null)
+        {
+            return SymbolResolutionResult.Failed("Syntax tree cannot be null.");
+        }
+
+        if (lineNumber < 1 || columnNumber < 1)
+        {
+            return SymbolResolutionResult.Failed($"Invalid position: line {lineNumber}, column {columnNumber}. Must be 1-based.");
+        }
+
+        try
+        {
+            var root = syntaxTree.GetRoot();
+
+            // Convert 1-based line/column to 0-based for Roslyn
+            var position = GetTextPosition(syntaxTree, lineNumber - 1, columnNumber - 1);
+            if (position == null)
+            {
+                return SymbolResolutionResult.Failed($"Position line {lineNumber}, column {columnNumber} is out of range.");
+            }
+
+            // Find the syntax node at this position
+            var node = root.FindNode(new TextSpan(position.Value, 0));
+            if (node == null)
+            {
+                return SymbolResolutionResult.Failed($"No syntax node found at line {lineNumber}, column {columnNumber}.");
+            }
+
+            // Use provided semantic model (maintains SyntaxTree identity)
+            var symbolInfo = semanticModel.GetSymbolInfo(node);
+            var symbol = symbolInfo.Symbol;
+
+            if (symbol == null)
+            {
+                // Try getting declared symbol if it's a declaration
+                symbol = semanticModel.GetDeclaredSymbol(node);
+            }
+
+            if (symbol == null)
+            {
+                return SymbolResolutionResult.Failed($"No symbol found at line {lineNumber}, column {columnNumber}.");
+            }
+
+            return SymbolResolutionResult.Successful(symbol, node);
+        }
+        catch (Exception ex)
+        {
+            // Sanitize exception message to avoid leaking internal details
+            var errorCategory = ex switch
+            {
+                ArgumentOutOfRangeException => "InvalidPosition",
+                ArgumentException => "InvalidArgument",
+                InvalidOperationException => "InvalidState",
+                _ => "InternalError"
+            };
+            return SymbolResolutionResult.Failed($"Error resolving symbol ({errorCategory}). Verify source code syntax and position.");
+        }
+    }
+
+    /// <summary>
     /// Detects if a symbol name would conflict with existing symbols in a given scope.
     /// </summary>
     /// <param name="semanticModel">The semantic model for analysis.</param>

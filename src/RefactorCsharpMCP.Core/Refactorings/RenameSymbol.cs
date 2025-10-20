@@ -92,43 +92,16 @@ public class RenameSymbol : RefactoringBase
             var compilation = CreateCompilation(syntaxTree);
             var semanticModel = compilation.GetSemanticModel(syntaxTree);
 
-            // Get symbol at position using our compilation
+            // Get symbol at position using enhanced helper (maintains SyntaxTree identity)
             CurrentPhase = "Symbol Resolution";
+            var symbolResult = _symbolHelper.GetSymbolAtPosition(semanticModel, syntaxTree, lineNumber, columnNumber);
 
-            // Convert 1-based line/column to 0-based for Roslyn
-            var text = syntaxTree.GetText();
-            var linePosition = new Microsoft.CodeAnalysis.Text.LinePosition(lineNumber - 1, columnNumber - 1);
-            int position;
-            try
+            if (!symbolResult.Success)
             {
-                position = text.Lines.GetPosition(linePosition);
-            }
-            catch
-            {
-                return RefactoringResult.Failure($"Position line {lineNumber}, column {columnNumber} is out of range.");
+                return RefactoringResult.Failure(symbolResult.ErrorMessage ?? "Failed to resolve symbol at specified position.");
             }
 
-            // Find the syntax node at this position
-            var node = root.FindNode(new Microsoft.CodeAnalysis.Text.TextSpan(position, 0));
-            if (node == null)
-            {
-                return RefactoringResult.Failure($"No syntax node found at line {lineNumber}, column {columnNumber}.");
-            }
-
-            // Try to get symbol info
-            var symbolInfo = semanticModel.GetSymbolInfo(node);
-            var symbol = symbolInfo.Symbol;
-
-            if (symbol == null)
-            {
-                // Try getting declared symbol if it's a declaration
-                symbol = semanticModel.GetDeclaredSymbol(node);
-            }
-
-            if (symbol == null)
-            {
-                return RefactoringResult.Failure($"No symbol found at line {lineNumber}, column {columnNumber}.");
-            }
+            var symbol = symbolResult.Symbol!;
 
             var originalName = symbol.Name;
 
@@ -147,7 +120,7 @@ public class RenameSymbol : RefactoringBase
             }
 
             // Determine scope for conflict detection
-            var scopeNode = DetermineScopeNode(node);
+            var scopeNode = DetermineScopeNode(symbolResult.Node!);
             if (scopeNode == null)
             {
                 return RefactoringResult.Failure("Could not determine symbol scope for conflict detection.");
