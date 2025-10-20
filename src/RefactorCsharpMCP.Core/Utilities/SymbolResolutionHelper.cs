@@ -188,11 +188,44 @@ public class SymbolResolutionHelper
             // Use HashSet to automatically handle uniqueness and avoid duplicates
             var conflicts = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
 
-            // Check for local variables with the same name
+            // Check for local variables with the same name using LookupSymbols at scope start
             var localSymbols = semanticModel.LookupSymbols(scopeNode.SpanStart, name: symbolName);
             foreach (var symbol in localSymbols.Where(s => s.Kind == SymbolKind.Local || s.Kind == SymbolKind.Parameter))
             {
                 conflicts.Add(symbol);
+            }
+
+            // FIX: Explicitly check ALL local variables declared within the scope
+            // LookupSymbols at SpanStart misses variables declared later in the method body
+            var localDeclarations = scopeNode.DescendantNodes()
+                .OfType<VariableDeclaratorSyntax>()
+                .Where(v => v.Identifier.Text == symbolName);
+
+            foreach (var varDeclarator in localDeclarations)
+            {
+                var symbol = semanticModel.GetDeclaredSymbol(varDeclarator);
+                if (symbol != null)
+                {
+                    conflicts.Add(symbol);
+                }
+            }
+
+            // FIX: Explicitly check ALL parameters if scope is within or is a method
+            // This ensures parameter conflicts are always detected
+            var methodDeclaration = scopeNode.AncestorsAndSelf().OfType<BaseMethodDeclarationSyntax>().FirstOrDefault();
+            if (methodDeclaration != null)
+            {
+                foreach (var parameter in methodDeclaration.ParameterList.Parameters)
+                {
+                    if (parameter.Identifier.Text == symbolName)
+                    {
+                        var symbol = semanticModel.GetDeclaredSymbol(parameter);
+                        if (symbol != null)
+                        {
+                            conflicts.Add(symbol);
+                        }
+                    }
+                }
             }
 
             // Check for methods with the same name

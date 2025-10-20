@@ -197,6 +197,70 @@ public class TestClass
     }
 
     [Fact]
+    public void FindSymbolConflicts_WithLocalVariableConflict_ReturnsConflict()
+    {
+        // Arrange
+        var helper = new SymbolResolutionHelper();
+        var sourceCode = @"
+public class TestClass
+{
+    public void Method()
+    {
+        var x = 5;
+        var y = 10;
+    }
+}";
+        var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);
+        var root = syntaxTree.GetRoot();
+        var compilation = CSharpCompilation.Create("temp")
+            .AddReferences(MetadataReference.CreateFromFile(typeof(object).Assembly.Location))
+            .AddSyntaxTrees(syntaxTree);
+        var semanticModel = compilation.GetSemanticModel(syntaxTree);
+        var methodDeclaration = root.DescendantNodes().OfType<MethodDeclarationSyntax>().First();
+
+        // Act - Try to rename 'x' to 'y' (should detect conflict with existing 'y')
+        var result = helper.FindSymbolConflicts(semanticModel, "y", methodDeclaration);
+
+        // Assert
+        result.HasConflicts.Should().BeTrue();
+        result.ConflictDescription.Should().Contain("y");
+        result.Conflicts.Should().HaveCount(1);
+        result.Conflicts.First().Name.Should().Be("y");
+    }
+
+    [Fact]
+    public void FindSymbolConflicts_WithParameterConflict_ReturnsConflict()
+    {
+        // Arrange
+        var helper = new SymbolResolutionHelper();
+        var sourceCode = @"
+public class TestClass
+{
+    public void Method(int x)
+    {
+        var z = 10;
+    }
+}";
+        var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);
+        var root = syntaxTree.GetRoot();
+        var compilation = CSharpCompilation.Create("temp")
+            .AddReferences(MetadataReference.CreateFromFile(typeof(object).Assembly.Location))
+            .AddSyntaxTrees(syntaxTree);
+        var semanticModel = compilation.GetSemanticModel(syntaxTree);
+        var methodDeclaration = root.DescendantNodes().OfType<MethodDeclarationSyntax>().First();
+
+        // Act - Try to rename 'z' to 'x' (should detect conflict with parameter 'x')
+        var result = helper.FindSymbolConflicts(semanticModel, "x", methodDeclaration);
+
+        // Assert
+        result.HasConflicts.Should().BeTrue();
+        result.ConflictDescription.Should().Contain("x");
+        result.Conflicts.Should().HaveCount(1);
+        result.Conflicts.First().Name.Should().Be("x");
+        result.Conflicts.First().Kind.Should().Be(SymbolKind.Parameter);
+    }
+
+    [Fact]
     public void AnalyzeSymbolScope_WithMethodSymbol_ReturnsCorrectInfo()
     {
         // Arrange
