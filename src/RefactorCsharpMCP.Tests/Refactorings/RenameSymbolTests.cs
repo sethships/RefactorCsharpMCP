@@ -250,7 +250,7 @@ public class Test
     // Conflict Detection Tests
     // ============================================================================
 
-    [Fact(Skip = "TODO: Conflict detection needs improvement in SymbolResolutionHelper.FindSymbolConflicts")]
+    [Fact]
     public void Execute_WithConflictingLocalVariable_ShouldReturnFailure()
     {
         // Arrange
@@ -274,7 +274,7 @@ public class Test
         result.ErrorMessage.Should().Contain("y");
     }
 
-    [Fact(Skip = "TODO: Conflict detection needs improvement in SymbolResolutionHelper.FindSymbolConflicts")]
+    [Fact]
     public void Execute_WithConflictingParameter_ShouldReturnFailure()
     {
         // Arrange

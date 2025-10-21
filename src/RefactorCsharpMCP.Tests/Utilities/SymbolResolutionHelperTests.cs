@@ -447,8 +447,9 @@ public class TestClass
         // Assert - Should detect 'x' that is captured by lambda
         result.HasConflicts.Should().BeTrue();
         result.ConflictDescription.Should().Contain("x");
-        result.Conflicts.Should().HaveCountGreaterThanOrEqualTo(1);
-        result.Conflicts.Should().Contain(c => c.Name == "x" && c.Kind == SymbolKind.Local);
+        result.Conflicts.Should().HaveCount(1);
+        result.Conflicts.First().Name.Should().Be("x");
+        result.Conflicts.First().Kind.Should().Be(SymbolKind.Local);
     }
 
     [Fact]
@@ -485,8 +486,9 @@ public class TestClass
         // Assert - Should detect local function
         result.HasConflicts.Should().BeTrue();
         result.ConflictDescription.Should().Contain("LocalFunc");
-        result.Conflicts.Should().HaveCountGreaterThanOrEqualTo(1);
-        result.Conflicts.Should().Contain(c => c.Name == "LocalFunc" && c.Kind == SymbolKind.Method);
+        result.Conflicts.Should().HaveCount(1);
+        result.Conflicts.First().Name.Should().Be("LocalFunc");
+        result.Conflicts.First().Kind.Should().Be(SymbolKind.Method);
     }
 
     [Fact]
@@ -520,11 +522,51 @@ public class TestClass
         // Assert - Should detect foreach variable
         result.HasConflicts.Should().BeTrue();
         result.ConflictDescription.Should().Contain("item");
-        result.Conflicts.Should().HaveCountGreaterThanOrEqualTo(1);
-        result.Conflicts.Should().Contain(c => c.Name == "item" && c.Kind == SymbolKind.Local);
+        result.Conflicts.Should().HaveCount(1);
+        result.Conflicts.First().Name.Should().Be("item");
+        result.Conflicts.First().Kind.Should().Be(SymbolKind.Local);
     }
 
-    [Fact(Skip = "Performance benchmark - run manually when needed")]
+    [Fact]
+    public void FindSymbolConflicts_WithCatchVariable_ReturnsConflict()
+    {
+        // Arrange
+        var helper = new SymbolResolutionHelper();
+        var sourceCode = @"
+public class TestClass
+{
+    public void Method()
+    {
+        try
+        {
+            throw new System.Exception();
+        }
+        catch (System.Exception ex)
+        {
+            var z = 10;
+        }
+    }
+}";
+        var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);
+        var root = syntaxTree.GetRoot();
+        var compilation = CSharpCompilation.Create("temp")
+            .AddReferences(MetadataReference.CreateFromFile(typeof(object).Assembly.Location))
+            .AddSyntaxTrees(syntaxTree);
+        var semanticModel = compilation.GetSemanticModel(syntaxTree);
+        var methodDeclaration = root.DescendantNodes().OfType<MethodDeclarationSyntax>().First();
+
+        // Act - Check for conflict with catch variable
+        var result = helper.FindSymbolConflicts(semanticModel, "ex", methodDeclaration);
+
+        // Assert - Should detect 'ex' from catch clause
+        result.HasConflicts.Should().BeTrue();
+        result.ConflictDescription.Should().Contain("ex");
+        result.Conflicts.Should().HaveCount(1);
+        result.Conflicts.First().Name.Should().Be("ex");
+        result.Conflicts.First().Kind.Should().Be(SymbolKind.Local);
+    }
+
+    [Fact]
     public void FindSymbolConflicts_PerformanceBenchmark_CompletesInReasonableTime()
     {
         // Arrange - Create a large method with many local variables
@@ -554,8 +596,8 @@ public class TestClass
         var result = helper.FindSymbolConflicts(semanticModel, "newVar", methodDeclaration);
         stopwatch.Stop();
 
-        // Assert - Should complete in reasonable time (< 100ms for 100 variables)
-        stopwatch.ElapsedMilliseconds.Should().BeLessThan(100,
+        // Assert - Should complete in reasonable time (< 500ms for 100 variables, accounting for CI variance)
+        stopwatch.ElapsedMilliseconds.Should().BeLessThan(500,
             "conflict detection should be efficient even with many local variables");
         result.Should().NotBeNull();
     }
