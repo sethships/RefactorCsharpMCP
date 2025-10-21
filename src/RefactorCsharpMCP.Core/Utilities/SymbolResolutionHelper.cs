@@ -285,11 +285,51 @@ public class SymbolResolutionHelper
 
     /// <summary>
     /// Detects if a symbol name would conflict with existing symbols in a given scope.
+    /// Uses a combination of semantic analysis (LookupSymbols) and explicit AST traversal
+    /// to detect all potential naming conflicts including local variables, parameters,
+    /// lambda parameters, local functions, foreach variables, catch variables, methods, fields, and properties.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This method uses two complementary approaches to ensure comprehensive conflict detection:
+    /// </para>
+    /// <list type="number">
+    /// <item>
+    /// <description>
+    /// <strong>Explicit AST traversal</strong>: Walks the syntax tree to find ALL local declarations
+    /// (local variables, parameters, lambda parameters, local functions, foreach variables, catch variables)
+    /// including those declared later in the scope that LookupSymbols cannot see.
+    /// </description>
+    /// </item>
+    /// <item>
+    /// <description>
+    /// <strong>Semantic lookup via LookupSymbols</strong>: Identifies symbols from enclosing scopes
+    /// (fields, properties, methods, type members) that aren't local declarations.
+    /// </description>
+    /// </item>
+    /// </list>
+    /// <para>
+    /// <strong>Checked symbol types:</strong>
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>Local variables (including nested scopes)</description></item>
+    /// <item><description>Method parameters</description></item>
+    /// <item><description>Lambda parameters (simple, parenthesized, and anonymous method expressions)</description></item>
+    /// <item><description>Local functions</description></item>
+    /// <item><description>Foreach variables</description></item>
+    /// <item><description>Catch clause variables</description></item>
+    /// <item><description>Methods (when scope is a class)</description></item>
+    /// <item><description>Fields and properties</description></item>
+    /// </list>
+    /// <para>
+    /// The method is optimized to avoid redundant symbol lookups by using explicit traversal
+    /// for local declarations and LookupSymbols only for enclosing scope members.
+    /// </para>
+    /// </remarks>
     /// <param name="semanticModel">The semantic model for analysis.</param>
-    /// <param name="symbolName">The proposed symbol name.</param>
-    /// <param name="scopeNode">The syntax node representing the scope to check.</param>
-    /// <returns>A result indicating whether conflicts exist.</returns>
+    /// <param name="symbolName">The proposed symbol name to check for conflicts.</param>
+    /// <param name="scopeNode">The syntax node representing the scope to check (typically a method or class declaration).</param>
+    /// <returns>A <see cref="ConflictDetectionResult"/> indicating whether conflicts exist, including the list of conflicting symbols if any.</returns>
     public ConflictDetectionResult FindSymbolConflicts(
         SemanticModel semanticModel,
         string symbolName,
@@ -309,11 +349,113 @@ public class SymbolResolutionHelper
             // Use HashSet to automatically handle uniqueness and avoid duplicates
             var conflicts = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
 
-            // Check for local variables with the same name
-            var localSymbols = semanticModel.LookupSymbols(scopeNode.SpanStart, name: symbolName);
-            foreach (var symbol in localSymbols.Where(s => s.Kind == SymbolKind.Local || s.Kind == SymbolKind.Parameter))
+            // Use LookupSymbols to catch symbols from enclosing scopes (fields, properties, type members)
+            // Note: Local variables, parameters, and lambda parameters are checked explicitly below
+            // because LookupSymbols at scope start cannot see declarations that appear later in the method
+            var enclosingScopeSymbols = semanticModel.LookupSymbols(scopeNode.SpanStart, name: symbolName);
+            foreach (var symbol in enclosingScopeSymbols.Where(s =>
+                s.Kind != SymbolKind.Local &&    // Checked explicitly below
+                s.Kind != SymbolKind.Parameter)) // Checked explicitly below
             {
                 conflicts.Add(symbol);
+            }
+
+            // Explicitly check ALL local variables, parameters, and lambda parameters
+            // (optimization: avoids redundant LookupSymbols calls for local declarations)
+            var methodDeclaration = scopeNode.AncestorsAndSelf().OfType<BaseMethodDeclarationSyntax>().FirstOrDefault();
+
+            // Single traversal for all local variable declarations, local functions, and foreach variables (performance optimization)
+            foreach (var node in scopeNode.DescendantNodes())
+            {
+                // Check for local variables
+                if (node is VariableDeclaratorSyntax varDeclarator &&
+                    varDeclarator.Identifier.Text == symbolName)
+                {
+                    var symbol = semanticModel.GetDeclaredSymbol(varDeclarator);
+                    if (symbol != null)
+                        conflicts.Add(symbol);
+                }
+                // Check for local functions
+                else if (node is LocalFunctionStatementSyntax localFunction &&
+                         localFunction.Identifier.Text == symbolName)
+                {
+                    var symbol = semanticModel.GetDeclaredSymbol(localFunction);
+                    if (symbol != null)
+                        conflicts.Add(symbol);
+                }
+                // Check for foreach variables
+                else if (node is ForEachStatementSyntax foreachStatement &&
+                         foreachStatement.Identifier.Text == symbolName)
+                {
+                    var symbol = semanticModel.GetDeclaredSymbol(foreachStatement);
+                    if (symbol != null)
+                        conflicts.Add(symbol);
+                }
+                // Check for catch clause variables
+                else if (node is CatchClauseSyntax catchClause &&
+                         catchClause.Declaration?.Identifier.Text == symbolName)
+                {
+                    var symbol = semanticModel.GetDeclaredSymbol(catchClause.Declaration);
+                    if (symbol != null)
+                        conflicts.Add(symbol);
+                }
+            }
+
+            // Check method parameters separately (parameters are not in DescendantNodes)
+            if (methodDeclaration?.ParameterList != null)
+            {
+                foreach (var parameter in methodDeclaration.ParameterList.Parameters)
+                {
+                    if (parameter.Identifier.Text == symbolName)
+                    {
+                        var symbol = semanticModel.GetDeclaredSymbol(parameter);
+                        if (symbol != null)
+                            conflicts.Add(symbol);
+                    }
+                }
+            }
+
+            // Check lambda parameters (SimpleLambdaExpression, ParenthesizedLambdaExpression, AnonymousMethodExpression)
+            // These are checked explicitly to ensure comprehensive coverage and enable LookupSymbols optimization
+            var lambdaExpressions = scopeNode.DescendantNodesAndSelf().Where(n =>
+                n is SimpleLambdaExpressionSyntax ||
+                n is ParenthesizedLambdaExpressionSyntax ||
+                n is AnonymousMethodExpressionSyntax);
+
+            foreach (var lambda in lambdaExpressions)
+            {
+                if (lambda is SimpleLambdaExpressionSyntax simpleLambda &&
+                    simpleLambda.Parameter.Identifier.Text == symbolName)
+                {
+                    var symbol = semanticModel.GetDeclaredSymbol(simpleLambda.Parameter);
+                    if (symbol != null)
+                        conflicts.Add(symbol);
+                }
+                else if (lambda is ParenthesizedLambdaExpressionSyntax parenthesizedLambda)
+                {
+                    foreach (var parameter in parenthesizedLambda.ParameterList.Parameters)
+                    {
+                        if (parameter.Identifier.Text == symbolName)
+                        {
+                            var symbol = semanticModel.GetDeclaredSymbol(parameter);
+                            if (symbol != null)
+                                conflicts.Add(symbol);
+                        }
+                    }
+                }
+                else if (lambda is AnonymousMethodExpressionSyntax anonymousMethod &&
+                         anonymousMethod.ParameterList != null)
+                {
+                    foreach (var parameter in anonymousMethod.ParameterList.Parameters)
+                    {
+                        if (parameter.Identifier.Text == symbolName)
+                        {
+                            var symbol = semanticModel.GetDeclaredSymbol(parameter);
+                            if (symbol != null)
+                                conflicts.Add(symbol);
+                        }
+                    }
+                }
             }
 
             // Check for methods with the same name

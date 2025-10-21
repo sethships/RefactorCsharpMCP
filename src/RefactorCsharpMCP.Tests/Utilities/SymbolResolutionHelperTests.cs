@@ -170,7 +170,7 @@ public class TestClass
 
         // Assert
         result.Success.Should().BeFalse();
-        result.ErrorMessage.Should().Contain("Semantic model cannot be null");
+        result.ErrorMessage.Should().Contain("Semantic model must not be null");
     }
 
     [Fact]
@@ -190,7 +190,7 @@ public class TestClass
 
         // Assert
         result.Success.Should().BeFalse();
-        result.ErrorMessage.Should().Contain("Syntax tree cannot be null");
+        result.ErrorMessage.Should().Contain("Syntax tree must not be null");
     }
 
     [Fact]
@@ -317,6 +317,289 @@ public class TestClass
         // Assert
         result.HasConflicts.Should().BeFalse();
         result.ConflictDescription.Should().Contain("empty");
+    }
+
+    [Fact]
+    public void FindSymbolConflicts_WithLocalVariableConflict_ReturnsConflict()
+    {
+        // Arrange
+        var helper = new SymbolResolutionHelper();
+        var sourceCode = @"
+public class TestClass
+{
+    public void Method()
+    {
+        var x = 5;
+        var y = 10;
+    }
+}";
+        var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);
+        var root = syntaxTree.GetRoot();
+        var compilation = CSharpCompilation.Create("temp")
+            .AddReferences(MetadataReference.CreateFromFile(typeof(object).Assembly.Location))
+            .AddSyntaxTrees(syntaxTree);
+        var semanticModel = compilation.GetSemanticModel(syntaxTree);
+        var methodDeclaration = root.DescendantNodes().OfType<MethodDeclarationSyntax>().First();
+
+        // Act - Try to rename 'x' to 'y' (should detect conflict with existing 'y')
+        var result = helper.FindSymbolConflicts(semanticModel, "y", methodDeclaration);
+
+        // Assert
+        result.HasConflicts.Should().BeTrue();
+        result.ConflictDescription.Should().Contain("y");
+        result.Conflicts.Should().HaveCount(1);
+        result.Conflicts.First().Name.Should().Be("y");
+    }
+
+    [Fact]
+    public void FindSymbolConflicts_WithParameterConflict_ReturnsConflict()
+    {
+        // Arrange
+        var helper = new SymbolResolutionHelper();
+        var sourceCode = @"
+public class TestClass
+{
+    public void Method(int x)
+    {
+        var z = 10;
+    }
+}";
+        var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);
+        var root = syntaxTree.GetRoot();
+        var compilation = CSharpCompilation.Create("temp")
+            .AddReferences(MetadataReference.CreateFromFile(typeof(object).Assembly.Location))
+            .AddSyntaxTrees(syntaxTree);
+        var semanticModel = compilation.GetSemanticModel(syntaxTree);
+        var methodDeclaration = root.DescendantNodes().OfType<MethodDeclarationSyntax>().First();
+
+        // Act - Try to rename 'z' to 'x' (should detect conflict with parameter 'x')
+        var result = helper.FindSymbolConflicts(semanticModel, "x", methodDeclaration);
+
+        // Assert
+        result.HasConflicts.Should().BeTrue();
+        result.ConflictDescription.Should().Contain("x");
+        result.Conflicts.Should().HaveCount(1);
+        result.Conflicts.First().Name.Should().Be("x");
+        result.Conflicts.First().Kind.Should().Be(SymbolKind.Parameter);
+    }
+
+    [Fact]
+    public void FindSymbolConflicts_WithNestedScopeConflict_ReturnsConflict()
+    {
+        // Arrange
+        var helper = new SymbolResolutionHelper();
+        var sourceCode = @"
+public class TestClass
+{
+    public void Method()
+    {
+        if (true)
+        {
+            var x = 5;
+        }
+        var y = 10;
+    }
+}";
+        var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);
+        var root = syntaxTree.GetRoot();
+        var compilation = CSharpCompilation.Create("temp")
+            .AddReferences(MetadataReference.CreateFromFile(typeof(object).Assembly.Location))
+            .AddSyntaxTrees(syntaxTree);
+        var semanticModel = compilation.GetSemanticModel(syntaxTree);
+        var methodDeclaration = root.DescendantNodes().OfType<MethodDeclarationSyntax>().First();
+
+        // Act - Check if 'x' from nested scope would conflict in method scope
+        var result = helper.FindSymbolConflicts(semanticModel, "x", methodDeclaration);
+
+        // Assert - Should detect 'x' in nested scope
+        result.HasConflicts.Should().BeTrue();
+        result.ConflictDescription.Should().Contain("x");
+        result.Conflicts.Should().HaveCount(1);
+        result.Conflicts.First().Name.Should().Be("x");
+        result.Conflicts.First().Kind.Should().Be(SymbolKind.Local);
+    }
+
+    [Fact]
+    public void FindSymbolConflicts_WithLambdaCapturedVariable_ReturnsConflict()
+    {
+        // Arrange
+        var helper = new SymbolResolutionHelper();
+        var sourceCode = @"
+public class TestClass
+{
+    public void Method()
+    {
+        var x = 5;
+        System.Action a = () => { var y = x + 1; };
+    }
+}";
+        var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);
+        var root = syntaxTree.GetRoot();
+        var compilation = CSharpCompilation.Create("temp")
+            .AddReferences(MetadataReference.CreateFromFile(typeof(object).Assembly.Location))
+            .AddSyntaxTrees(syntaxTree);
+        var semanticModel = compilation.GetSemanticModel(syntaxTree);
+        var methodDeclaration = root.DescendantNodes().OfType<MethodDeclarationSyntax>().First();
+
+        // Act - Check for conflict with lambda-captured variable
+        var result = helper.FindSymbolConflicts(semanticModel, "x", methodDeclaration);
+
+        // Assert - Should detect 'x' that is captured by lambda
+        result.HasConflicts.Should().BeTrue();
+        result.ConflictDescription.Should().Contain("x");
+        result.Conflicts.Should().HaveCount(1);
+        result.Conflicts.First().Name.Should().Be("x");
+        result.Conflicts.First().Kind.Should().Be(SymbolKind.Local);
+    }
+
+    [Fact]
+    public void FindSymbolConflicts_WithLocalFunction_ReturnsConflict()
+    {
+        // Arrange
+        var helper = new SymbolResolutionHelper();
+        var sourceCode = @"
+public class TestClass
+{
+    public void Method()
+    {
+        var x = 5;
+
+        int LocalFunc()
+        {
+            return x + 1;
+        }
+
+        var result = LocalFunc();
+    }
+}";
+        var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);
+        var root = syntaxTree.GetRoot();
+        var compilation = CSharpCompilation.Create("temp")
+            .AddReferences(MetadataReference.CreateFromFile(typeof(object).Assembly.Location))
+            .AddSyntaxTrees(syntaxTree);
+        var semanticModel = compilation.GetSemanticModel(syntaxTree);
+        var methodDeclaration = root.DescendantNodes().OfType<MethodDeclarationSyntax>().First();
+
+        // Act - Check for conflict with local function name
+        var result = helper.FindSymbolConflicts(semanticModel, "LocalFunc", methodDeclaration);
+
+        // Assert - Should detect local function
+        result.HasConflicts.Should().BeTrue();
+        result.ConflictDescription.Should().Contain("LocalFunc");
+        result.Conflicts.Should().HaveCount(1);
+        result.Conflicts.First().Name.Should().Be("LocalFunc");
+        result.Conflicts.First().Kind.Should().Be(SymbolKind.Method);
+    }
+
+    [Fact]
+    public void FindSymbolConflicts_WithForeachVariable_ReturnsConflict()
+    {
+        // Arrange
+        var helper = new SymbolResolutionHelper();
+        var sourceCode = @"
+public class TestClass
+{
+    public void Method()
+    {
+        var items = new[] { 1, 2, 3 };
+        foreach (var item in items)
+        {
+            System.Console.WriteLine(item);
+        }
+    }
+}";
+        var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);
+        var root = syntaxTree.GetRoot();
+        var compilation = CSharpCompilation.Create("temp")
+            .AddReferences(MetadataReference.CreateFromFile(typeof(object).Assembly.Location))
+            .AddSyntaxTrees(syntaxTree);
+        var semanticModel = compilation.GetSemanticModel(syntaxTree);
+        var methodDeclaration = root.DescendantNodes().OfType<MethodDeclarationSyntax>().First();
+
+        // Act - Check for conflict with foreach variable
+        var result = helper.FindSymbolConflicts(semanticModel, "item", methodDeclaration);
+
+        // Assert - Should detect foreach variable
+        result.HasConflicts.Should().BeTrue();
+        result.ConflictDescription.Should().Contain("item");
+        result.Conflicts.Should().HaveCount(1);
+        result.Conflicts.First().Name.Should().Be("item");
+        result.Conflicts.First().Kind.Should().Be(SymbolKind.Local);
+    }
+
+    [Fact]
+    public void FindSymbolConflicts_WithCatchVariable_ReturnsConflict()
+    {
+        // Arrange
+        var helper = new SymbolResolutionHelper();
+        var sourceCode = @"
+public class TestClass
+{
+    public void Method()
+    {
+        try
+        {
+            throw new System.Exception();
+        }
+        catch (System.Exception ex)
+        {
+            var z = 10;
+        }
+    }
+}";
+        var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);
+        var root = syntaxTree.GetRoot();
+        var compilation = CSharpCompilation.Create("temp")
+            .AddReferences(MetadataReference.CreateFromFile(typeof(object).Assembly.Location))
+            .AddSyntaxTrees(syntaxTree);
+        var semanticModel = compilation.GetSemanticModel(syntaxTree);
+        var methodDeclaration = root.DescendantNodes().OfType<MethodDeclarationSyntax>().First();
+
+        // Act - Check for conflict with catch variable
+        var result = helper.FindSymbolConflicts(semanticModel, "ex", methodDeclaration);
+
+        // Assert - Should detect 'ex' from catch clause
+        result.HasConflicts.Should().BeTrue();
+        result.ConflictDescription.Should().Contain("ex");
+        result.Conflicts.Should().HaveCount(1);
+        result.Conflicts.First().Name.Should().Be("ex");
+        result.Conflicts.First().Kind.Should().Be(SymbolKind.Local);
+    }
+
+    [Fact]
+    public void FindSymbolConflicts_PerformanceBenchmark_CompletesInReasonableTime()
+    {
+        // Arrange - Create a large method with many local variables
+        var helper = new SymbolResolutionHelper();
+        var variableDeclarations = string.Join("\n            ",
+            Enumerable.Range(1, 100).Select(i => $"int var{i} = {i};"));
+
+        var sourceCode = $@"
+public class TestClass
+{{
+    public void LargeMethod()
+    {{
+        {variableDeclarations}
+        int targetVar = 999;
+    }}
+}}";
+        var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);
+        var root = syntaxTree.GetRoot();
+        var compilation = CSharpCompilation.Create("temp")
+            .AddReferences(MetadataReference.CreateFromFile(typeof(object).Assembly.Location))
+            .AddSyntaxTrees(syntaxTree);
+        var semanticModel = compilation.GetSemanticModel(syntaxTree);
+        var methodDeclaration = root.DescendantNodes().OfType<MethodDeclarationSyntax>().First();
+
+        // Act - Measure performance of conflict detection
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var result = helper.FindSymbolConflicts(semanticModel, "newVar", methodDeclaration);
+        stopwatch.Stop();
+
+        // Assert - Should complete in reasonable time (< 500ms for 100 variables, accounting for CI variance)
+        stopwatch.ElapsedMilliseconds.Should().BeLessThan(500,
+            "conflict detection should be efficient even with many local variables");
+        result.Should().NotBeNull();
     }
 
     [Fact]
