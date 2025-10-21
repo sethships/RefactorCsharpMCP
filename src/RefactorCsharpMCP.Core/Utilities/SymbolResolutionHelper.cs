@@ -310,31 +310,49 @@ public class SymbolResolutionHelper
             var conflicts = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
 
             // Check for local variables with the same name using LookupSymbols at scope start
+            // Note: This catches parameters and variables visible at scope start, but misses
+            // variables declared later in the method body (hence the explicit enumeration below)
             var localSymbols = semanticModel.LookupSymbols(scopeNode.SpanStart, name: symbolName);
             foreach (var symbol in localSymbols.Where(s => s.Kind == SymbolKind.Local || s.Kind == SymbolKind.Parameter))
             {
                 conflicts.Add(symbol);
             }
 
-            // FIX: Explicitly check ALL local variables declared within the scope
+            // FIX: Explicitly check ALL local variables and parameters
             // LookupSymbols at SpanStart misses variables declared later in the method body
-            var localDeclarations = scopeNode.DescendantNodes()
-                .OfType<VariableDeclaratorSyntax>()
-                .Where(v => v.Identifier.Text == symbolName);
+            var methodDeclaration = scopeNode.AncestorsAndSelf().OfType<BaseMethodDeclarationSyntax>().FirstOrDefault();
 
-            foreach (var varDeclarator in localDeclarations)
+            // Single traversal for all local variable declarations, local functions, and foreach variables (performance optimization)
+            foreach (var node in scopeNode.DescendantNodes())
             {
-                var symbol = semanticModel.GetDeclaredSymbol(varDeclarator);
-                if (symbol != null)
+                // Check for local variables
+                if (node is VariableDeclaratorSyntax varDeclarator &&
+                    varDeclarator.Identifier.Text == symbolName)
                 {
-                    conflicts.Add(symbol);
+                    var symbol = semanticModel.GetDeclaredSymbol(varDeclarator);
+                    if (symbol != null)
+                        conflicts.Add(symbol);
+                }
+                // Check for local functions
+                else if (node is LocalFunctionStatementSyntax localFunction &&
+                         localFunction.Identifier.Text == symbolName)
+                {
+                    var symbol = semanticModel.GetDeclaredSymbol(localFunction);
+                    if (symbol != null)
+                        conflicts.Add(symbol);
+                }
+                // Check for foreach variables
+                else if (node is ForEachStatementSyntax foreachStatement &&
+                         foreachStatement.Identifier.Text == symbolName)
+                {
+                    var symbol = semanticModel.GetDeclaredSymbol(foreachStatement);
+                    if (symbol != null)
+                        conflicts.Add(symbol);
                 }
             }
 
-            // FIX: Explicitly check ALL parameters if scope is within or is a method
-            // This ensures parameter conflicts are always detected
-            var methodDeclaration = scopeNode.AncestorsAndSelf().OfType<BaseMethodDeclarationSyntax>().FirstOrDefault();
-            if (methodDeclaration != null)
+            // Check method parameters separately (parameters are not in DescendantNodes)
+            if (methodDeclaration?.ParameterList != null)
             {
                 foreach (var parameter in methodDeclaration.ParameterList.Parameters)
                 {
@@ -342,9 +360,7 @@ public class SymbolResolutionHelper
                     {
                         var symbol = semanticModel.GetDeclaredSymbol(parameter);
                         if (symbol != null)
-                        {
                             conflicts.Add(symbol);
-                        }
                     }
                 }
             }
