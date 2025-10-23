@@ -552,3 +552,243 @@ var result = extractMethod.Execute(code, 1, 5, "NewMethod");
 3. **Handle Validation Failures**: Check `result.IsValid` and `result.ValidationResult` before using refactored code
 4. **Read Error Messages**: ValidationResult includes detailed error messages and suggested actions
 5. **Multi-Target Projects**: Run refactorings separately for each target framework
+
+## Diagnostic Integration (V1.5)
+
+RefactorCsharpMCP provides diagnostic analysis capabilities that enable AI agents to detect code issues and automatically apply fixes using the **analyze → suggest → fix** workflow.
+
+### Example 1: Detect and Fix Unused Usings
+
+**Step 1: Analyze Code**
+```csharp
+var analyzer = new DiagnosticAnalyzer();
+var sourceCode = @"
+using System;
+using System.Linq;  // Unused
+using System.Collections.Generic;  // Unused
+
+public class Calculator
+{
+    public int Add(int a, int b)
+    {
+        Console.WriteLine($""Adding {a} + {b}"");
+        return a + b;
+    }
+}";
+
+var result = await analyzer.AnalyzeCodeAsync(sourceCode, "net8.0");
+
+// result.Success == true
+// result.Diagnostics contains diagnostic information
+// result.Summary.TotalDiagnostics > 0
+```
+
+**Step 2: Review Diagnostics**
+```csharp
+foreach (var diagnostic in result.Diagnostics)
+{
+    Console.WriteLine($"{diagnostic.Id}: {diagnostic.Message}");
+    Console.WriteLine($"Location: Line {diagnostic.Location.Line}, Column {diagnostic.Location.Column}");
+    Console.WriteLine($"Category: {diagnostic.Category}");
+    Console.WriteLine($"Applicable Refactorings: {string.Join(", ", diagnostic.ApplicableRefactorings)}");
+}
+
+// Output:
+// IDE0005: Using directive is unnecessary
+// Location: Line 3, Column 1
+// Category: Style
+// Applicable Refactorings: remove_unused_usings
+```
+
+**Step 3: Apply Fix**
+```csharp
+var fixResult = await new RemoveUnusedUsings().ExecuteAsync(sourceCode, "net8.0");
+
+// fixResult.IsSuccess == true
+// fixResult.RefactoredCode == @"
+// using System;
+//
+// public class Calculator
+// {
+//     public int Add(int a, int b)
+//     {
+//         Console.WriteLine($""Adding {a} + {b}"");
+//         return a + b;
+//     }
+// }";
+```
+
+### Example 2: Detect and Fix Readonly Fields
+
+**Step 1: Analyze Code**
+```csharp
+var analyzer = new DiagnosticAnalyzer();
+var sourceCode = @"
+public class Service
+{
+    private string _apiKey;
+    private int _timeout;
+
+    public Service()
+    {
+        _apiKey = ""abc123"";
+        _timeout = 30;
+    }
+
+    public void CallApi()
+    {
+        Console.WriteLine($""Calling API with key: {_apiKey}"");
+    }
+}";
+
+var result = await analyzer.AnalyzeCodeAsync(sourceCode, "net8.0", DiagnosticSeverity.Info);
+```
+
+**Step 2: Filter for Readonly Suggestions**
+```csharp
+var readonlyDiagnostics = result.Diagnostics
+    .Where(d => d.Id == "IDE0044")
+    .ToList();
+
+foreach (var diagnostic in readonlyDiagnostics)
+{
+    Console.WriteLine($"Field at line {diagnostic.Location.Line} can be made readonly");
+    Console.WriteLine($"Suggested fix: {string.Join(", ", diagnostic.ApplicableRefactorings)}");
+}
+```
+
+**Step 3: Apply Fixes**
+```csharp
+var refactoring = new MakeFieldReadonly();
+var step1 = await refactoring.ExecuteAsync(sourceCode, "Service", "_apiKey", "net8.0");
+var step2 = await refactoring.ExecuteAsync(step1.RefactoredCode!, "Service", "_timeout", "net8.0");
+
+// step2.RefactoredCode contains:
+// private readonly string _apiKey;
+// private readonly int _timeout;
+```
+
+### Example 3: Complete Analyze → Fix Workflow
+
+**AI Agent Workflow**
+```csharp
+// 1. AI Agent analyzes code
+var analyzer = new DiagnosticAnalyzer();
+var analysisResult = await analyzer.AnalyzeCodeAsync(userCode, "net8.0");
+
+// 2. AI Agent presents findings to user
+Console.WriteLine($"Found {analysisResult.Summary.TotalDiagnostics} issues:");
+Console.WriteLine($"  - {analysisResult.Summary.ErrorCount} errors");
+Console.WriteLine($"  - {analysisResult.Summary.WarningCount} warnings");
+Console.WriteLine($"  - {analysisResult.Summary.InfoCount} suggestions");
+
+// 3. AI Agent suggests fixes
+foreach (var diagnostic in analysisResult.Diagnostics)
+{
+    if (diagnostic.ApplicableRefactorings.Any())
+    {
+        Console.WriteLine($"\n{diagnostic.Id}: {diagnostic.Message}");
+        Console.WriteLine($"I can fix this using: {string.Join(", ", diagnostic.ApplicableRefactorings)}");
+    }
+}
+
+// 4. User approves: "Yes, fix them all"
+
+// 5. AI Agent applies fixes
+var fixedCode = userCode;
+foreach (var diagnostic in analysisResult.Diagnostics.Where(d => d.ApplicableRefactorings.Any()))
+{
+    if (diagnostic.Id == "IDE0005" || diagnostic.Id == "CS8019")
+    {
+        var result = await new RemoveUnusedUsings().ExecuteAsync(fixedCode, "net8.0");
+        if (result.IsSuccess)
+            fixedCode = result.RefactoredCode!;
+    }
+    else if (diagnostic.Id == "IDE0044")
+    {
+        // Extract field information and apply fix
+        // (implementation details omitted for brevity)
+    }
+}
+
+// 6. AI Agent reports results
+Console.WriteLine("✅ Applied all fixes successfully!");
+Console.WriteLine($"Code improved: {originalLineCount} → {newLineCount} lines");
+```
+
+### Example 4: Framework-Specific Analysis
+
+Different frameworks report different diagnostics based on their C# language version support:
+
+```csharp
+var analyzer = new DiagnosticAnalyzer();
+var code = @"
+using System;
+
+public class Test
+{
+    public void Method()
+    {
+        Console.WriteLine(""Test"");
+    }
+}";
+
+// .NET 8 (C# 12) - May suggest modern language features
+var net8Result = await analyzer.AnalyzeCodeAsync(code, "net8.0");
+
+// .NET Framework 4.8 (C# 7.3) - Different diagnostic rules
+var net48Result = await analyzer.AnalyzeCodeAsync(code, "net48");
+
+// .NET Framework 3.5 (C# 3.0) - Older language rules
+var net35Result = await analyzer.AnalyzeCodeAsync(code, "net35");
+```
+
+### Supported Diagnostic IDs
+
+| Diagnostic ID | Description | Applicable Refactoring | Framework |
+|--------------|-------------|----------------------|-----------|
+| IDE0005 | Using directive is unnecessary | remove_unused_usings | All |
+| CS8019 | Unnecessary using directive | remove_unused_usings | All |
+| IDE0044 | Add readonly modifier | make_field_readonly | All |
+| IDE0058 | Expression value never used | inline_variable (future) | All |
+| IDE0059 | Unnecessary value assignment | inline_variable (future) | All |
+| IDE0022 | Use expression body for method | inline_method (future) | C# 6.0+ |
+
+### MCP Tool Usage
+
+When using RefactorCsharpMCP through the MCP protocol:
+
+**analyze_code Tool**
+```json
+{
+  "tool": "analyze_code",
+  "parameters": {
+    "sourceCode": "using System.Linq;\npublic class Test { }",
+    "targetFramework": "net8.0",
+    "minSeverity": "Info"
+  }
+}
+```
+
+**fix_diagnostic Tool**
+```json
+{
+  "tool": "fix_diagnostic",
+  "parameters": {
+    "sourceCode": "using System.Linq;\npublic class Test { }",
+    "diagnosticId": "IDE0005",
+    "line": 1,
+    "column": 1,
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+### Best Practices for Diagnostic Integration
+
+1. **Analyze First**: Always run analyze_code before attempting fixes
+2. **Filter by Severity**: Use minSeverity to focus on important issues
+3. **Check Applicable Refactorings**: Not all diagnostics have automated fixes
+4. **Framework Awareness**: Different frameworks may report different diagnostics
+5. **Batch Fixes Carefully**: Apply one fix at a time and re-analyze to avoid conflicts
+6. **Handle Errors Gracefully**: Some diagnostics may not be fixable automatically

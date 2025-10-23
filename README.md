@@ -322,6 +322,99 @@ Converts method parameters to constructor-injected fields or properties.
 - useProperties: Use properties instead of fields (default: false)
 ```
 
+### Diagnostic Integration (V1.5)
+
+RefactorCsharpMCP provides powerful diagnostic capabilities that enable AI agents to detect code issues and automatically fix them using the **analyze → suggest → fix** workflow.
+
+#### Analyze Code
+Analyzes C# code for compiler warnings, style violations, and code quality issues using Roslyn's built-in analyzers (500+ diagnostic rules).
+
+```bash
+# MCP Tool: analyze_code
+# Parameters:
+- sourceCode: Complete C# source code
+- targetFramework: Target .NET framework (e.g., "net8.0", "net48")
+- minSeverity: Minimum severity level - "Error", "Warning", "Info", "Hidden" (optional, default: "Warning")
+
+# Returns:
+- diagnostics: List of issues with locations, severity, and applicable refactorings
+- summary: Total count by severity level (errors, warnings, info)
+```
+
+**Example Workflow:**
+```json
+{
+  "tool": "analyze_code",
+  "parameters": {
+    "sourceCode": "using System.Linq;\npublic class Test { }",
+    "targetFramework": "net8.0"
+  },
+  "result": {
+    "success": true,
+    "diagnostics": [
+      {
+        "id": "IDE0005",
+        "severity": "Info",
+        "message": "Using directive is unnecessary",
+        "location": { "line": 1, "column": 1 },
+        "category": "Style",
+        "applicableRefactorings": ["remove_unused_usings"]
+      }
+    ],
+    "summary": {
+      "totalDiagnostics": 1,
+      "errorCount": 0,
+      "warningCount": 0,
+      "infoCount": 1
+    }
+  }
+}
+```
+
+#### Fix Diagnostic
+Automatically fixes a specific Roslyn diagnostic by dispatching to the appropriate refactoring tool.
+
+```bash
+# MCP Tool: fix_diagnostic
+# Parameters:
+- sourceCode: Complete C# source code containing the diagnostic
+- diagnosticId: Roslyn diagnostic ID (e.g., "IDE0005", "IDE0044", "CS8019")
+- line: Line number where diagnostic occurs (1-based)
+- column: Column number where diagnostic occurs (1-based)
+- targetFramework: Target .NET framework
+
+# Supported Diagnostics:
+- IDE0005, CS8019: Unused using directives → remove_unused_usings
+- IDE0044: Field can be readonly → make_field_readonly
+```
+
+**Example Workflow:**
+```json
+{
+  "tool": "fix_diagnostic",
+  "parameters": {
+    "sourceCode": "using System.Linq;\npublic class Test { }",
+    "diagnosticId": "IDE0005",
+    "line": 1,
+    "column": 1,
+    "targetFramework": "net8.0"
+  },
+  "result": {
+    "success": true,
+    "message": "Successfully removed 1 unused using directive(s)",
+    "refactoredCode": "public class Test { }",
+    "diagnosticId": "IDE0005",
+    "appliedRefactoring": "remove_unused_usings"
+  }
+}
+```
+
+**Benefits:**
+- **Framework-Aware Analysis**: Respects target framework capabilities and language versions
+- **Automatic Tool Routing**: Maps diagnostic IDs to appropriate refactorings
+- **Comprehensive Coverage**: Leverages Roslyn's 500+ built-in diagnostic rules
+- **AI-Friendly**: Enables proactive code quality assistance for AI agents
+
 ## Development Roadmap
 
 RefactorCsharpMCP is being developed in 4 phases:
