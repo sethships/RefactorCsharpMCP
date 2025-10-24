@@ -1083,5 +1083,98 @@ public class Test
 
     #endregion
 
+    #region C# Keyword Collision Tests
+
+    [Fact]
+    public void Execute_WithKeywordCollision_Return_ShouldGenerateReturn1()
+    {
+        // Test that C# keyword 'return' is avoided (Issue #53)
+        // Arrange
+        var sourceCode = @"
+public class Test
+{
+    public int Method()
+    {
+        if (true)
+            return 42;
+        return 0;
+    }
+}";
+        var extractor = new ExtractMethod();
+
+        // Act - extract code that would naturally generate variable name 'return'
+        // We'll use a custom analyzer scenario where the base name might be 'return'
+        var refactored = extractor.Execute(sourceCode, 7, 9, "GetReturnValue", "net8.0");
+
+        // Assert
+        refactored.IsSuccess.Should().BeTrue();
+        // The generated variable should avoid the 'return' keyword
+        refactored.RefactoredCode.Should().Contain("private int GetReturnValue");
+        // Should use 'result' as base name (standard naming), not 'return'
+        refactored.RefactoredCode.Should().NotContainEquivalentOf("int return =");
+        refactored.RefactoredCode.Should().NotContainEquivalentOf("var return =");
+    }
+
+    [Fact]
+    public void Execute_WithKeywordCollision_Class_ShouldGenerateClass1()
+    {
+        // Test that C# keyword 'class' is avoided (Issue #53)
+        // Simulate a scenario where 'class' might be used as a base name
+        // Arrange
+        var sourceCode = @"
+public class Test
+{
+    public string Method()
+    {
+        if (true)
+            return ""MyClass"";
+        return """";
+    }
+}";
+        var extractor = new ExtractMethod();
+
+        // Act
+        var refactored = extractor.Execute(sourceCode, 7, 9, "GetClassName", "net8.0");
+
+        // Assert
+        refactored.IsSuccess.Should().BeTrue();
+        refactored.RefactoredCode.Should().Contain("private string GetClassName");
+        // The generated variable should avoid the 'class' keyword
+        refactored.RefactoredCode.Should().NotContainEquivalentOf("string class =");
+        refactored.RefactoredCode.Should().NotContainEquivalentOf("var class =");
+    }
+
+    [Fact]
+    public void Execute_WithKeywordAndVariableCollision_ShouldIncrementPastBoth()
+    {
+        // Test collision with both keyword and existing variable (Issue #53)
+        // Arrange - 'result' (not a keyword) should be used when result1 exists
+        var sourceCode = @"
+public class Test
+{
+    public int Method()
+    {
+        int result1 = 10;  // Existing variable
+        if (result1 > 5)
+            return 42;
+        return 0;
+    }
+}";
+        var extractor = new ExtractMethod();
+
+        // Act
+        var refactored = extractor.Execute(sourceCode, 8, 10, "CheckValue", "net8.0");
+
+        // Assert
+        refactored.IsSuccess.Should().BeTrue();
+        refactored.RefactoredCode.Should().Contain("private int CheckValue");
+        // Since 'result' is not a keyword and result1 exists, should use 'result'
+        refactored.RefactoredCode.Should().Contain("result = CheckValue");
+        // Ensure we don't use result1 (already exists)
+        refactored.RefactoredCode.Should().NotContain("result1 = CheckValue");
+    }
+
+    #endregion
+
     #endregion
 }
