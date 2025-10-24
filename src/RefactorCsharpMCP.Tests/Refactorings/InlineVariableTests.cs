@@ -577,4 +577,154 @@ public class Test
     }
 
     #endregion
+
+    #region Additional Edge Case Tests (from CR Issue #6)
+
+    [Fact]
+    public void Execute_WithConditionalExpression_ShouldInlineCorrectly()
+    {
+        // Arrange
+        var sourceCode = @"
+public class Test
+{
+    public void Method(bool condition)
+    {
+        var result = condition ? 10 : 20;
+        Console.WriteLine(result);
+    }
+}";
+        var inliner = new InlineVariable();
+
+        // Act
+        var result = inliner.Execute(sourceCode, 6, 13);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("Console.WriteLine(condition ? 10 : 20);");
+        result.RefactoredCode.Should().NotContain("var result = condition");
+    }
+
+    [Fact]
+    public void Execute_WithVariableUsedInNestedScopes_ShouldInlineAllReferences()
+    {
+        // Arrange
+        var sourceCode = @"
+public class Test
+{
+    public void Method(bool condition)
+    {
+        var x = 42;
+        if (condition)
+        {
+            Console.WriteLine(x);
+        }
+        else
+        {
+            Console.WriteLine(x);
+        }
+        Console.WriteLine(x);
+    }
+}";
+        var inliner = new InlineVariable();
+
+        // Act
+        var result = inliner.Execute(sourceCode, 6, 13);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("Console.WriteLine(42);");
+        result.RefactoredCode.Should().NotContain("var x = 42");
+        // All 3 references should be inlined
+        var count = result.RefactoredCode?.Split(new[] { "Console.WriteLine(42);" }, StringSplitOptions.None).Length - 1;
+        count.Should().Be(3);
+    }
+
+    [Fact]
+    public void Execute_WithSideEffectExpression_ShouldInlineButPreserveSemantics()
+    {
+        // Arrange - Note: This tests that we CAN inline, but implementation should ideally warn about side effects in future
+        var sourceCode = @"
+public class Test
+{
+    private int _counter = 0;
+
+    public void Method()
+    {
+        var value = GetNextValue();
+        Console.WriteLine(value);
+    }
+
+    private int GetNextValue() => _counter++;
+}";
+        var inliner = new InlineVariable();
+
+        // Act
+        var result = inliner.Execute(sourceCode, 8, 13);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("Console.WriteLine(GetNextValue());");
+        result.RefactoredCode.Should().NotContain("var value = GetNextValue()");
+    }
+
+    [Fact]
+    public void Execute_WithSwitchExpression_ShouldInlineCorrectly()
+    {
+        // Arrange - C# 8+ switch expression
+        var sourceCode = @"
+public class Test
+{
+    public void Method(int day)
+    {
+        var name = day switch
+        {
+            1 => ""Monday"",
+            2 => ""Tuesday"",
+            _ => ""Unknown""
+        };
+        Console.WriteLine(name);
+    }
+}";
+        var inliner = new InlineVariable();
+
+        // Act
+        var result = inliner.Execute(sourceCode, 6, 13);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("Console.WriteLine(day switch");
+        result.RefactoredCode.Should().NotContain("var name = day switch");
+    }
+
+    [Fact]
+    public void Execute_WithOutOfOrderUsage_ShouldInlineCorrectly()
+    {
+        // Arrange - Variable declared in middle of method
+        var sourceCode = @"
+public class Test
+{
+    public void Method()
+    {
+        Console.WriteLine(""Start"");
+        var temp = 123;
+        Console.WriteLine(""Middle"");
+        Console.WriteLine(temp);
+        Console.WriteLine(""End"");
+    }
+}";
+        var inliner = new InlineVariable();
+
+        // Act
+        var result = inliner.Execute(sourceCode, 7, 13);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("Console.WriteLine(123);");
+        result.RefactoredCode.Should().NotContain("var temp = 123");
+        result.RefactoredCode.Should().Contain("Console.WriteLine(\"Start\");");
+        result.RefactoredCode.Should().Contain("Console.WriteLine(\"Middle\");");
+        result.RefactoredCode.Should().Contain("Console.WriteLine(\"End\");");
+    }
+
+    #endregion
 }

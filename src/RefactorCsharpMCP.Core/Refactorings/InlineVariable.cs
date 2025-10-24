@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.Extensions.Logging;
+using RefactorCsharpMCP.Core.Utilities;
 using RefactorCsharpMCP.Core.Validation;
 
 namespace RefactorCsharpMCP.Core.Refactorings;
@@ -13,6 +14,8 @@ namespace RefactorCsharpMCP.Core.Refactorings;
 /// </summary>
 public class InlineVariable : RefactoringBase
 {
+    private readonly SymbolResolutionHelper _symbolHelper = new();
+
     /// <summary>
     /// Inlines a variable by replacing all its uses with its initialization expression, with framework-aware validation.
     /// </summary>
@@ -71,9 +74,16 @@ public class InlineVariable : RefactoringBase
             var compilation = CreateCompilation(syntaxTree);
             var semanticModel = compilation.GetSemanticModel(syntaxTree);
 
-            // Find the variable at the specified position
+            // Find the variable at the specified position using canonical pattern
             CurrentPhase = "Variable Resolution";
-            var variableInfo = FindVariable(semanticModel, syntaxTree, lineNumber, columnNumber);
+            var symbolResult = _symbolHelper.GetSymbolAtPosition(semanticModel, syntaxTree, lineNumber, columnNumber);
+            if (!symbolResult.Success)
+            {
+                return RefactoringResult.Failure(symbolResult.ErrorMessage ?? "Failed to resolve symbol at the specified position.");
+            }
+
+            // Extract variable information from the resolved symbol
+            var variableInfo = ExtractVariableInfo(symbolResult, semanticModel);
             if (variableInfo == null)
             {
                 return RefactoringResult.Failure(
@@ -118,8 +128,12 @@ public class InlineVariable : RefactoringBase
 
             // Inline all references with the initialization expression
             CurrentPhase = "Inlining";
-            // Initializer is guaranteed non-null by validation above
-            var newRoot = InlineAllReferences(trackedRoot, trackedReferences, variableInfo.Initializer!);
+            // Defensive check - should never happen due to validation above
+            if (variableInfo.Initializer == null)
+            {
+                return RefactoringResult.Failure("Internal error: Variable initializer is null after validation.");
+            }
+            var newRoot = InlineAllReferences(trackedRoot, trackedReferences, variableInfo.Initializer);
 
             // Find the declaration statement in the transformed tree
             var trackedDeclaration = newRoot.GetCurrentNode(variableInfo.DeclarationStatement);
@@ -160,74 +174,44 @@ public class InlineVariable : RefactoringBase
     }
 
     /// <summary>
-    /// Finds the variable at the specified line and column position.
+    /// Extracts variable information from a symbol resolution result.
     /// </summary>
-    private VariableInfo? FindVariable(
-        SemanticModel semanticModel,
-        SyntaxTree syntaxTree,
-        int lineNumber,
-        int columnNumber)
+    private VariableInfo? ExtractVariableInfo(
+        SymbolResolutionHelper.SymbolResolutionResult symbolResult,
+        SemanticModel semanticModel)
     {
-        // Convert 1-based line/column to 0-based position
-        var lines = syntaxTree.GetText().Lines;
-        if (lineNumber < 1 || lineNumber > lines.Count)
+        // Verify we have a local symbol
+        if (symbolResult.Symbol is not ILocalSymbol localSymbol)
         {
-            Logger?.LogWarning("Line number {Line} out of range (1-{Max})", lineNumber, lines.Count);
+            Logger?.LogWarning("Symbol at position is not a local variable (found: {SymbolKind})",
+                symbolResult.Symbol?.Kind.ToString() ?? "null");
             return null;
         }
 
-        var line = lines[lineNumber - 1];
-        if (columnNumber < 1 || columnNumber > line.Span.Length + 1)
+        // Find the variable declarator from the resolved node
+        var declarator = symbolResult.Node?.FirstAncestorOrSelf<VariableDeclaratorSyntax>();
+        if (declarator == null)
         {
-            Logger?.LogWarning(
-                "Column number {Column} out of range for line {Line} (1-{Max})",
-                columnNumber,
-                lineNumber,
-                line.Span.Length + 1);
+            Logger?.LogWarning("Could not find VariableDeclaratorSyntax for local symbol");
             return null;
         }
 
-        var position = line.Start + (columnNumber - 1);
-
-        // Find the token at this position
-        var root = syntaxTree.GetRoot();
-        var token = root.FindToken(position);
-
-        // Walk up to find a variable declarator
-        var node = token.Parent;
-        while (node != null)
+        // Find the local declaration statement
+        var declaration = declarator.FirstAncestorOrSelf<LocalDeclarationStatementSyntax>();
+        if (declaration == null)
         {
-            if (node is VariableDeclaratorSyntax declarator)
-            {
-                // Check if this is a local variable (not a field)
-                var declaration = declarator.FirstAncestorOrSelf<LocalDeclarationStatementSyntax>();
-                if (declaration != null)
-                {
-                    // Get the symbol for this variable
-                    var symbol = semanticModel.GetDeclaredSymbol(declarator) as ILocalSymbol;
-                    if (symbol != null)
-                    {
-                        // Return variable info even if no initializer - let validation handle it
-                        return new VariableInfo
-                        {
-                            Symbol = symbol,
-                            Initializer = declarator.Initializer?.Value,
-                            DeclarationStatement = declaration,
-                            Declarator = declarator
-                        };
-                    }
-                }
-
-                // Not a local variable - might be a field
-                Logger?.LogWarning("Declarator at position is not a local variable");
-                return null;
-            }
-
-            node = node.Parent;
+            Logger?.LogWarning("Variable declarator is not part of a local declaration statement");
+            return null;
         }
 
-        Logger?.LogWarning("No variable declarator found at line {Line}, column {Column}", lineNumber, columnNumber);
-        return null;
+        // Return variable info even if no initializer - let validation handle it
+        return new VariableInfo
+        {
+            Symbol = localSymbol,
+            Initializer = declarator.Initializer?.Value,
+            DeclarationStatement = declaration,
+            Declarator = declarator
+        };
     }
 
     /// <summary>
@@ -328,8 +312,15 @@ public class InlineVariable : RefactoringBase
     /// <summary>
     /// Checks if a lambda captures the specified variable.
     /// </summary>
+    /// <remarks>
+    /// TODO(V2): Use data flow analysis for accurate capture detection.
+    /// Current implementation uses simple text matching which may have false positives
+    /// for variables with the same name in different scopes. Consider using
+    /// DataFlowAnalysis.GetCapturedVariables() or semantic symbol comparison for V2.
+    /// </remarks>
     private bool LambdaCapturesVariable(AnonymousFunctionExpressionSyntax lambda, string variableName)
     {
+        // Simple text matching for V1 - may have false positives
         var identifiers = lambda.DescendantNodes()
             .OfType<IdentifierNameSyntax>()
             .Where(i => i.Identifier.Text == variableName)

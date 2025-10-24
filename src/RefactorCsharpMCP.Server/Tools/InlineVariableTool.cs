@@ -22,7 +22,7 @@ public class InlineVariableTool
     /// <returns>A JSON object containing the refactored code and status.</returns>
     [McpServerTool]
     [Description("Inlines a variable by replacing all its uses with its initialization expression, then removes the variable declaration. Maps to Roslyn diagnostics IDE0059 and IDE0058. Provide the source code, line and column position (1-based) of the variable declaration, and optionally target framework (defaults to net8.0).")]
-    public Task<object> InlineVariable(
+    public async Task<object> InlineVariable(
         [Description("The complete C# source code")] string sourceCode,
         [Description("The line number (1-based) where the variable is declared")] int lineNumber,
         [Description("The column number (1-based) within the line")] int columnNumber,
@@ -31,76 +31,76 @@ public class InlineVariableTool
         // Input validation
         if (string.IsNullOrWhiteSpace(sourceCode))
         {
-            return Task.FromResult<object>(new
+            return new
             {
                 success = false,
                 error = "Source code cannot be empty",
                 message = "Refactoring failed: Source code cannot be empty"
-            });
+            };
         }
 
         if (sourceCode.Length > 1_000_000) // 1MB limit
         {
-            return Task.FromResult<object>(new
+            return new
             {
                 success = false,
                 error = "Source code exceeds 1MB limit",
                 message = "Refactoring failed: Source code exceeds 1MB limit"
-            });
+            };
         }
 
         if (lineNumber < 1 || lineNumber > 100000) // Reasonable line limit
         {
-            return Task.FromResult<object>(new
+            return new
             {
                 success = false,
                 error = "Line number must be between 1 and 100000",
                 message = "Refactoring failed: Invalid line number specified"
-            });
+            };
         }
 
         if (columnNumber < 1 || columnNumber > 10000) // Reasonable column limit
         {
-            return Task.FromResult<object>(new
+            return new
             {
                 success = false,
                 error = "Column number must be between 1 and 10000",
                 message = "Refactoring failed: Invalid column number specified"
-            });
+            };
         }
 
         if (string.IsNullOrWhiteSpace(targetFramework))
         {
-            return Task.FromResult<object>(new
+            return new
             {
                 success = false,
                 error = "Target framework cannot be empty",
                 message = "Refactoring failed: Target framework cannot be empty"
-            });
+            };
         }
 
-        // Execute the refactoring
+        // Execute the refactoring with framework-aware validation
         var inliner = new InlineVariable();
-        var result = inliner.Execute(sourceCode, lineNumber, columnNumber);
+        var result = await inliner.ExecuteAsync(sourceCode, lineNumber, columnNumber, targetFramework);
 
         // Return result as an object that MCP can serialize
         if (result.IsSuccess)
         {
-            return Task.FromResult<object>(new
+            return new
             {
                 success = true,
                 message = result.Message,
                 refactoredCode = result.RefactoredCode
-            });
+            };
         }
         else
         {
-            return Task.FromResult<object>(new
+            return new
             {
                 success = false,
                 message = result.Message,
                 error = result.ErrorMessage
-            });
+            };
         }
     }
 }
