@@ -128,13 +128,23 @@ public class AnalyzeCodeTool
             return DiagnosticSeverity.Warning; // Default
         }
 
-        return severity.ToLowerInvariant() switch
+        var result = severity.ToLowerInvariant() switch
         {
             "error" => DiagnosticSeverity.Error,
             "warning" => DiagnosticSeverity.Warning,
             "info" => DiagnosticSeverity.Info,
             "hidden" => DiagnosticSeverity.Hidden,
-            _ => DiagnosticSeverity.Warning // Default
+            _ => DiagnosticSeverity.Warning // Default for invalid values
         };
+
+        // Log warning if invalid severity was provided
+        if (result == DiagnosticSeverity.Warning && severity.ToLowerInvariant() != "warning")
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"Warning: Invalid severity '{severity}' provided, defaulting to 'Warning'. " +
+                "Valid values: Error, Warning, Info, Hidden");
+        }
+
+        return result;
     }
 }
