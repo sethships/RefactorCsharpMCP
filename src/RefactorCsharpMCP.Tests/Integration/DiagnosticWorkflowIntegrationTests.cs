@@ -15,7 +15,6 @@ public class DiagnosticWorkflowIntegrationTests
 {
     [Fact]
     [Trait("Category", "Integration")]
-    [Trait("Category", "Integration")]
     public async Task AnalyzeAndFixUnusedUsings_CompleteWorkflow_Net8()
     {
         // Arrange - Code with unused usings
@@ -54,7 +53,6 @@ public class Calculator
     }
 
     [Fact]
-    [Trait("Category", "Integration")]
     [Trait("Category", "Integration")]
     public async Task AnalyzeAndFixReadonlyField_CompleteWorkflow_Net48()
     {

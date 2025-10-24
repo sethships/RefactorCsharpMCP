@@ -291,4 +291,40 @@ public class Test
         doc.RootElement.GetProperty("error").GetString().Should().Contain("out of range");
         doc.RootElement.GetProperty("error").GetString().Should().Contain("Column 999");
     }
+
+    [Theory]
+    [InlineData("IDE05")]      // Too short
+    [InlineData("IDE00005")]   // Too long
+    [InlineData("INVALID")]    // Wrong prefix
+    [InlineData("IDE-0005")]   // Invalid character
+    [InlineData("")]           // Empty
+    [InlineData("IDE")]        // Missing digits
+    [InlineData("0005")]       // Missing prefix
+    public async Task FixDiagnostic_WithInvalidDiagnosticIdPattern_ShouldReturnError(string invalidId)
+    {
+        // Arrange
+        var tool = new FixDiagnosticTool();
+        var sourceCode = "public class Test { }";
+
+        // Act
+        var result = await tool.FixDiagnostic(sourceCode, invalidId, 1, 1, "net8.0");
+
+        // Assert
+        result.Should().NotBeNull();
+        var json = JsonSerializer.Serialize(result);
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("success").GetBoolean().Should().BeFalse();
+        var error = doc.RootElement.GetProperty("error").GetString();
+        error.Should().NotBeNullOrEmpty();
+
+        // Error message should mention pattern or being empty
+        if (string.IsNullOrWhiteSpace(invalidId))
+        {
+            error.Should().Contain("cannot be empty");
+        }
+        else
+        {
+            error.Should().Contain("does not match expected pattern");
+        }
+    }
 }
