@@ -322,6 +322,23 @@ Converts method parameters to constructor-injected fields or properties.
 - useProperties: Use properties instead of fields (default: false)
 ```
 
+#### Inline Variable
+Replaces all uses of a local variable with its initialization expression, then removes the variable declaration. Helps simplify code by eliminating unnecessary intermediate variables. Maps to Roslyn diagnostics IDE0059 (unnecessary value assignment) and IDE0058 (expression value never used).
+
+```bash
+# Parameters:
+- sourceCode: Complete C# source code
+- lineNumber: Line number where variable is declared (1-based)
+- columnNumber: Column number within the line (1-based)
+- targetFramework: Target .NET framework (default: "net8.0")
+
+# Features:
+- Automatic operator precedence handling with parentheses
+- Safety checks: rejects uninitialized variables, multiple assignments, increment/decrement operators
+- Lambda capture detection (not supported in V1)
+- Framework-aware validation
+```
+
 ### Diagnostic Integration (V1.5)
 
 RefactorCsharpMCP provides powerful diagnostic capabilities that enable AI agents to detect code issues and automatically fix them using the **analyze → suggest → fix** workflow.
@@ -386,6 +403,7 @@ Automatically fixes a specific Roslyn diagnostic by dispatching to the appropria
 # Supported Diagnostics:
 - IDE0005, CS8019: Unused using directives → remove_unused_usings
 - IDE0044: Field can be readonly → make_field_readonly
+- IDE0059, IDE0058: Unnecessary value assignment → inline_variable
 ```
 
 **Example Workflow:**
