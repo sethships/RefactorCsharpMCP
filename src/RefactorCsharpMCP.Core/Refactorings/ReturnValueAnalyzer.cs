@@ -13,6 +13,25 @@ internal class ReturnValueAnalyzer
     private readonly ILogger? _logger;
 
     /// <summary>
+    /// C# reserved keywords that cannot be used as variable names.
+    /// Contains 77 standard keywords plus 4 special low-level keywords (81 total).
+    /// </summary>
+    private static readonly HashSet<string> CSharpKeywords = new(81, StringComparer.Ordinal)
+    {
+        "abstract", "as", "base", "bool", "break", "byte", "case", "catch", "char",
+        "checked", "class", "const", "continue", "decimal", "default", "delegate",
+        "do", "double", "else", "enum", "event", "explicit", "extern", "false",
+        "finally", "fixed", "float", "for", "foreach", "goto", "if", "implicit",
+        "in", "int", "interface", "internal", "is", "lock", "long", "namespace",
+        "new", "null", "object", "operator", "out", "override", "params", "private",
+        "protected", "public", "readonly", "ref", "return", "sbyte", "sealed",
+        "short", "sizeof", "stackalloc", "static", "string", "struct", "switch",
+        "this", "throw", "true", "try", "typeof", "uint", "ulong", "unchecked",
+        "unsafe", "ushort", "using", "virtual", "void", "volatile", "while",
+        "__arglist", "__makeref", "__reftype", "__refvalue"
+    };
+
+    /// <summary>
     /// Initializes a new instance of the ReturnValueAnalyzer class.
     /// </summary>
     /// <param name="logger">Optional logger for diagnostic output.</param>
@@ -210,13 +229,13 @@ internal class ReturnValueAnalyzer
     }
 
     /// <summary>
-    /// Generates a unique variable name that doesn't conflict with existing variables in scope.
+    /// Generates a unique variable name that doesn't conflict with existing variables in scope or C# keywords.
     /// </summary>
     /// <param name="baseName">The preferred base name (e.g., "result").</param>
     /// <param name="semanticModel">Semantic model for symbol lookup.</param>
     /// <param name="position">Position in source to check scope.</param>
-    /// <returns>A unique variable name that won't conflict with existing symbols.</returns>
-    private string GenerateUniqueVariableName(
+    /// <returns>A unique variable name that won't conflict with existing symbols or keywords.</returns>
+    internal string GenerateUniqueVariableName(
         string baseName,
         SemanticModel semanticModel,
         int position)
@@ -228,6 +247,9 @@ internal class ReturnValueAnalyzer
         var existingNames = new HashSet<string>(
             symbolsInScope.Select(s => s.Name),
             StringComparer.Ordinal);
+
+        // Add C# keywords to forbidden names
+        existingNames.UnionWith(CSharpKeywords);
 
         // If base name doesn't conflict, use it
         if (!existingNames.Contains(baseName))

@@ -1083,5 +1083,111 @@ public class Test
 
     #endregion
 
+    #region C# Keyword Collision Integration Tests
+
+    /// <summary>
+    /// Integration test verifying that Extract Method doesn't produce C# keywords in output.
+    /// NOTE: This is an end-to-end test that verifies extraction succeeds and output is valid.
+    /// It does NOT directly test GenerateUniqueVariableName's keyword collision logic because
+    /// ExtractMethod always uses baseName="result" internally (not a keyword).
+    /// For direct unit tests of keyword collision prevention, see ReturnValueAnalyzerTests.
+    /// Related to Issue #53.
+    /// </summary>
+    [Fact]
+    public void Execute_ExtractMethod_ShouldNotProduceKeywordIdentifiers()
+    {
+        // Arrange - Extract code with explicit returns
+        var sourceCode = @"
+public class Test
+{
+    public int Method()
+    {
+        if (true)
+            return 42;
+        return 0;
+    }
+}";
+        var extractor = new ExtractMethod();
+
+        // Act
+        var refactored = extractor.Execute(sourceCode, 7, 9, "GetReturnValue", "net8.0");
+
+        // Assert - Verify extraction succeeds and doesn't produce keyword identifiers
+        refactored.IsSuccess.Should().BeTrue();
+        refactored.RefactoredCode.Should().Contain("private int GetReturnValue");
+        // Verify no C# keywords used as variable names in output
+        refactored.RefactoredCode.Should().NotContainEquivalentOf("int return =");
+        refactored.RefactoredCode.Should().NotContainEquivalentOf("var return =");
+    }
+
+    /// <summary>
+    /// Integration test verifying Extract Method produces valid code without keyword conflicts.
+    /// NOTE: This test verifies end-to-end behavior, not the keyword checking logic directly.
+    /// See ReturnValueAnalyzerTests for comprehensive keyword collision unit tests.
+    /// Related to Issue #53.
+    /// </summary>
+    [Fact]
+    public void Execute_ExtractMethod_ShouldProduceValidIdentifiers()
+    {
+        // Arrange - Extract string-returning method
+        var sourceCode = @"
+public class Test
+{
+    public string Method()
+    {
+        if (true)
+            return ""MyClass"";
+        return """";
+    }
+}";
+        var extractor = new ExtractMethod();
+
+        // Act
+        var refactored = extractor.Execute(sourceCode, 7, 9, "GetClassName", "net8.0");
+
+        // Assert - Verify valid C# code is generated
+        refactored.IsSuccess.Should().BeTrue();
+        refactored.RefactoredCode.Should().Contain("private string GetClassName");
+        // Verify 'class' keyword not used as identifier
+        refactored.RefactoredCode.Should().NotContainEquivalentOf("string class =");
+        refactored.RefactoredCode.Should().NotContainEquivalentOf("var class =");
+    }
+
+    /// <summary>
+    /// Integration test verifying that Extract Method handles existing variable collisions correctly.
+    /// Tests that when result1 exists in scope, the generated variable name avoids the collision.
+    /// Related to Issue #53.
+    /// </summary>
+    [Fact]
+    public void Execute_WithExistingVariableCollision_ShouldGenerateUniqueIdentifier()
+    {
+        // Arrange - Existing variable result1 in scope
+        var sourceCode = @"
+public class Test
+{
+    public int Method()
+    {
+        int result1 = 10;  // Existing variable
+        if (result1 > 5)
+            return 42;
+        return 0;
+    }
+}";
+        var extractor = new ExtractMethod();
+
+        // Act
+        var refactored = extractor.Execute(sourceCode, 8, 10, "CheckValue", "net8.0");
+
+        // Assert - Should avoid collision with existing result1
+        refactored.IsSuccess.Should().BeTrue();
+        refactored.RefactoredCode.Should().Contain("private int CheckValue");
+        // Since 'result' doesn't conflict, should use it (not result1 which exists)
+        refactored.RefactoredCode.Should().Contain("result = CheckValue");
+        // Verify we don't use the existing variable name
+        refactored.RefactoredCode.Should().NotContain("result1 = CheckValue");
+    }
+
+    #endregion
+
     #endregion
 }
