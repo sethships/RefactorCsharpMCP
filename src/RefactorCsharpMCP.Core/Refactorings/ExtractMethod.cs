@@ -239,8 +239,9 @@ public class ExtractMethod : RefactoringBase
         }
 
         // Detect return type based on data flow and control flow
-        var returnAnalyzer = new ReturnValueAnalyzer();
-        dataFlow.ReturnInfo = returnAnalyzer.DetectReturnType(dataFlow, statements, semanticModel);
+        var returnAnalyzer = new ReturnValueAnalyzer(Logger);
+        var position = statements.First().SpanStart;
+        dataFlow.ReturnInfo = returnAnalyzer.DetectReturnType(dataFlow, statements, semanticModel, position);
 
         return dataFlow;
     }
@@ -348,6 +349,10 @@ public class ExtractMethod : RefactoringBase
     /// Builds the method call statement that replaces the extracted code.
     /// Handles void, single return, and tuple returns.
     /// </summary>
+    /// <param name="methodName">The name of the method to call.</param>
+    /// <param name="parameters">The list of parameters to pass to the method call.</param>
+    /// <param name="returnInfo">Information about the return type; determines how the call is structured.</param>
+    /// <returns>A statement syntax node representing the method call with appropriate return handling.</returns>
     private StatementSyntax BuildMethodCall(string methodName, List<ParameterInfo> parameters, ReturnTypeInfo? returnInfo)
     {
         var arguments = SyntaxFactory.ArgumentList(

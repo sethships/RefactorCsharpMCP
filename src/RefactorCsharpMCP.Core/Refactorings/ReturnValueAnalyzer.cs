@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.Extensions.Logging;
 
 namespace RefactorCsharpMCP.Core.Refactorings;
 
@@ -9,18 +10,32 @@ namespace RefactorCsharpMCP.Core.Refactorings;
 /// </summary>
 internal class ReturnValueAnalyzer
 {
+    private readonly ILogger? _logger;
+
+    /// <summary>
+    /// Initializes a new instance of the ReturnValueAnalyzer class.
+    /// </summary>
+    /// <param name="logger">Optional logger for diagnostic output.</param>
+    public ReturnValueAnalyzer(ILogger? logger = null)
+    {
+        _logger = logger;
+    }
     /// <summary>
     /// Detects the return type needed for an extracted method based on data flow and control flow analysis.
     /// </summary>
     /// <param name="dataFlowInfo">Data flow analysis results containing output variables.</param>
     /// <param name="statements">The statements being extracted.</param>
     /// <param name="semanticModel">Semantic model for type information.</param>
+    /// <param name="position">Position in source code to check for symbol conflicts.</param>
     /// <returns>Information about the required return type.</returns>
     public ReturnTypeInfo DetectReturnType(
         DataFlowInfo dataFlowInfo,
         List<StatementSyntax> statements,
-        SemanticModel semanticModel)
+        SemanticModel semanticModel,
+        int position)
     {
+        _logger?.LogDebug("Analyzing return type for {StatementCount} statements", statements.Count);
+
         // Check for explicit return statements first
         var returnStatements = GetReturnStatements(statements);
         var hasExplicitReturns = returnStatements.Any();
@@ -28,10 +43,16 @@ internal class ReturnValueAnalyzer
         // Analyze output variables from data flow
         var outputVariables = dataFlowInfo.OutputVariables ?? new List<string>();
 
+        _logger?.LogDebug(
+            "Found {ExplicitReturns} explicit returns, {OutputVars} output variables",
+            returnStatements.Count,
+            outputVariables.Count);
+
         // Decision logic
         if (!hasExplicitReturns && !outputVariables.Any())
         {
             // No returns, no outputs → void
+            _logger?.LogDebug("Detected void return (no returns, no outputs)");
             return new ReturnTypeInfo
             {
                 Kind = ReturnKind.Void
@@ -41,10 +62,12 @@ internal class ReturnValueAnalyzer
         if (hasExplicitReturns)
         {
             // Has explicit returns - analyze return expressions
-            return AnalyzeExplicitReturns(returnStatements, semanticModel);
+            _logger?.LogDebug("Analyzing explicit return statements");
+            return AnalyzeExplicitReturns(returnStatements, semanticModel, position);
         }
 
         // Has output variables but no explicit returns
+        _logger?.LogDebug("Analyzing output variables for return type");
         return AnalyzeOutputVariables(outputVariables, dataFlowInfo.Parameters, semanticModel);
     }
 
@@ -69,7 +92,8 @@ internal class ReturnValueAnalyzer
     /// </summary>
     private ReturnTypeInfo AnalyzeExplicitReturns(
         List<ReturnStatementSyntax> returnStatements,
-        SemanticModel semanticModel)
+        SemanticModel semanticModel,
+        int position)
     {
         // Get return expressions (filter out void returns like "return;")
         var returnExpressions = returnStatements
@@ -80,6 +104,7 @@ internal class ReturnValueAnalyzer
         if (!returnExpressions.Any())
         {
             // All returns are "return;" with no value → void
+            _logger?.LogDebug("All return statements are void (no expressions)");
             return new ReturnTypeInfo { Kind = ReturnKind.Void };
         }
 
@@ -89,9 +114,12 @@ internal class ReturnValueAnalyzer
             .Where(t => t != null)
             .ToList();
 
+        _logger?.LogDebug("Analyzed {TypeCount} return types", returnTypes.Count);
+
         if (!returnTypes.Any())
         {
             // Couldn't determine types - default to void
+            _logger?.LogWarning("Could not determine return types from expressions");
             return new ReturnTypeInfo { Kind = ReturnKind.Void };
         }
 
@@ -102,22 +130,26 @@ internal class ReturnValueAnalyzer
         if (allSameType)
         {
             // Single consistent return type
+            _logger?.LogDebug("Single consistent return type: {TypeName}", firstType?.Name);
             return new ReturnTypeInfo
             {
                 Kind = ReturnKind.Single,
-                SingleReturnType = firstType!.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                SingleReturnName = "result" // Default name
+                SingleReturnType = firstType?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ?? "object",
+                SingleReturnName = GenerateUniqueVariableName("result", semanticModel, position)
             };
         }
 
         // Multiple different return types - would need tuple or complex refactoring
         // For now, treat as single with most common/first type
         // TODO: Consider if we should support tuple returns from mixed return statements
+        _logger?.LogWarning(
+            "Mixed return types detected, using first type: {TypeName}",
+            firstType?.Name ?? "unknown");
         return new ReturnTypeInfo
         {
             Kind = ReturnKind.Single,
-            SingleReturnType = firstType!.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-            SingleReturnName = "result"
+            SingleReturnType = firstType?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ?? "object",
+            SingleReturnName = GenerateUniqueVariableName("result", semanticModel, position)
         };
     }
 
@@ -175,6 +207,46 @@ internal class ReturnValueAnalyzer
             Kind = ReturnKind.Multiple,
             MultipleReturns = tupleElements
         };
+    }
+
+    /// <summary>
+    /// Generates a unique variable name that doesn't conflict with existing variables in scope.
+    /// </summary>
+    /// <param name="baseName">The preferred base name (e.g., "result").</param>
+    /// <param name="semanticModel">Semantic model for symbol lookup.</param>
+    /// <param name="position">Position in source to check scope.</param>
+    /// <returns>A unique variable name that won't conflict with existing symbols.</returns>
+    private string GenerateUniqueVariableName(
+        string baseName,
+        SemanticModel semanticModel,
+        int position)
+    {
+        _logger?.LogDebug("Generating unique variable name from base: {BaseName}", baseName);
+
+        // Get all symbols in scope at the given position
+        var symbolsInScope = semanticModel.LookupSymbols(position);
+        var existingNames = new HashSet<string>(
+            symbolsInScope.Select(s => s.Name),
+            StringComparer.Ordinal);
+
+        // If base name doesn't conflict, use it
+        if (!existingNames.Contains(baseName))
+        {
+            _logger?.LogDebug("Base name '{BaseName}' is unique, using it", baseName);
+            return baseName;
+        }
+
+        // Generate unique name: result1, result2, etc.
+        int counter = 1;
+        string candidateName;
+        do
+        {
+            candidateName = $"{baseName}{counter}";
+            counter++;
+        } while (existingNames.Contains(candidateName));
+
+        _logger?.LogDebug("Generated unique name: {UniqueName} (base: {BaseName})", candidateName, baseName);
+        return candidateName;
     }
 }
 

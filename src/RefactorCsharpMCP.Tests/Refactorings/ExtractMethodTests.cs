@@ -994,5 +994,94 @@ public class TestClass
 
     #endregion
 
+    #region CR Issue Tests (Issues #1, #4 from PR #50)
+
+    [Fact]
+    public void Execute_WithExplicitReturnAndResultInScope_ShouldGenerateUniqueNames()
+    {
+        // Test variable collision detection with explicit returns (Issue #4)
+        // Arrange
+        var sourceCode = @"
+public class Test
+{
+    public int Method()
+    {
+        int result = 10;  // Existing variable named 'result'
+        if (result > 5)
+            return 42;
+        return 0;
+    }
+}";
+        var extractor = new ExtractMethod();
+
+        // Act
+        var refactored = extractor.Execute(sourceCode, 7, 9, "CheckValue", "net8.0");
+
+        // Assert
+        refactored.IsSuccess.Should().BeTrue();
+        // Since 'result' exists in scope, should use 'result1' for the return value
+        refactored.RefactoredCode.Should().Contain("result1 = CheckValue"); // Should avoid collision
+        refactored.RefactoredCode.Should().Contain("private int CheckValue");
+    }
+
+    [Fact]
+    public void Execute_WithExplicitReturnAndMultipleResultVariants_ShouldIncrementCounter()
+    {
+        // Test multiple collision scenarios with explicit returns (Issue #4)
+        // Arrange
+        var sourceCode = @"
+public class Test
+{
+    public int Method()
+    {
+        int result = 1;
+        int result1 = 2;
+        if (result > 0)
+            return 100;
+        return 0;
+    }
+}";
+        var extractor = new ExtractMethod();
+
+        // Act
+        var refactored = extractor.Execute(sourceCode, 8, 10, "GetValue", "net8.0");
+
+        // Assert
+        refactored.IsSuccess.Should().BeTrue();
+        // Should skip to result2 since result and result1 exist
+        refactored.RefactoredCode.Should().Contain("result2 = GetValue");
+        refactored.RefactoredCode.Should().Contain("private int GetValue");
+    }
+
+    [Fact]
+    public void Execute_WithExplicitReturnNoConflict_ShouldUseBaseName()
+    {
+        // Test that 'result' is used when no conflict exists (Issue #4)
+        // Arrange
+        var sourceCode = @"
+public class Test
+{
+    public int Method()
+    {
+        int x = 5;
+        if (x > 0)
+            return 42;
+        return 0;
+    }
+}";
+        var extractor = new ExtractMethod();
+
+        // Act
+        var refactored = extractor.Execute(sourceCode, 7, 9, "GetValue", "net8.0");
+
+        // Assert
+        refactored.IsSuccess.Should().BeTrue();
+        // When no conflict, should use 'result' (not result1)
+        refactored.RefactoredCode.Should().Contain("result = GetValue");
+        refactored.RefactoredCode.Should().Contain("private int GetValue");
+    }
+
+    #endregion
+
     #endregion
 }
