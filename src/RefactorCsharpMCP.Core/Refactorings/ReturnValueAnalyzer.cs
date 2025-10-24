@@ -13,9 +13,10 @@ internal class ReturnValueAnalyzer
     private readonly ILogger? _logger;
 
     /// <summary>
-    /// C# reserved keywords that cannot be used as variable names (80 keywords per Roslyn IsReservedKeyword).
+    /// C# reserved keywords that cannot be used as variable names.
+    /// Contains 77 standard keywords plus 4 special low-level keywords (81 total).
     /// </summary>
-    private static readonly HashSet<string> CSharpKeywords = new(80, StringComparer.Ordinal)
+    private static readonly HashSet<string> CSharpKeywords = new(81, StringComparer.Ordinal)
     {
         "abstract", "as", "base", "bool", "break", "byte", "case", "catch", "char",
         "checked", "class", "const", "continue", "decimal", "default", "delegate",
