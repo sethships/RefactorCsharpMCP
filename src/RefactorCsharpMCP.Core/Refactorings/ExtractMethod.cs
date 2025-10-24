@@ -30,7 +30,7 @@ public class ExtractMethod : RefactoringBase
         return await ExecuteWithValidationAsync(
             sourceCode,
             targetFramework,
-            async () => await Task.Run(() => Execute(sourceCode, startLine, endLine, newMethodName)));
+            async () => await Task.Run(() => Execute(sourceCode, startLine, endLine, newMethodName, targetFramework)));
     }
 
     /// <summary>
@@ -41,8 +41,9 @@ public class ExtractMethod : RefactoringBase
     /// <param name="startLine">The starting line number (1-based) of the code to extract.</param>
     /// <param name="endLine">The ending line number (1-based) of the code to extract.</param>
     /// <param name="newMethodName">The name for the new extracted method.</param>
+    /// <param name="targetFramework">The target framework moniker (e.g., "net8.0", "net48"). Defaults to "net8.0".</param>
     /// <returns>A result containing the refactored code or error information.</returns>
-    public RefactoringResult Execute(string sourceCode, int startLine, int endLine, string newMethodName)
+    public RefactoringResult Execute(string sourceCode, int startLine, int endLine, string newMethodName, string targetFramework = "net8.0")
     {
         // Validate inputs
         var sourceValidation = ValidateNonEmpty(sourceCode, "Source code");
@@ -98,11 +99,12 @@ public class ExtractMethod : RefactoringBase
                 newMethodName,
                 statementsToExtract,
                 dataFlowAnalysis,
-                containingMethod
+                containingMethod,
+                targetFramework
             );
 
             // Build the method call to replace the extracted statements
-            var methodCall = BuildMethodCall(newMethodName, dataFlowAnalysis.Parameters);
+            var methodCall = BuildMethodCall(newMethodName, dataFlowAnalysis.Parameters, dataFlowAnalysis.ReturnInfo);
 
             // Find the containing class to insert the new method
             var containingClass = containingMethod.FirstAncestorOrSelf<ClassDeclarationSyntax>();
@@ -236,6 +238,11 @@ public class ExtractMethod : RefactoringBase
             System.Diagnostics.Debug.WriteLine($"Data flow analysis failed: {ex.Message}");
         }
 
+        // Detect return type based on data flow and control flow
+        var returnAnalyzer = new ReturnValueAnalyzer(Logger);
+        var position = statements.First().SpanStart;
+        dataFlow.ReturnInfo = returnAnalyzer.DetectReturnType(dataFlow, statements, semanticModel, position);
+
         return dataFlow;
     }
 
@@ -268,8 +275,12 @@ public class ExtractMethod : RefactoringBase
         string methodName,
         List<StatementSyntax> statements,
         DataFlowInfo dataFlowInfo,
-        MethodDeclarationSyntax containingMethod)
+        MethodDeclarationSyntax containingMethod,
+        string targetFramework)
     {
+        // Get language version for framework-aware syntax generation
+        var languageVersion = Infrastructure.FrameworkSupport.FrameworkMoniker.GetLanguageVersion(targetFramework);
+
         // Build parameter list
         var parameters = SyntaxFactory.ParameterList(
             SyntaxFactory.SeparatedList(
@@ -280,8 +291,8 @@ public class ExtractMethod : RefactoringBase
             )
         );
 
-        // For now, use void return type (enhancement: detect return type from data flow)
-        var returnType = SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.VoidKeyword));
+        // Generate framework-aware return type based on data flow analysis
+        var returnType = GenerateReturnType(dataFlowInfo.ReturnInfo, languageVersion);
 
         // Check if containing method is static
         bool isStatic = containingMethod.Modifiers.Any(m => m.IsKind(SyntaxKind.StaticKeyword));
@@ -298,6 +309,13 @@ public class ExtractMethod : RefactoringBase
 
         // Combine local declarations with extracted statements
         var allStatements = localDeclarations.Concat(statements).ToList();
+
+        // Add return statement if method has return value
+        if (dataFlowInfo.ReturnInfo != null && dataFlowInfo.ReturnInfo.Kind != ReturnKind.Void)
+        {
+            var returnStatement = GenerateReturnStatement(dataFlowInfo.ReturnInfo);
+            allStatements.Add(returnStatement);
+        }
 
         // Build method body with the extracted statements
         var body = SyntaxFactory.Block(allStatements);
@@ -327,7 +345,15 @@ public class ExtractMethod : RefactoringBase
             .WithTrailingTrivia(SyntaxFactory.CarriageReturnLineFeed);
     }
 
-    private StatementSyntax BuildMethodCall(string methodName, List<ParameterInfo> parameters)
+    /// <summary>
+    /// Builds the method call statement that replaces the extracted code.
+    /// Handles void, single return, and tuple returns.
+    /// </summary>
+    /// <param name="methodName">The name of the method to call.</param>
+    /// <param name="parameters">The list of parameters to pass to the method call.</param>
+    /// <param name="returnInfo">Information about the return type; determines how the call is structured.</param>
+    /// <returns>A statement syntax node representing the method call with appropriate return handling.</returns>
+    private StatementSyntax BuildMethodCall(string methodName, List<ParameterInfo> parameters, ReturnTypeInfo? returnInfo)
     {
         var arguments = SyntaxFactory.ArgumentList(
             SyntaxFactory.SeparatedList(
@@ -342,6 +368,44 @@ public class ExtractMethod : RefactoringBase
             arguments
         );
 
+        // Void method - just call it
+        if (returnInfo == null || returnInfo.Kind == ReturnKind.Void)
+        {
+            return SyntaxFactory.ExpressionStatement(invocation);
+        }
+
+        // Single return value - assign to variable
+        if (returnInfo.Kind == ReturnKind.Single)
+        {
+            var variableName = returnInfo.SingleReturnName ?? "result";
+            var assignment = SyntaxFactory.AssignmentExpression(
+                SyntaxKind.SimpleAssignmentExpression,
+                SyntaxFactory.IdentifierName(variableName),
+                invocation
+            );
+            return SyntaxFactory.ExpressionStatement(assignment);
+        }
+
+        // Multiple return values - tuple deconstruction
+        if (returnInfo.Kind == ReturnKind.Multiple)
+        {
+            var tupleElements = returnInfo.MultipleReturns
+                .Select(r => SyntaxFactory.Argument(
+                    SyntaxFactory.IdentifierName(r.Name)))
+                .ToArray();
+
+            var tupleExpression = SyntaxFactory.TupleExpression(
+                SyntaxFactory.SeparatedList(tupleElements));
+
+            var assignment = SyntaxFactory.AssignmentExpression(
+                SyntaxKind.SimpleAssignmentExpression,
+                tupleExpression,
+                invocation
+            );
+            return SyntaxFactory.ExpressionStatement(assignment);
+        }
+
+        // Fallback - void call
         return SyntaxFactory.ExpressionStatement(invocation);
     }
 
@@ -374,16 +438,104 @@ public class ExtractMethod : RefactoringBase
         return method.WithBody(SyntaxFactory.Block(newStatements));
     }
 
-    private class DataFlowInfo
+    /// <summary>
+    /// Generates the return type syntax for the extracted method based on return info and language version.
+    /// </summary>
+    /// <param name="returnInfo">Information about the return type detected from data flow analysis.</param>
+    /// <param name="languageVersion">The C# language version for framework compatibility.</param>
+    /// <returns>A TypeSyntax representing the return type.</returns>
+    private TypeSyntax GenerateReturnType(ReturnTypeInfo? returnInfo, LanguageVersion languageVersion)
     {
-        public List<ParameterInfo> Parameters { get; set; } = new();
-        public List<string> OutputVariables { get; set; } = new();
-        public List<ParameterInfo> AssignedOutsideVariables { get; set; } = new();
+        // Default to void if no return info available
+        if (returnInfo == null || returnInfo.Kind == ReturnKind.Void)
+        {
+            return SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.VoidKeyword));
+        }
+
+        // Handle single return value
+        if (returnInfo.Kind == ReturnKind.Single)
+        {
+            var typeString = returnInfo.SingleReturnType ?? "object";
+            return SyntaxFactory.ParseTypeName(typeString);
+        }
+
+        // Handle multiple return values (tuple)
+        if (returnInfo.Kind == ReturnKind.Multiple)
+        {
+            // Validate tuple support - requires C# 7.0+
+            if (languageVersion < LanguageVersion.CSharp7)
+            {
+                // Fallback to void for frameworks that don't support tuples
+                // In future, this could throw an error or use out parameters
+                return SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.VoidKeyword));
+            }
+
+            // Build value tuple type: (int x, string y)
+            var tupleElements = returnInfo.MultipleReturns
+                .Select(r => SyntaxFactory.TupleElement(
+                    SyntaxFactory.ParseTypeName(r.Type),
+                    SyntaxFactory.Identifier(r.Name)))
+                .ToArray();
+
+            return SyntaxFactory.TupleType(
+                SyntaxFactory.SeparatedList(tupleElements));
+        }
+
+        // Fallback to void
+        return SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.VoidKeyword));
     }
 
-    private class ParameterInfo
+    /// <summary>
+    /// Generates the return statement for the extracted method based on return info.
+    /// </summary>
+    /// <param name="returnInfo">Information about what should be returned.</param>
+    /// <returns>A return statement syntax node.</returns>
+    private StatementSyntax GenerateReturnStatement(ReturnTypeInfo returnInfo)
     {
-        public string Name { get; set; } = string.Empty;
-        public string Type { get; set; } = "object";
+        // Single return value
+        if (returnInfo.Kind == ReturnKind.Single)
+        {
+            var variableName = returnInfo.SingleReturnName ?? "result";
+            return SyntaxFactory.ReturnStatement(
+                SyntaxFactory.IdentifierName(variableName));
+        }
+
+        // Multiple return values (tuple)
+        if (returnInfo.Kind == ReturnKind.Multiple)
+        {
+            var tupleArguments = returnInfo.MultipleReturns
+                .Select(r => SyntaxFactory.Argument(
+                    SyntaxFactory.IdentifierName(r.Name)))
+                .ToArray();
+
+            var tupleExpression = SyntaxFactory.TupleExpression(
+                SyntaxFactory.SeparatedList(tupleArguments));
+
+            return SyntaxFactory.ReturnStatement(tupleExpression);
+        }
+
+        // Fallback - no return (shouldn't reach here)
+        throw new InvalidOperationException("Cannot generate return statement for void return type");
     }
+
+}
+
+/// <summary>
+/// Contains data flow analysis results for code extraction.
+/// </summary>
+internal class DataFlowInfo
+{
+    public List<ParameterInfo> Parameters { get; set; } = new();
+    public List<string> OutputVariables { get; set; } = new();
+    public List<ParameterInfo> AssignedOutsideVariables { get; set; } = new();
+    public ReturnTypeInfo? ReturnInfo { get; set; }
+}
+
+/// <summary>
+/// Represents a parameter with its name and type.
+/// </summary>
+internal class ParameterInfo
+{
+    public string Name { get; set; } = string.Empty;
+    public string Type { get; set; } = "object";
 }
