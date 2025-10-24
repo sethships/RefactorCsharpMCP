@@ -13,9 +13,9 @@ internal class ReturnValueAnalyzer
     private readonly ILogger? _logger;
 
     /// <summary>
-    /// C# reserved keywords that cannot be used as variable names.
+    /// C# reserved keywords that cannot be used as variable names (80 keywords per Roslyn IsReservedKeyword).
     /// </summary>
-    private static readonly HashSet<string> CSharpKeywords = new(StringComparer.Ordinal)
+    private static readonly HashSet<string> CSharpKeywords = new(80, StringComparer.Ordinal)
     {
         "abstract", "as", "base", "bool", "break", "byte", "case", "catch", "char",
         "checked", "class", "const", "continue", "decimal", "default", "delegate",
@@ -26,7 +26,8 @@ internal class ReturnValueAnalyzer
         "protected", "public", "readonly", "ref", "return", "sbyte", "sealed",
         "short", "sizeof", "stackalloc", "static", "string", "struct", "switch",
         "this", "throw", "true", "try", "typeof", "uint", "ulong", "unchecked",
-        "unsafe", "ushort", "using", "virtual", "void", "volatile", "while"
+        "unsafe", "ushort", "using", "virtual", "void", "volatile", "while",
+        "__arglist", "__makeref", "__reftype", "__refvalue"
     };
 
     /// <summary>
@@ -227,13 +228,13 @@ internal class ReturnValueAnalyzer
     }
 
     /// <summary>
-    /// Generates a unique variable name that doesn't conflict with existing variables in scope.
+    /// Generates a unique variable name that doesn't conflict with existing variables in scope or C# keywords.
     /// </summary>
     /// <param name="baseName">The preferred base name (e.g., "result").</param>
     /// <param name="semanticModel">Semantic model for symbol lookup.</param>
     /// <param name="position">Position in source to check scope.</param>
-    /// <returns>A unique variable name that won't conflict with existing symbols.</returns>
-    private string GenerateUniqueVariableName(
+    /// <returns>A unique variable name that won't conflict with existing symbols or keywords.</returns>
+    internal string GenerateUniqueVariableName(
         string baseName,
         SemanticModel semanticModel,
         int position)
