@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.Extensions.Logging;
@@ -13,6 +14,7 @@ public class DiagnosticAnalyzer
 {
     private readonly ReferenceAssemblyResolver _referenceResolver;
     private readonly ILogger? _logger;
+    private readonly ConditionalWeakTable<SyntaxTree, CSharpCompilation> _compilationCache = new();
 
     /// <summary>
     /// Creates a new DiagnosticAnalyzer instance.
@@ -86,6 +88,7 @@ public class DiagnosticAnalyzer
 
     /// <summary>
     /// Creates a framework-aware CSharpCompilation for diagnostic analysis.
+    /// Uses caching to improve performance for repeated analysis of the same source code.
     /// </summary>
     private async Task<CSharpCompilation> CreateCompilationAsync(string sourceCode, string targetFramework)
     {
@@ -101,6 +104,15 @@ public class DiagnosticAnalyzer
 
         // Parse source code
         var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode, parseOptions);
+
+        // Check cache first for performance
+        if (_compilationCache.TryGetValue(syntaxTree, out var cachedCompilation))
+        {
+            _logger?.LogDebug("Using cached compilation for diagnostic analysis");
+            return cachedCompilation;
+        }
+
+        _logger?.LogDebug("Creating new compilation for diagnostic analysis");
 
         // Get framework-specific metadata references
         var references = await _referenceResolver.GetReferenceAssembliesAsync(targetFramework);
@@ -118,6 +130,9 @@ public class DiagnosticAnalyzer
             syntaxTrees: new[] { syntaxTree },
             references: references,
             options: compilationOptions);
+
+        // Cache the compilation for future use
+        _compilationCache.AddOrUpdate(syntaxTree, compilation);
 
         return compilation;
     }
@@ -195,6 +210,19 @@ public class DiagnosticAnalyzer
     /// <summary>
     /// Maps a diagnostic ID to applicable refactoring tools.
     /// </summary>
+    /// <param name="diagnosticId">The Roslyn diagnostic ID (e.g., "IDE0005", "CS8019").</param>
+    /// <returns>List of refactoring tool names that can fix the diagnostic.</returns>
+    /// <remarks>
+    /// <para>
+    /// Current implementation uses hard-coded mappings for simplicity and performance.
+    /// </para>
+    /// <para>
+    /// Future Enhancement: Consider extracting these mappings to a JSON configuration file
+    /// or DiagnosticMappingRegistry class to allow runtime extensibility without code changes.
+    /// This would enable plugin-style additions of new diagnostic-to-refactoring mappings.
+    /// See docs/FUTURE-ROADMAP.md for architectural design details.
+    /// </para>
+    /// </remarks>
     private List<string> MapDiagnosticToRefactorings(string diagnosticId)
     {
         return diagnosticId switch
@@ -212,6 +240,15 @@ public class DiagnosticAnalyzer
             "IDE0022" => new List<string> { "inline_method" },
 
             // No applicable refactorings
+            // TODO: Future diagnostic mappings to consider:
+            // - IDE0001: Simplify name
+            // - IDE0002: Simplify member access
+            // - IDE0003/IDE0009: Add/remove 'this' qualifier
+            // - IDE0017: Use object initializers
+            // - IDE0028: Use collection initializers
+            // - CA1031: Do not catch general exception types
+            // - CA1062: Validate parameter null checks
+            // - CA1303: Do not pass literals as localized parameters
             _ => new List<string>()
         };
     }

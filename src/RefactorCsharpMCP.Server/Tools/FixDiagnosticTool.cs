@@ -62,6 +62,17 @@ public class FixDiagnosticTool
             };
         }
 
+        // Validate diagnostic ID pattern
+        if (!IsValidDiagnosticIdPattern(diagnosticId, out var validationError))
+        {
+            return new
+            {
+                success = false,
+                error = validationError,
+                message = $"Fix failed: {validationError}"
+            };
+        }
+
         if (string.IsNullOrWhiteSpace(targetFramework))
         {
             return new
@@ -84,9 +95,14 @@ public class FixDiagnosticTool
                 "IDE0044" => await FixReadonlyField(sourceCode, line, column, targetFramework),
 
                 // Unsupported diagnostic
+                // TODO: Add support for additional diagnostics in future versions:
+                // - IDE0001, IDE0002: Simplify name/member access
+                // - IDE0022: Use expression body
+                // - CA diagnostics: Code analysis rules
                 _ => RefactoringResult.Failure(
                     $"No refactoring available for diagnostic '{diagnosticId}'. " +
-                    $"Supported diagnostics: IDE0005 (unused usings), CS8019 (unused usings), IDE0044 (readonly fields).")
+                    $"Supported diagnostics: IDE0005 (unused usings), CS8019 (unused usings), IDE0044 (readonly fields). " +
+                    "See documentation for planned diagnostic support.")
             };
 
             // Return result
@@ -148,7 +164,24 @@ public class FixDiagnosticTool
 
         // Convert 1-based line/column to 0-based position
         var linePosition = new Microsoft.CodeAnalysis.Text.LinePosition(line - 1, column - 1);
-        var position = syntaxTree.GetText().Lines[linePosition.Line].Start + linePosition.Character;
+        var lines = syntaxTree.GetText().Lines;
+
+        // Validate line number is within bounds
+        if (linePosition.Line < 0 || linePosition.Line >= lines.Count)
+        {
+            return RefactoringResult.Failure(
+                $"Line {line} is out of range. File has {lines.Count} line(s).");
+        }
+
+        // Validate column position is within line length
+        var targetLine = lines[linePosition.Line];
+        if (linePosition.Character < 0 || linePosition.Character > targetLine.Span.Length)
+        {
+            return RefactoringResult.Failure(
+                $"Column {column} is out of range for line {line} (line length: {targetLine.Span.Length}).");
+        }
+
+        var position = targetLine.Start + linePosition.Character;
 
         // Find the field declaration at this position
         var node = root.FindNode(new Microsoft.CodeAnalysis.Text.TextSpan(position, 1));
@@ -198,5 +231,34 @@ public class FixDiagnosticTool
             "IDE0044" => "make_field_readonly",
             _ => "unknown"
         };
+    }
+
+    /// <summary>
+    /// Validates that the diagnostic ID follows expected patterns.
+    /// </summary>
+    /// <param name="diagnosticId">The diagnostic ID to validate.</param>
+    /// <param name="error">Output parameter containing the error message if validation fails.</param>
+    /// <returns>True if the diagnostic ID is valid; otherwise, false.</returns>
+    private static bool IsValidDiagnosticIdPattern(string diagnosticId, out string error)
+    {
+        if (string.IsNullOrWhiteSpace(diagnosticId))
+        {
+            error = "Diagnostic ID cannot be empty";
+            return false;
+        }
+
+        // Valid patterns: IDE####, CS####, CA####
+        if (!System.Text.RegularExpressions.Regex.IsMatch(
+            diagnosticId,
+            @"^(IDE|CS|CA)\d{4}$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+        {
+            error = $"Diagnostic ID '{diagnosticId}' does not match expected pattern (IDE####, CS####, or CA####). " +
+                    "Examples: IDE0005, CS8019, CA1031";
+            return false;
+        }
+
+        error = string.Empty;
+        return true;
     }
 }

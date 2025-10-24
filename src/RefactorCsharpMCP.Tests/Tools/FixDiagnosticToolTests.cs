@@ -245,4 +245,50 @@ public class Test
         var doc = JsonDocument.Parse(json);
         doc.RootElement.GetProperty("success").GetBoolean().Should().BeFalse();
     }
+
+    [Fact]
+    public async Task FixDiagnostic_WithOutOfBoundsLine_ShouldReturnError()
+    {
+        // Arrange
+        var tool = new FixDiagnosticTool();
+        var sourceCode = @"
+public class Test
+{
+    private int _value;
+}";
+
+        // Act - Line number beyond end of file (file has ~5 lines, requesting line 100)
+        var result = await tool.FixDiagnostic(sourceCode, "IDE0044", 100, 1, "net8.0");
+
+        // Assert
+        result.Should().NotBeNull();
+        var json = JsonSerializer.Serialize(result);
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("success").GetBoolean().Should().BeFalse();
+        doc.RootElement.GetProperty("error").GetString().Should().Contain("out of range");
+        doc.RootElement.GetProperty("error").GetString().Should().Contain("Line 100");
+    }
+
+    [Fact]
+    public async Task FixDiagnostic_WithOutOfBoundsColumn_ShouldReturnError()
+    {
+        // Arrange
+        var tool = new FixDiagnosticTool();
+        var sourceCode = @"
+public class Test
+{
+    private int _value;
+}";
+
+        // Act - Column number beyond line length
+        var result = await tool.FixDiagnostic(sourceCode, "IDE0044", 4, 999, "net8.0");
+
+        // Assert
+        result.Should().NotBeNull();
+        var json = JsonSerializer.Serialize(result);
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("success").GetBoolean().Should().BeFalse();
+        doc.RootElement.GetProperty("error").GetString().Should().Contain("out of range");
+        doc.RootElement.GetProperty("error").GetString().Should().Contain("Column 999");
+    }
 }

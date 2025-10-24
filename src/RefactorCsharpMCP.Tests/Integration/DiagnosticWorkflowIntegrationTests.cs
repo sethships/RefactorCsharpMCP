@@ -2,16 +2,20 @@ using FluentAssertions;
 using RefactorCsharpMCP.Core.Diagnostics;
 using RefactorCsharpMCP.Core.Refactorings;
 using Microsoft.CodeAnalysis;
+using Xunit;
 
 namespace RefactorCsharpMCP.Tests.Integration;
 
 /// <summary>
 /// Integration tests for the complete diagnostic analysis → fix workflow.
 /// Tests the entire pipeline: analyze code → identify issues → apply fixes.
+/// NOTE: These tests require reference assembly downloads and may be slow or fail in CI environments.
 /// </summary>
 public class DiagnosticWorkflowIntegrationTests
 {
     [Fact]
+    [Trait("Category", "Integration")]
+    [Trait("Category", "Integration")]
     public async Task AnalyzeAndFixUnusedUsings_CompleteWorkflow_Net8()
     {
         // Arrange - Code with unused usings
@@ -50,6 +54,8 @@ public class Calculator
     }
 
     [Fact]
+    [Trait("Category", "Integration")]
+    [Trait("Category", "Integration")]
     public async Task AnalyzeAndFixReadonlyField_CompleteWorkflow_Net48()
     {
         // Arrange - Code with field that can be readonly
@@ -99,6 +105,7 @@ public class Service
     }
 
     [Fact]
+    [Trait("Category", "Integration")]
     public async Task AnalyzeCode_WithMultipleDiagnostics_ReturnsAll()
     {
         // Arrange - Code with multiple issues
@@ -139,6 +146,7 @@ public class DataProcessor
     }
 
     [Fact]
+    [Trait("Category", "Integration")]
     public async Task AnalyzeCode_WithSyntaxErrors_ReturnsErrorDiagnostics()
     {
         // Arrange - Code with syntax errors
@@ -166,6 +174,7 @@ public class BrokenClass
     }
 
     [Fact]
+    [Trait("Category", "Integration")]
     public async Task DiagnosticWorkflow_AcrossFrameworks_WorksCorrectly()
     {
         // Arrange - Simple code that works across frameworks
@@ -200,6 +209,7 @@ public class Test
     }
 
     [Fact]
+    [Trait("Category", "Integration")]
     public async Task DiagnosticInfo_ContainsLocationAndApplicableRefactorings()
     {
         // Arrange
@@ -242,6 +252,7 @@ public class Test
     }
 
     [Fact]
+    [Trait("Category", "Integration")]
     public async Task AnalyzeCode_WithNoIssues_ReturnsEmptyDiagnosticsAndSuccess()
     {
         // Arrange - Clean code with no issues
@@ -278,6 +289,7 @@ public class CleanCode
     }
 
     [Fact]
+    [Trait("Category", "Integration")]
     public async Task FixDiagnostic_WithInvalidInput_ReturnsFailure()
     {
         // Arrange
@@ -292,6 +304,7 @@ public class CleanCode
     }
 
     [Fact]
+    [Trait("Category", "Integration")]
     public async Task AnalyzeAndFix_RealWorldScenario_MultipleIssues()
     {
         // Arrange - Real-world code with multiple issues
