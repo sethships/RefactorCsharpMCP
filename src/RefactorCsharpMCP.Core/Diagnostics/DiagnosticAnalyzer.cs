@@ -240,7 +240,7 @@ public class DiagnosticAnalyzer
             "IDE0022" => new List<string> { "inline_method" },
 
             // No applicable refactorings
-            // TODO: Future diagnostic mappings to consider:
+            // TODO (#49): Future diagnostic mappings to consider:
             // - IDE0001: Simplify name
             // - IDE0002: Simplify member access
             // - IDE0003/IDE0009: Add/remove 'this' qualifier
@@ -249,6 +249,7 @@ public class DiagnosticAnalyzer
             // - CA1031: Do not catch general exception types
             // - CA1062: Validate parameter null checks
             // - CA1303: Do not pass literals as localized parameters
+            // See https://github.com/sethb75/RefactorCsharpMCP/issues/49
             _ => new List<string>()
         };
     }

@@ -95,10 +95,11 @@ public class FixDiagnosticTool
                 "IDE0044" => await FixReadonlyField(sourceCode, line, column, targetFramework),
 
                 // Unsupported diagnostic
-                // TODO: Add support for additional diagnostics in future versions:
+                // TODO (#49): Add support for additional diagnostics in future versions:
                 // - IDE0001, IDE0002: Simplify name/member access
                 // - IDE0022: Use expression body
                 // - CA diagnostics: Code analysis rules
+                // See https://github.com/sethb75/RefactorCsharpMCP/issues/49
                 _ => RefactoringResult.Failure(
                     $"No refactoring available for diagnostic '{diagnosticId}'. " +
                     $"Supported diagnostics: IDE0005 (unused usings), CS8019 (unused usings), IDE0044 (readonly fields). " +
