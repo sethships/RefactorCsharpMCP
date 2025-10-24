@@ -217,6 +217,176 @@ public class OrderService
 }
 ```
 
+## Inline Variable
+
+The Inline Variable refactoring replaces all uses of a local variable with its initialization expression, then removes the variable declaration. This helps simplify code by eliminating unnecessary intermediate variables. Maps to Roslyn diagnostics IDE0059 (unnecessary value assignment) and IDE0058 (expression value never used).
+
+### Example 1: Simple Literal Inlining
+
+**Before:**
+```csharp
+public class Calculator
+{
+    public int Calculate()
+    {
+        var multiplier = 5;
+        return GetValue() * multiplier;
+    }
+}
+```
+
+**After (inlining variable at line 5, column 13):**
+```csharp
+public class Calculator
+{
+    public int Calculate()
+    {
+        return GetValue() * 5;
+    }
+}
+```
+
+### Example 2: Method Call Inlining
+
+**Before:**
+```csharp
+public class DataProcessor
+{
+    public void ProcessData(string inputPath)
+    {
+        var data = LoadFromFile(inputPath);
+        Transform(data);
+        SaveResults(data);
+    }
+}
+```
+
+**After (inlining 'data' at line 5, column 13):**
+```csharp
+public class DataProcessor
+{
+    public void ProcessData(string inputPath)
+    {
+        Transform(LoadFromFile(inputPath));
+        SaveResults(LoadFromFile(inputPath));
+    }
+}
+```
+
+**Note:** The refactoring inlines all uses, which may duplicate method calls. Consider performance implications when inlining expensive operations.
+
+### Example 3: Expression with Operator Precedence
+
+**Before:**
+```csharp
+public class MathOperations
+{
+    public int Calculate(int a, int b)
+    {
+        var sum = a + b;
+        return sum * 2;
+    }
+}
+```
+
+**After (inlining 'sum' at line 5, column 13):**
+```csharp
+public class MathOperations
+{
+    public int Calculate(int a, int b)
+    {
+        return (a + b) * 2;
+    }
+}
+```
+
+**Note:** The refactoring automatically adds parentheses to preserve operator precedence.
+
+### Example 4: Multiple References
+
+**Before:**
+```csharp
+public class Logger
+{
+    public void LogMessage(string message)
+    {
+        var timestamp = DateTime.Now;
+        Console.WriteLine($"[{timestamp}] {message}");
+        Console.WriteLine($"[{timestamp}] Logged successfully");
+    }
+}
+```
+
+**After (inlining 'timestamp' at line 5, column 13):**
+```csharp
+public class Logger
+{
+    public void LogMessage(string message)
+    {
+        Console.WriteLine($"[{DateTime.Now}] {message}");
+        Console.WriteLine($"[{DateTime.Now}] Logged successfully");
+    }
+}
+```
+
+**Note:** All references are replaced, which may cause behavioral changes if the expression has side effects or changing values (like `DateTime.Now`).
+
+### Limitations
+
+The inline variable refactoring has specific safety checks to prevent incorrect transformations:
+
+1. **Cannot inline uninitialized variables:**
+   ```csharp
+   int x;
+   x = 5;  // Error: Variable has no initializer
+   ```
+
+2. **Cannot inline variables with multiple assignments:**
+   ```csharp
+   var x = 1;
+   x = 2;  // Error: Variable assigned after declaration
+   ```
+
+3. **Cannot inline variables with increment/decrement operators:**
+   ```csharp
+   var count = 0;
+   count++;  // Error: Variable modified with increment/decrement
+   ```
+
+4. **Cannot inline variables captured by lambdas (V1 limitation):**
+   ```csharp
+   var value = 10;
+   Action a = () => Console.WriteLine(value);  // Error: Lambda capture not supported
+   ```
+
+5. **Cannot inline parameters or fields:**
+   - Only local variables with initializers can be inlined
+   - Method parameters and class fields are not supported
+
+### MCP Tool Usage
+
+```javascript
+// Inline variable at specific location
+const result = await use_mcp_tool({
+  server_name: "refactor-csharp-mcp",
+  tool_name: "inline_variable",
+  arguments: {
+    sourceCode: "...",
+    lineNumber: 5,      // 1-based line where variable is declared
+    columnNumber: 13,   // 1-based column within the line
+    targetFramework: "net8.0"
+  }
+});
+```
+
+### Best Practices
+
+1. **Avoid inlining expensive operations** that are used multiple times, as this will duplicate the computation.
+2. **Be careful with side effects** - inlining expressions with side effects (like `DateTime.Now`, `Random.Next()`) may change behavior.
+3. **Use for single-use variables** that don't add semantic value to the code.
+4. **Review operator precedence** - while parentheses are added automatically, verify the result is semantically correct.
+5. **Consider readability trade-offs** - sometimes a well-named intermediate variable improves code clarity even if it's technically unnecessary.
+
 ## Combined Refactoring Workflow
 
 ### Starting Code
