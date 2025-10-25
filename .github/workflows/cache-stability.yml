@@ -155,15 +155,7 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `## ✅ Cache Stability Tests Passed
-
-All cache stability tests passed successfully across all platforms:
-
-- ✅ **Linux** (bash): 100% pass rate
-- ✅ **Windows** (PowerShell): 100% pass rate
-- ✅ **Windows** (WSL): 100% pass rate
-
-The cache concurrency fix remains stable!`
+              body: '## ✓ Cache Stability Tests Passed\n\nAll cache stability tests passed successfully across all platforms:\n\n- ✓ **Linux** (bash) - 100% pass rate\n- ✓ **Windows** (PowerShell) - 100% pass rate\n- ✓ **Windows** (WSL) - 100% pass rate\n\nThe cache concurrency fix remains stable!'
             })
 
       - name: Post failure comment
@@ -175,11 +167,5 @@ The cache concurrency fix remains stable!`
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `## ❌ Cache Stability Tests Failed
-
-Cache stability issues detected. Check the workflow logs for details:
-
-[View workflow run](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
-
-Test logs are available as artifacts for debugging.`
+              body: '## ✗ Cache Stability Tests Failed\n\nCache stability issues detected. Check the workflow logs for details:\n\n[View workflow run](https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/actions/runs/' + context.runId + ')\n\nTest logs are available as artifacts for debugging.'
             })
