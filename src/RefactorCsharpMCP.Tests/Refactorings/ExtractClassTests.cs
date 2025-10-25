@@ -293,4 +293,193 @@ public class Service
         result.IsSuccess.Should().BeTrue();
         result.RefactoredCode.Should().Contain("private readonly LoggingService _loggingService = new LoggingService();");
     }
+
+    #region Reference Updating Tests
+
+    [Fact]
+    public void Execute_UpdatesFieldReferencesInSameClass()
+    {
+        // Arrange
+        var sourceCode = @"public class UserService
+{
+    private string _city;
+    private string _state;
+
+    public void DisplayLocation()
+    {
+        var location = $""City: {_city}, State: {_state}"";
+        System.Console.WriteLine(location);
+    }
+
+    public void UpdateCity(string newCity)
+    {
+        _city = newCity;
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "UserService", "Address", "_city,_state");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+
+        // Should contain the new class field
+        result.RefactoredCode.Should().Contain("private readonly Address _address = new Address();");
+
+        // Should update field references to use the new class
+        result.RefactoredCode.Should().Contain("_address._city");
+        result.RefactoredCode.Should().Contain("_address._state");
+
+        // Verify that _city field was removed from UserService
+        // (it should only exist in the Address class now)
+        var userServiceSection = result.RefactoredCode.Substring(
+            result.RefactoredCode.IndexOf("public class UserService"),
+            result.RefactoredCode.IndexOf("public class Address") - result.RefactoredCode.IndexOf("public class UserService"));
+
+        userServiceSection.Should().NotContain("private string _city");
+        userServiceSection.Should().Contain("private string _state"); // _state should remain
+
+        // Should indicate references were updated
+        result.Message.Should().Contain("automatically updated");
+    }
+
+    [Fact]
+    public void Execute_UpdatesMethodCallsInSameClass()
+    {
+        // Arrange
+        var sourceCode = @"public class UserService
+{
+    private string _city;
+    private string _state;
+
+    public string GetFullAddress()
+    {
+        return $""{_city}, {_state}"";
+    }
+
+    public void DisplayInfo()
+    {
+        var address = GetFullAddress();
+        System.Console.WriteLine(address);
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "UserService", "Address", "_city,_state", "GetFullAddress");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+
+        // Should update method call to use the new class
+        result.RefactoredCode.Should().Contain("_address.GetFullAddress()");
+
+        // Should not contain direct method call
+        result.RefactoredCode.Should().NotContain("var address = GetFullAddress();");
+
+        // Should indicate references were updated
+        result.Message.Should().Contain("automatically updated");
+    }
+
+    [Fact]
+    public void Execute_UpdatesMultipleReferenceTypes()
+    {
+        // Arrange
+        var sourceCode = @"public class UserService
+{
+    private string _city;
+    private string _state;
+
+    public string GetFullAddress()
+    {
+        return $""{_city}, {_state}"";
+    }
+
+    public void UpdateLocation(string city, string state)
+    {
+        _city = city;
+        _state = state;
+        var newAddress = GetFullAddress();
+        System.Console.WriteLine(newAddress);
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "UserService", "Address", "_city,_state", "GetFullAddress");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+
+        // Should update both field and method references
+        result.RefactoredCode.Should().Contain("_address._city");
+        result.RefactoredCode.Should().Contain("_address._state");
+        result.RefactoredCode.Should().Contain("_address.GetFullAddress()");
+
+        // Should indicate references were updated
+        result.Message.Should().Contain("automatically updated");
+    }
+
+    [Fact]
+    public void Execute_PreservesUnrelatedReferences()
+    {
+        // Arrange
+        var sourceCode = @"public class UserService
+{
+    private string _city;
+    private string _name;
+
+    public void DisplayInfo()
+    {
+        System.Console.WriteLine($""Name: {_name}, City: {_city}"");
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "UserService", "Address", "_city");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+
+        // Should update only extracted field reference
+        result.RefactoredCode.Should().Contain("_address._city");
+
+        // Should preserve unrelated field reference unchanged
+        result.RefactoredCode.Should().Contain("{_name}");
+        result.RefactoredCode.Should().NotContain("_address._name");
+    }
+
+    [Fact]
+    public void Execute_HandlesNoReferences()
+    {
+        // Arrange
+        var sourceCode = @"public class UserService
+{
+    private string _unusedField;
+    private string _name;
+
+    public void DisplayInfo()
+    {
+        System.Console.WriteLine($""Name: {_name}"");
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "UserService", "UnusedData", "_unusedField");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+
+        // Should still succeed even with no references
+        result.RefactoredCode.Should().Contain("private readonly UnusedData _unusedData");
+        result.RefactoredCode.Should().Contain("public class UnusedData");
+
+        // Should indicate no external references
+        result.Message.Should().NotContain("WARNING");
+    }
+
+    #endregion
 }

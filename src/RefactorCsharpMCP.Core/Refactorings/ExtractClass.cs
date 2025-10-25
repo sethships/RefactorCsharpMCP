@@ -1,6 +1,9 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.FindSymbols;
+using Microsoft.CodeAnalysis.Text;
+using RefactorCsharpMCP.Core.Utilities;
 using RefactorCsharpMCP.Core.Validation;
 
 namespace RefactorCsharpMCP.Core.Refactorings;
@@ -10,6 +13,16 @@ namespace RefactorCsharpMCP.Core.Refactorings;
 /// </summary>
 public class ExtractClass : RefactoringBase
 {
+    private readonly SymbolResolutionHelper _symbolHelper;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ExtractClass"/> class.
+    /// </summary>
+    public ExtractClass()
+    {
+        _symbolHelper = new SymbolResolutionHelper();
+    }
+
     /// <summary>
     /// Extracts specified fields and methods into a new class with framework-aware validation.
     /// </summary>
@@ -83,6 +96,10 @@ public class ExtractClass : RefactoringBase
                 return parseResult;
             }
 
+            // Create compilation and semantic model for symbol resolution
+            var compilation = CreateCompilation(syntaxTree);
+            var semanticModel = compilation.GetSemanticModel(syntaxTree);
+
             // Find the class declaration
             var classDeclaration = FindClass(root, className);
             if (classDeclaration == null)
@@ -117,18 +134,71 @@ public class ExtractClass : RefactoringBase
                 methodsToExtractNodes.Add(methodDeclaration);
             }
 
-            // Create the new class
-            var newClass = CreateNewClass(newClassName, fieldsToExtractNodes, methodsToExtractNodes);
+            // Get symbols for extracted members BEFORE any modifications
+            var extractedSymbols = GetExtractedSymbols(semanticModel, fieldsToExtractNodes, methodsToExtractNodes);
+
+            // Create a field name for the new class instance
+            var newClassFieldName = $"_{char.ToLower(newClassName[0])}{newClassName.Substring(1)}";
+
+            // Find and categorize references BEFORE modifying the tree
+            var (sameClassReferences, externalReferences) = FindAndCategorizeReferences(
+                extractedSymbols,
+                compilation,
+                classDeclaration);
 
             // Create a field in the original class for the new class instance
-            var newClassFieldName = $"_{char.ToLower(newClassName[0])}{newClassName.Substring(1)}";
             var newClassField = CreateNewClassField(newClassName, newClassFieldName);
 
-            // Remove extracted members from original class
+            // Add the new class field to the original class FIRST
+            var membersWithField = classDeclaration.Members.Insert(0, newClassField);
+            var classWithNewField = classDeclaration.WithMembers(membersWithField);
+
+            // Replace the class in the root to get an updated root
+            root = root.ReplaceNode(classDeclaration, classWithNewField);
+
+            // Update references to use the new class field (before removing members)
+            root = UpdateSameClassReferences(
+                (CompilationUnitSyntax)root,
+                sameClassReferences,
+                extractedSymbols,
+                newClassFieldName,
+                compilation,
+                classDeclaration);
+
+            // Now find the updated class in the new root
+            classDeclaration = FindClass(root, className)!;
+
+            // Re-find the fields and methods in the updated class (since we can't use nodes from the old tree)
+            var fieldsToRemove = new List<FieldDeclarationSyntax>();
+            foreach (var fieldName in fieldsToExtract)
+            {
+                var field = FindFieldDeclaration(classDeclaration, fieldName);
+                if (field != null)
+                {
+                    fieldsToRemove.Add(field);
+                }
+            }
+
+            var methodsToRemove = new List<MethodDeclarationSyntax>();
+            foreach (var methodName in methodsToExtract)
+            {
+                var method = classDeclaration.DescendantNodes()
+                    .OfType<MethodDeclarationSyntax>()
+                    .FirstOrDefault(m => m.Identifier.Text == methodName);
+                if (method != null)
+                {
+                    methodsToRemove.Add(method);
+                }
+            }
+
+            // Create the new class with the ORIGINAL extracted member nodes
+            var newClass = CreateNewClass(newClassName, fieldsToExtractNodes, methodsToExtractNodes);
+
+            // Remove extracted members from the updated class
             var updatedClass = classDeclaration;
 
             // Remove fields
-            foreach (var field in fieldsToExtractNodes)
+            foreach (var field in fieldsToRemove)
             {
                 updatedClass = updatedClass.RemoveNode(field, SyntaxRemoveOptions.KeepNoTrivia);
                 if (updatedClass == null)
@@ -138,7 +208,7 @@ public class ExtractClass : RefactoringBase
             }
 
             // Remove methods
-            foreach (var method in methodsToExtractNodes)
+            foreach (var method in methodsToRemove)
             {
                 updatedClass = updatedClass.RemoveNode(method, SyntaxRemoveOptions.KeepNoTrivia);
                 if (updatedClass == null)
@@ -147,10 +217,7 @@ public class ExtractClass : RefactoringBase
                 }
             }
 
-            // Add new class field to original class
-            var membersWithField = updatedClass.Members.Insert(0, newClassField);
-            updatedClass = updatedClass.WithMembers(membersWithField);
-
+            // The class already has the new field from earlier, so just replace in root
             // Replace original class in root
             var newRoot = root.ReplaceNode(classDeclaration, updatedClass);
 
@@ -194,13 +261,16 @@ public class ExtractClass : RefactoringBase
             // Normalize whitespace to ensure proper formatting
             newRoot = NormalizeWhitespace(newRoot);
 
-            // Build warning message about manual updates needed
-            var warningMessage = $"Extracted {fieldsToExtract.Count} field(s) and {methodsToExtract.Count} method(s) into new class '{newClassName}'. " +
-                                $"⚠️ IMPORTANT: You must manually update all references to extracted members to use the new class instance '{newClassFieldName}'.";
+            // Build result message (warning only if external references exist)
+            var resultMessage = BuildExternalReferencesWarning(
+                externalReferences,
+                fieldsToExtract.Count,
+                methodsToExtract.Count,
+                newClassName);
 
             return RefactoringResult.Success(
                 newRoot.ToFullString(),
-                warningMessage
+                resultMessage
             );
         }
         catch (Exception ex)
@@ -262,5 +332,188 @@ public class ExtractClass : RefactoringBase
             .AddModifiers(
                 SyntaxFactory.Token(SyntaxKind.PrivateKeyword),
                 SyntaxFactory.Token(SyntaxKind.ReadOnlyKeyword));
+    }
+
+    /// <summary>
+    /// Gets symbols for extracted field and method declarations.
+    /// </summary>
+    private List<ISymbol> GetExtractedSymbols(
+        SemanticModel semanticModel,
+        List<FieldDeclarationSyntax> fieldDeclarations,
+        List<MethodDeclarationSyntax> methodDeclarations)
+    {
+        var symbols = new List<ISymbol>();
+
+        // Get field symbols
+        foreach (var field in fieldDeclarations)
+        {
+            foreach (var variable in field.Declaration.Variables)
+            {
+                var symbol = semanticModel.GetDeclaredSymbol(variable);
+                if (symbol != null)
+                {
+                    symbols.Add(symbol);
+                }
+            }
+        }
+
+        // Get method symbols
+        foreach (var method in methodDeclarations)
+        {
+            var symbol = semanticModel.GetDeclaredSymbol(method);
+            if (symbol != null)
+            {
+                symbols.Add(symbol);
+            }
+        }
+
+        return symbols;
+    }
+
+    /// <summary>
+    /// Finds all references to extracted members and categorizes them.
+    /// </summary>
+    private (List<Location> sameClassReferences, List<Location> externalReferences) FindAndCategorizeReferences(
+        List<ISymbol> extractedSymbols,
+        Compilation compilation,
+        ClassDeclarationSyntax sourceClass)
+    {
+        var sameClassReferences = new List<Location>();
+        var externalReferences = new List<Location>();
+
+        foreach (var symbol in extractedSymbols)
+        {
+            var references = _symbolHelper.GetAllReferences(symbol, compilation);
+
+            foreach (var location in references)
+            {
+                // Check if reference is within the source class
+                var node = location.SourceTree?.GetRoot().FindNode(location.SourceSpan);
+                var containingClass = node?.FirstAncestorOrSelf<ClassDeclarationSyntax>();
+
+                if (containingClass != null && containingClass.Identifier.Text == sourceClass.Identifier.Text)
+                {
+                    sameClassReferences.Add(location);
+                }
+                else
+                {
+                    externalReferences.Add(location);
+                }
+            }
+        }
+
+        return (sameClassReferences, externalReferences);
+    }
+
+    /// <summary>
+    /// Updates references within the same class to use the new class field.
+    /// </summary>
+    private CompilationUnitSyntax UpdateSameClassReferences(
+        CompilationUnitSyntax root,
+        List<Location> sameClassReferences,
+        List<ISymbol> extractedSymbols,
+        string newClassFieldName,
+        Compilation compilation,
+        ClassDeclarationSyntax sourceClass)
+    {
+        if (!sameClassReferences.Any() && extractedSymbols.Any())
+        {
+            // Even if no references found by symbol analysis, still try to update by name
+            // This handles cases where the tree structure has changed
+        }
+
+        // Create a rewriter that will update the references
+        var rewriter = new ReferenceUpdateRewriter(
+            sameClassReferences,
+            extractedSymbols,
+            newClassFieldName,
+            compilation,
+            sourceClass);
+
+        return (CompilationUnitSyntax)rewriter.Visit(root);
+    }
+
+    /// <summary>
+    /// Builds a warning message for external references that need manual updates.
+    /// </summary>
+    private string BuildExternalReferencesWarning(
+        List<Location> externalReferences,
+        int fieldsCount,
+        int methodsCount,
+        string newClassName)
+    {
+        var baseMessage = $"Extracted {fieldsCount} field(s) and {methodsCount} method(s) into new class '{newClassName}'.";
+
+        if (externalReferences.Any())
+        {
+            var referencesByFile = externalReferences
+                .Where(loc => loc.SourceTree != null)
+                .GroupBy(loc => System.IO.Path.GetFileName(loc.SourceTree!.FilePath))
+                .Select(g => $"{g.Key} ({g.Count()} reference(s))")
+                .ToList();
+
+            if (referencesByFile.Any())
+            {
+                return baseMessage + " ⚠️ WARNING: Found external references that require manual updates: " +
+                       string.Join(", ", referencesByFile) + ".";
+            }
+        }
+
+        return baseMessage + " All references within the same class have been automatically updated.";
+    }
+
+    /// <summary>
+    /// Syntax rewriter that updates references to extracted members.
+    /// </summary>
+    private class ReferenceUpdateRewriter : CSharpSyntaxRewriter
+    {
+        private readonly HashSet<string> _extractedSymbolNames;
+        private readonly string _newClassFieldName;
+        private readonly ClassDeclarationSyntax _sourceClass;
+
+        public ReferenceUpdateRewriter(
+            List<Location> sameClassReferences,
+            List<ISymbol> extractedSymbols,
+            string newClassFieldName,
+            Compilation compilation,
+            ClassDeclarationSyntax sourceClass)
+        {
+            _extractedSymbolNames = extractedSymbols.Select(s => s.Name).ToHashSet();
+            _newClassFieldName = newClassFieldName;
+            _sourceClass = sourceClass;
+        }
+
+        public override SyntaxNode? VisitIdentifierName(IdentifierNameSyntax node)
+        {
+            // Only process identifiers with names matching extracted symbols
+            if (!_extractedSymbolNames.Contains(node.Identifier.Text))
+            {
+                return base.VisitIdentifierName(node);
+            }
+
+            // Check if this identifier is already part of a member access expression
+            // (e.g., _address._city) - if so, don't transform it again
+            if (node.Parent is MemberAccessExpressionSyntax memberAccess &&
+                memberAccess.Name == node)
+            {
+                return base.VisitIdentifierName(node);
+            }
+
+            // Check if this identifier is within the source class (not in the extracted class)
+            var containingClass = node.FirstAncestorOrSelf<ClassDeclarationSyntax>();
+            if (containingClass == null || containingClass.Identifier.Text != _sourceClass.Identifier.Text)
+            {
+                return base.VisitIdentifierName(node);
+            }
+
+            // Transform: identifier -> _newClassField.identifier
+            var newFieldIdentifier = SyntaxFactory.IdentifierName(_newClassFieldName);
+            var memberAccessExpr = SyntaxFactory.MemberAccessExpression(
+                SyntaxKind.SimpleMemberAccessExpression,
+                newFieldIdentifier,
+                node);
+
+            return memberAccessExpr.WithTriviaFrom(node);
+        }
     }
 }
