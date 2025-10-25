@@ -10,6 +10,7 @@ This guide helps resolve common issues when using RefactorCsharpMCP with Claude 
 4. [Performance Issues](#performance-issues)
 5. [Cache Issues](#cache-issues)
 6. [Platform-Specific Issues](#platform-specific-issues)
+7. [GitHub Actions Workflow Issues](#github-actions-workflow-issues)
 
 ## Server Configuration Issues
 
@@ -452,6 +453,91 @@ dotnet test --verbosity normal
 ### "Invalid line range: X-Y"
 - **Cause**: startLine > endLine or startLine < 1
 - **Fix**: Ensure startLine <= endLine and both >= 1
+
+## GitHub Actions Workflow Issues
+
+### cache-stability.yml Workflow Failing Consistently
+
+**Symptom**: All GitHub Actions workflow runs fail with "This run likely failed because of a workflow file issue"
+
+**Root Cause**: YAML syntax errors in workflow file, typically in `github-script` actions
+
+**Common Issues**:
+
+1. **GitHub Actions Expressions in JavaScript Template Literals**
+
+   **Problem**: Using `${{ }}` syntax inside JavaScript backtick strings in `github-script` blocks
+
+   ```yaml
+   # INCORRECT - causes YAML parsing error
+   script: |
+     github.rest.issues.createComment({
+       body: `https://github.com/${{ github.repository }}/runs/${{ github.run_id }}`
+     })
+   ```
+
+   **Solution**: Use JavaScript context objects instead
+
+   ```yaml
+   # CORRECT
+   script: |
+     github.rest.issues.createComment({
+       body: 'https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/runs/' + context.runId
+     })
+   ```
+
+2. **Emoji or Special Characters Causing Encoding Issues**
+
+   **Problem**: UTF-8 emojis (✅, ❌) or special characters in YAML workflow files
+
+   **Solution**: Replace emojis with ASCII equivalents (✓, ✗) or remove entirely
+
+3. **Colons in Markdown Lists Inside YAML Strings**
+
+   **Problem**: Colons followed by spaces are interpreted as YAML key-value separators
+
+   ```yaml
+   # INCORRECT - colon causes YAML parsing error
+   body: `
+   - Linux (bash): 100% pass
+   `
+   ```
+
+   **Solution**: Change formatting to avoid colon-space pattern or use quotes properly
+
+   ```yaml
+   # CORRECT - avoid colon or use different formatting
+   body: '- Linux (bash) - 100% pass'
+   ```
+
+**Diagnostic Steps**:
+
+1. **Validate YAML Syntax Locally**
+   ```bash
+   # Using Python YAML parser
+   python -c "import yaml; yaml.safe_load(open('.github/workflows/cache-stability.yml', encoding='utf-8')); print('Valid YAML')"
+   ```
+
+2. **Check Recent Workflow Runs**
+   ```bash
+   gh run list --workflow=cache-stability.yml --limit 5
+   gh run view <run-id>
+   ```
+
+3. **Look for "workflow file issue" Message**
+   ```bash
+   gh run view <run-id> 2>&1 | grep "workflow file"
+   ```
+
+**Prevention**:
+
+1. Always use JavaScript context objects (`context.repo.owner`, `context.runId`) instead of workflow expressions (`${{ github.repository }}`) inside `script:` blocks
+
+2. Test workflow files locally with YAML validators before committing
+
+3. Use single-quoted strings with explicit newlines (`\n`) instead of backtick template literals in `github-script` actions
+
+4. Avoid emojis in workflow files, use ASCII equivalents
 
 ## Getting Help
 
