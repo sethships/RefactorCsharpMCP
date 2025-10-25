@@ -179,7 +179,7 @@ The cache concurrency fix remains stable!`
 
 Cache stability issues detected. Check the workflow logs for details:
 
-[View workflow run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+[View workflow run](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
 
 Test logs are available as artifacts for debugging.`
             })
