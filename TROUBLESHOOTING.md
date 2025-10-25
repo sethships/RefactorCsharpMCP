@@ -482,7 +482,7 @@ dotnet test --verbosity normal
    # CORRECT
    script: |
      github.rest.issues.createComment({
-       body: 'https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/runs/' + context.runId
+       body: 'https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/actions/runs/' + context.runId
      })
    ```
 

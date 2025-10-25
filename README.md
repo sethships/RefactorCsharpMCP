@@ -50,7 +50,7 @@ RefactorCsharpMCP/
 **Optional:**
 - Docker Desktop 4.42.0+ (for Docker deployment)
 
-**Important for WSL users**: .NET SDK must be installed **inside** the WSL distribution, not just on the Windows host. See [Running Cache Stability Tests](#running-cache-stability-tests) below for WSL installation instructions.
+**Important for WSL users**: .NET SDK must be installed **inside** the WSL distribution, not just on the Windows host. See [E2E-TESTING.md](E2E-TESTING.md#wsl-specific-requirements) for WSL installation instructions.
 
 ### Building the Project
 
