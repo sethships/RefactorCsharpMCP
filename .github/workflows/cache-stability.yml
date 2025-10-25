@@ -120,16 +120,28 @@ jobs:
       - name: Build
         run: dotnet build --no-restore
 
-      # IMPORTANT: This job is currently failing because .NET SDK is not installed in the WSL environment.
-      # The Setup WSL action only installs Ubuntu, but does not install .NET inside it.
-      # Issue tracked in #58 - options are to install .NET in WSL or remove this job.
-      # For now, this job is expected to fail until #58 is resolved.
       - name: Setup WSL
         # Third-party action pinned to v3.1.4 commit SHA for supply chain security
         # Version: v3.1.4 (2024-12-03) - https://github.com/Vampire/setup-wsl/releases/tag/v3.1.4
         uses: Vampire/setup-wsl@6c400b755bcd0583e60c2e7aa0cdc61794355c9b
         with:
           distribution: Ubuntu-22.04
+
+      - name: Install .NET SDK in WSL
+        shell: wsl-bash {0}
+        run: |
+          # Install .NET SDK 8.0 in WSL Ubuntu environment
+          # Required because Windows .NET SDK is not accessible from WSL
+          wget https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh
+          chmod +x /tmp/dotnet-install.sh
+          /tmp/dotnet-install.sh --channel 8.0 --install-dir $HOME/.dotnet
+
+          # Add .NET to PATH for subsequent steps
+          echo "export PATH=\$HOME/.dotnet:\$PATH" >> $HOME/.bashrc
+
+          # Verify installation
+          export PATH=$HOME/.dotnet:$PATH
+          dotnet --version
 
       - name: Run cache stability tests (WSL)
         shell: pwsh
