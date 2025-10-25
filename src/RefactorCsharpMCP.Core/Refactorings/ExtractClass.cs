@@ -137,6 +137,13 @@ public class ExtractClass : RefactoringBase
             // Get symbols for extracted members BEFORE any modifications
             var extractedSymbols = GetExtractedSymbols(semanticModel, fieldsToExtractNodes, methodsToExtractNodes);
 
+            // Get the source class symbol for semantic comparison
+            var sourceClassSymbol = semanticModel.GetDeclaredSymbol(classDeclaration);
+            if (sourceClassSymbol == null)
+            {
+                return RefactoringResult.Failure($"Could not resolve symbol for class '{className}'.");
+            }
+
             // Create a field name for the new class instance
             var newClassFieldName = $"_{char.ToLower(newClassName[0])}{newClassName.Substring(1)}";
 
@@ -144,26 +151,30 @@ public class ExtractClass : RefactoringBase
             var (sameClassReferences, externalReferences) = FindAndCategorizeReferences(
                 extractedSymbols,
                 compilation,
-                classDeclaration);
+                sourceClassSymbol);
 
-            // Create a field in the original class for the new class instance
-            var newClassField = CreateNewClassField(newClassName, newClassFieldName);
-
-            // Add the new class field to the original class FIRST
-            var membersWithField = classDeclaration.Members.Insert(0, newClassField);
-            var classWithNewField = classDeclaration.WithMembers(membersWithField);
-
-            // Replace the class in the root to get an updated root
-            root = root.ReplaceNode(classDeclaration, classWithNewField);
-
-            // Update references to use the new class field (before removing members)
+            // Update references to use the new class field BEFORE any tree mutations
+            // This preserves SyntaxTree identity for semantic analysis
             root = UpdateSameClassReferences(
                 (CompilationUnitSyntax)root,
                 sameClassReferences,
                 extractedSymbols,
                 newClassFieldName,
-                compilation,
-                classDeclaration);
+                semanticModel,
+                sourceClassSymbol);
+
+            // NOW find the updated class in the modified root
+            classDeclaration = FindClass(root, className)!;
+
+            // Create a field in the original class for the new class instance
+            var newClassField = CreateNewClassField(newClassName, newClassFieldName);
+
+            // Add the new class field to the original class
+            var membersWithField = classDeclaration.Members.Insert(0, newClassField);
+            var classWithNewField = classDeclaration.WithMembers(membersWithField);
+
+            // Replace the class in the root to get an updated root
+            root = root.ReplaceNode(classDeclaration, classWithNewField);
 
             // Now find the updated class in the new root
             classDeclaration = FindClass(root, className)!;
@@ -371,12 +382,12 @@ public class ExtractClass : RefactoringBase
     }
 
     /// <summary>
-    /// Finds all references to extracted members and categorizes them.
+    /// Finds all references to extracted members and categorizes them using semantic symbol comparison.
     /// </summary>
     private (List<Location> sameClassReferences, List<Location> externalReferences) FindAndCategorizeReferences(
         List<ISymbol> extractedSymbols,
         Compilation compilation,
-        ClassDeclarationSyntax sourceClass)
+        INamedTypeSymbol sourceClassSymbol)
     {
         var sameClassReferences = new List<Location>();
         var externalReferences = new List<Location>();
@@ -387,11 +398,21 @@ public class ExtractClass : RefactoringBase
 
             foreach (var location in references)
             {
-                // Check if reference is within the source class
-                var node = location.SourceTree?.GetRoot().FindNode(location.SourceSpan);
-                var containingClass = node?.FirstAncestorOrSelf<ClassDeclarationSyntax>();
+                // Skip non-source locations
+                if (location.SourceTree == null || !location.IsInSource)
+                {
+                    continue;
+                }
 
-                if (containingClass != null && containingClass.Identifier.Text == sourceClass.Identifier.Text)
+                // Get semantic model for this location's tree
+                var locationSemanticModel = compilation.GetSemanticModel(location.SourceTree);
+
+                // Get the containing type symbol at this location
+                var containingTypeSymbol = locationSemanticModel.GetEnclosingSymbol(location.SourceSpan.Start)?.ContainingType;
+
+                // Use semantic symbol comparison (handles partial classes, nested classes, etc.)
+                if (containingTypeSymbol != null &&
+                    SymbolEqualityComparer.Default.Equals(containingTypeSymbol, sourceClassSymbol))
                 {
                     sameClassReferences.Add(location);
                 }
@@ -413,22 +434,15 @@ public class ExtractClass : RefactoringBase
         List<Location> sameClassReferences,
         List<ISymbol> extractedSymbols,
         string newClassFieldName,
-        Compilation compilation,
-        ClassDeclarationSyntax sourceClass)
+        SemanticModel semanticModel,
+        INamedTypeSymbol sourceClassSymbol)
     {
-        if (!sameClassReferences.Any() && extractedSymbols.Any())
-        {
-            // Even if no references found by symbol analysis, still try to update by name
-            // This handles cases where the tree structure has changed
-        }
-
-        // Create a rewriter that will update the references
+        // Create a rewriter that will update the references using semantic analysis
         var rewriter = new ReferenceUpdateRewriter(
-            sameClassReferences,
+            semanticModel,
             extractedSymbols,
             newClassFieldName,
-            compilation,
-            sourceClass);
+            sourceClassSymbol);
 
         return (CompilationUnitSyntax)rewriter.Visit(root);
     }
@@ -463,36 +477,75 @@ public class ExtractClass : RefactoringBase
     }
 
     /// <summary>
-    /// Syntax rewriter that updates references to extracted members.
+    /// Syntax rewriter that updates references to extracted members using semantic analysis.
     /// </summary>
     private class ReferenceUpdateRewriter : CSharpSyntaxRewriter
     {
-        private readonly HashSet<string> _extractedSymbolNames;
+        private readonly SemanticModel _semanticModel;
+        private readonly HashSet<ISymbol> _extractedSymbolSet;
         private readonly string _newClassFieldName;
-        private readonly ClassDeclarationSyntax _sourceClass;
+        private readonly INamedTypeSymbol _sourceClassSymbol;
 
         public ReferenceUpdateRewriter(
-            List<Location> sameClassReferences,
+            SemanticModel semanticModel,
             List<ISymbol> extractedSymbols,
             string newClassFieldName,
-            Compilation compilation,
-            ClassDeclarationSyntax sourceClass)
+            INamedTypeSymbol sourceClassSymbol)
         {
-            _extractedSymbolNames = extractedSymbols.Select(s => s.Name).ToHashSet();
+            _semanticModel = semanticModel;
+            _extractedSymbolSet = extractedSymbols.ToHashSet(SymbolEqualityComparer.Default);
             _newClassFieldName = newClassFieldName;
-            _sourceClass = sourceClass;
+            _sourceClassSymbol = sourceClassSymbol;
+        }
+
+        public override SyntaxNode? VisitMemberAccessExpression(MemberAccessExpressionSyntax node)
+        {
+            // Handle cases like: this._city or ClassName._city
+            // Check if the name part references an extracted symbol
+            var symbolInfo = _semanticModel.GetSymbolInfo(node.Name);
+            if (symbolInfo.Symbol != null && _extractedSymbolSet.Contains(symbolInfo.Symbol))
+            {
+                // Check if expression is 'this'
+                if (node.Expression is ThisExpressionSyntax)
+                {
+                    // Check if this is within the source class
+                    var containingType = _semanticModel.GetEnclosingSymbol(node.SpanStart)?.ContainingType;
+                    if (containingType != null &&
+                        SymbolEqualityComparer.Default.Equals(containingType, _sourceClassSymbol))
+                    {
+                        // Transform: this._field -> this._newClassField._field
+                        // Or simpler: this._field -> _newClassField._field
+                        var newFieldIdentifier = SyntaxFactory.IdentifierName(_newClassFieldName);
+                        var newMemberAccess = SyntaxFactory.MemberAccessExpression(
+                            SyntaxKind.SimpleMemberAccessExpression,
+                            newFieldIdentifier,
+                            (SimpleNameSyntax)node.Name);
+
+                        return newMemberAccess.WithTriviaFrom(node);
+                    }
+                }
+            }
+
+            return base.VisitMemberAccessExpression(node);
         }
 
         public override SyntaxNode? VisitIdentifierName(IdentifierNameSyntax node)
         {
-            // Only process identifiers with names matching extracted symbols
-            if (!_extractedSymbolNames.Contains(node.Identifier.Text))
+            // Get the symbol for this identifier
+            var symbolInfo = _semanticModel.GetSymbolInfo(node);
+            if (symbolInfo.Symbol == null)
+            {
+                return base.VisitIdentifierName(node);
+            }
+
+            // Only process identifiers that reference extracted symbols
+            if (!_extractedSymbolSet.Contains(symbolInfo.Symbol))
             {
                 return base.VisitIdentifierName(node);
             }
 
             // Check if this identifier is already part of a member access expression
-            // (e.g., _address._city) - if so, don't transform it again
+            // (e.g., _address._city or this._city) - if so, don't transform it again
             if (node.Parent is MemberAccessExpressionSyntax memberAccess &&
                 memberAccess.Name == node)
             {
@@ -500,8 +553,9 @@ public class ExtractClass : RefactoringBase
             }
 
             // Check if this identifier is within the source class (not in the extracted class)
-            var containingClass = node.FirstAncestorOrSelf<ClassDeclarationSyntax>();
-            if (containingClass == null || containingClass.Identifier.Text != _sourceClass.Identifier.Text)
+            var containingType = _semanticModel.GetEnclosingSymbol(node.SpanStart)?.ContainingType;
+            if (containingType == null ||
+                !SymbolEqualityComparer.Default.Equals(containingType, _sourceClassSymbol))
             {
                 return base.VisitIdentifierName(node);
             }
