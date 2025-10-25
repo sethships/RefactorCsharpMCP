@@ -44,8 +44,13 @@ RefactorCsharpMCP/
 
 ### Prerequisites
 
-- .NET 8 SDK or later
+**REQUIRED for all environments (native, WSL, Docker, CI/CD):**
+- **.NET 8 SDK or later** - Must be installed in each environment where tests or the server will run
+
+**Optional:**
 - Docker Desktop 4.42.0+ (for Docker deployment)
+
+**Important for WSL users**: .NET SDK must be installed **inside** the WSL distribution, not just on the Windows host. See [E2E-TESTING.md](E2E-TESTING.md#wsl-specific-requirements) for WSL installation instructions.
 
 ### Building the Project
 
@@ -90,7 +95,7 @@ sudo apt-get update
 sudo apt-get install -y dotnet-sdk-8.0
 ```
 
-💡 **Performance**: WSL typically runs **~40% faster** than native Windows PowerShell (27s vs 45s per iteration) due to Linux's optimized .NET runtime and lower I/O overhead. Recommended for performance-critical testing.
+💡 **Performance**: WSL typically runs **~40% faster** than native Windows PowerShell (27s vs 45s per iteration in cache stability tests) due to Linux filesystem characteristics and lower I/O overhead. Your results may vary depending on workload. Recommended for performance-critical testing.
 
 Default: 10 iterations
 

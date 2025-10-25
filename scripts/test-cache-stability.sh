@@ -13,6 +13,11 @@
 
 set -e
 
+# Ensure .NET SDK is in PATH (for WSL environments where it's installed in $HOME/.dotnet)
+if [ -d "$HOME/.dotnet" ] && [[ ":$PATH:" != *":$HOME/.dotnet:"* ]]; then
+  export PATH="$HOME/.dotnet:$PATH"
+fi
+
 # Parse arguments
 ITERATIONS=10
 while [[ $# -gt 0 ]]; do

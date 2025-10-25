@@ -127,6 +127,23 @@ jobs:
         with:
           distribution: Ubuntu-22.04
 
+      - name: Install .NET SDK in WSL
+        shell: wsl-bash {0}
+        run: |
+          # Install .NET SDK 8.0 in WSL Ubuntu environment
+          # Required because Windows .NET SDK is not accessible from WSL
+          wget https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh
+          chmod +x /tmp/dotnet-install.sh
+          /tmp/dotnet-install.sh --channel 8.0 --install-dir $HOME/.dotnet
+
+          # Add .NET to PATH for subsequent steps
+          # Note: GITHUB_PATH not accessible from WSL bash, so we use .bashrc
+          echo "export PATH=\$HOME/.dotnet:\$PATH" >> $HOME/.bashrc
+
+          # Verify installation
+          export PATH=$HOME/.dotnet:$PATH
+          dotnet --version
+
       - name: Run cache stability tests (WSL)
         shell: pwsh
         run: .\scripts\test-cache-stability-wsl.ps1 -Iterations ${{ github.event.inputs.iterations || '10' }}
@@ -155,15 +172,7 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `## ✅ Cache Stability Tests Passed
-
-All cache stability tests passed successfully across all platforms:
-
-- ✅ **Linux** (bash): 100% pass rate
-- ✅ **Windows** (PowerShell): 100% pass rate
-- ✅ **Windows** (WSL): 100% pass rate
-
-The cache concurrency fix remains stable!`
+              body: '## ✓ Cache Stability Tests Passed\n\nAll cache stability tests passed successfully across all platforms:\n\n- ✓ **Linux** (bash) - 100% pass rate\n- ✓ **Windows** (PowerShell) - 100% pass rate\n- ✓ **Windows** (WSL) - 100% pass rate\n\nThe cache concurrency fix remains stable!'
             })
 
       - name: Post failure comment
@@ -175,11 +184,5 @@ The cache concurrency fix remains stable!`
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `## ❌ Cache Stability Tests Failed
-
-Cache stability issues detected. Check the workflow logs for details:
-
-[View workflow run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
-
-Test logs are available as artifacts for debugging.`
+              body: '## ✗ Cache Stability Tests Failed\n\nCache stability issues detected. Check the workflow logs for details:\n\n[View workflow run](https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/actions/runs/' + context.runId + ')\n\nTest logs are available as artifacts for debugging.'
             })
