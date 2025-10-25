@@ -44,8 +44,13 @@ RefactorCsharpMCP/
 
 ### Prerequisites
 
-- .NET 8 SDK or later
+**REQUIRED for all environments (native, WSL, Docker, CI/CD):**
+- **.NET 8 SDK or later** - Must be installed in each environment where tests or the server will run
+
+**Optional:**
 - Docker Desktop 4.42.0+ (for Docker deployment)
+
+**Important for WSL users**: .NET SDK must be installed **inside** the WSL distribution, not just on the Windows host. See [Running Cache Stability Tests](#running-cache-stability-tests) below for WSL installation instructions.
 
 ### Building the Project
 

@@ -9,12 +9,26 @@
 
 ## Test Environment
 
-- **OS**: Windows 11
-- **.NET SDK**: 9.0.304
+### Required Software
+
+**IMPORTANT**: All test environments (native, WSL, Docker, etc.) **MUST** have .NET 8 SDK installed.
+
+- **OS**: Windows 11 / Linux / macOS
+- **.NET SDK**: **8.0.x or later** (REQUIRED for all environments)
 - **MCP SDK**: ModelContextProtocol 0.4.0-preview.1
 - **Roslyn**: Microsoft.CodeAnalysis.CSharp 4.14.0
 - **Test Framework**: xUnit 2.5.3
 - **Assertion Library**: FluentAssertions 8.7.1
+
+### WSL-Specific Requirements
+
+When running tests in WSL (Windows Subsystem for Linux):
+1. **.NET 8 SDK must be installed inside the WSL environment** (not just on Windows host)
+2. Install via: `wget https://dot.net/v1/dotnet-install.sh && bash dotnet-install.sh --channel 8.0`
+3. Add to PATH: `export PATH="$HOME/.dotnet:$PATH"`
+4. Verify installation: `dotnet --version`
+
+**Note**: The Windows .NET SDK is NOT accessible from WSL bash. Each WSL distribution requires its own .NET installation.
 
 ## Server Validation
 
