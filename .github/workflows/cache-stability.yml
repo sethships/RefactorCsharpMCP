@@ -136,8 +136,8 @@ jobs:
           chmod +x /tmp/dotnet-install.sh
           /tmp/dotnet-install.sh --channel 8.0 --install-dir $HOME/.dotnet
 
-          # Add .NET to PATH for subsequent steps
-          echo "export PATH=\$HOME/.dotnet:\$PATH" >> $HOME/.bashrc
+          # Add .NET to PATH for subsequent steps (using GitHub Actions native mechanism)
+          echo "$HOME/.dotnet" >> $GITHUB_PATH
 
           # Verify installation
           export PATH=$HOME/.dotnet:$PATH

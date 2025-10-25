@@ -438,5 +438,6 @@ All acceptance criteria met. RefactorCsharpMCP is ready for:
 **Ready for Phase 2**: YES
 
 ---
+*Last Updated: October 25, 2025 - Added WSL-specific requirements*
 *Generated: October 4, 2025*
-*Test Environment: .NET 8.0.304, Windows 11*
+*Test Environment: .NET 8.0.x or later, Windows 11 / Linux / macOS*

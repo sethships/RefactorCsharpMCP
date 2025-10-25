@@ -95,7 +95,7 @@ sudo apt-get update
 sudo apt-get install -y dotnet-sdk-8.0
 ```
 
-💡 **Performance**: WSL typically runs **~40% faster** than native Windows PowerShell (27s vs 45s per iteration) due to Linux's optimized .NET runtime and lower I/O overhead. Recommended for performance-critical testing.
+💡 **Performance**: WSL typically runs **~40% faster** than native Windows PowerShell (27s vs 45s per iteration in cache stability tests) due to Linux filesystem characteristics and lower I/O overhead. Your results may vary depending on workload. Recommended for performance-critical testing.
 
 Default: 10 iterations
 

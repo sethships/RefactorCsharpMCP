@@ -514,8 +514,11 @@ dotnet test --verbosity normal
 
 1. **Validate YAML Syntax Locally**
    ```bash
-   # Using Python YAML parser
-   python -c "import yaml; yaml.safe_load(open('.github/workflows/cache-stability.yml', encoding='utf-8')); print('Valid YAML')"
+   # Using Python YAML parser (requires: pip install pyyaml)
+   python3 -c "import yaml, sys; yaml.safe_load(open('.github/workflows/cache-stability.yml', encoding='utf-8')); print('✓ Valid YAML')" 2>&1 || echo "✗ Invalid YAML or PyYAML not installed"
+
+   # Alternative: Use yamllint for more detailed validation
+   yamllint .github/workflows/cache-stability.yml
    ```
 
 2. **Check Recent Workflow Runs**
