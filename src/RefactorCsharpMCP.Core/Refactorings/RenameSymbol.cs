@@ -211,11 +211,14 @@ public class RenameSymbol : RefactoringBase
 
     /// <summary>
     /// Determines the appropriate scope node for conflict detection.
+    /// IMPORTANT: Check order matters! Nested scopes must be checked before parent scopes
+    /// to ensure parameters/variables get the most specific (innermost) scope.
+    /// Order: Lambda/LocalFunction > Method/Constructor > Class > CompilationUnit
     /// </summary>
     private SyntaxNode? DetermineScopeNode(SyntaxNode node)
     {
+        // Lambda and local function scopes (must be checked before method scope)
         // For lambda parameters, use the lambda expression as scope
-        // Check lambda expressions first to ensure lambda parameters get lambda scope, not method scope
         var simpleLambda = node.FirstAncestorOrSelf<SimpleLambdaExpressionSyntax>();
         if (simpleLambda != null) return simpleLambda;
 
@@ -224,6 +227,11 @@ public class RenameSymbol : RefactoringBase
 
         var anonymousMethod = node.FirstAncestorOrSelf<AnonymousMethodExpressionSyntax>();
         if (anonymousMethod != null) return anonymousMethod;
+
+        // For local function parameters, use the local function as scope
+        // Check local functions before methods to ensure local function parameters get correct scope
+        var localFunction = node.FirstAncestorOrSelf<LocalFunctionStatementSyntax>();
+        if (localFunction != null) return localFunction;
 
         // For local variables and parameters, use the containing method
         var methodScope = node.FirstAncestorOrSelf<MethodDeclarationSyntax>();
