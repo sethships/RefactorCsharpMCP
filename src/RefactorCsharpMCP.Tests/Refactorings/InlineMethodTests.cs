@@ -414,6 +414,40 @@ public class Test
         result.RefactoredCode.Should().NotContain("private void PrintValue");
     }
 
+    [Fact]
+    public void Execute_WithSemanticParameterMatching_ShouldOnlySubstituteParameterReferences()
+    {
+        // Arrange - Tests the semantic symbol matching fix for variable shadowing bug
+        // Method has parameter 'x' and also uses Console.WriteLine (not a parameter)
+        // Old buggy code with textual matching would only work correctly here
+        // This test validates that semantic matching substitutes parameter 'x' correctly
+        var sourceCode = @"
+public class Test
+{
+    public void Caller()
+    {
+        Helper(42);  // Pass argument 42 for parameter 'x'
+    }
+
+    private void Helper(int x)
+    {
+        // Use parameter 'x' - should be substituted
+        // Use Console (not a parameter) - should NOT be substituted
+        Console.WriteLine(x * 2);  // Should become: Console.WriteLine(42 * 2);
+    }
+}";
+        var inliner = new InlineMethod();
+
+        // Act - inline Helper method (line 9, column 18)
+        var result = inliner.Execute(sourceCode, 9, 18);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
+        // Should inline with parameter 'x' substituted to 42
+        result.RefactoredCode.Should().Contain("Console.WriteLine(42 * 2);");
+        result.RefactoredCode.Should().NotContain("private void Helper");
+    }
+
     #endregion
 
     #region Validation/Error Cases Tests
@@ -711,6 +745,132 @@ public class Test
         // Assert
         result.IsSuccess.Should().BeFalse();
         result.Message.Should().Contain("Line number must be >= 1");
+    }
+
+    [Fact]
+    public void Execute_WithLocalVariableConflict_ShouldReturnFailure()
+    {
+        // Arrange - Tests identifier conflict validation
+        // Method body uses local variable 'counter', call site also has local 'counter'
+        var sourceCode = @"
+public class Test
+{
+    public void Caller()
+    {
+        var counter = 100;  // Local variable 'counter' at call site
+        Helper();
+    }
+
+    private void Helper()
+    {
+        var counter = 0;  // Local variable 'counter' in method body - CONFLICT!
+        Console.WriteLine(counter);
+    }
+}";
+        var inliner = new InlineMethod();
+
+        // Act - inline Helper method (line 10, column 18)
+        var result = inliner.Execute(sourceCode, 10, 18);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse(because: "Identifier conflict should be detected");
+        result.Message.Should().Contain("conflict", "Error message should mention conflict");
+        result.Message.Should().Contain("counter", "Error message should list the conflicting identifier");
+    }
+
+    [Fact]
+    public void Execute_WithFieldConflict_ShouldReturnFailure()
+    {
+        // Arrange - Tests field identifier conflict validation
+        // Method body references field 'value', call site has local variable 'value'
+        var sourceCode = @"
+public class Test
+{
+    private int value = 5;  // Field
+
+    public void Caller()
+    {
+        var value = 10;  // Local variable shadows field - CONFLICT!
+        Helper();
+    }
+
+    private void Helper()
+    {
+        Console.WriteLine(this.value);  // References field
+    }
+}";
+        var inliner = new InlineMethod();
+
+        // Act - inline Helper method (line 12, column 18)
+        var result = inliner.Execute(sourceCode, 12, 18);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse(because: "Field identifier conflict should be detected");
+        result.Message.Should().Contain("conflict", "Error message should mention conflict");
+        result.Message.Should().Contain("value", "Error message should list the conflicting identifier");
+    }
+
+    [Fact]
+    public void Execute_WithNoIdentifierConflict_ShouldSucceed()
+    {
+        // Arrange - Positive test: No identifier conflicts
+        // Method body and call site use different identifier names
+        var sourceCode = @"
+public class Test
+{
+    public void Caller()
+    {
+        var localVar = 10;  // Different name from method body
+        Helper();
+    }
+
+    private void Helper()
+    {
+        var differentVar = 20;  // No conflict - different name
+        Console.WriteLine(differentVar);
+    }
+}";
+        var inliner = new InlineMethod();
+
+        // Act - inline Helper method (line 10, column 18)
+        var result = inliner.Execute(sourceCode, 10, 18);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue(because: $"No conflict should allow inlining. Error: {result.Message}");
+        result.RefactoredCode.Should().Contain("var differentVar = 20;");
+        result.RefactoredCode.Should().NotContain("private void Helper");
+    }
+
+    [Fact]
+    public void Execute_WithPropertyConflict_ShouldReturnFailure()
+    {
+        // Arrange - Tests property identifier conflict validation
+        // Method body references property, call site has local with same name
+        var sourceCode = @"
+public class Test
+{
+    public int Count { get; set; }  // Property
+
+    public void Caller()
+    {
+        var Count = 100;  // Local variable - CONFLICT with property!
+        Helper();
+    }
+
+    private void Helper()
+    {
+        Console.WriteLine(Count);  // References property
+    }
+}";
+        var inliner = new InlineMethod();
+
+        // Act - inline Helper method (line 12, column 18)
+        var result = inliner.Execute(sourceCode, 12, 18);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse(because: "Property identifier conflict should be detected");
+        result.Message.Should().Contain("conflict", "Error message should mention conflict");
+        result.Message.Should().Contain("Count", "Error message should list the conflicting identifier");
     }
 
     #endregion
