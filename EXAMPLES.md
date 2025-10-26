@@ -887,6 +887,143 @@ var result = extractMethod.Execute(code, 1, 5, "NewMethod");
 4. **Read Error Messages**: ValidationResult includes detailed error messages and suggested actions
 5. **Multi-Target Projects**: Run refactorings separately for each target framework
 
+## Inline Method (Part 1)
+
+The Inline Method refactoring replaces a method's single invocation with its body, then removes the method declaration. Part 1 supports void methods with simple parameters (primitives, string) and single caller only.
+
+### Example 1: Simple Method Inlining
+
+**Before:**
+```csharp
+public class Logger
+{
+    public void ProcessLog(string message)
+    {
+        WriteToConsole(message);
+    }
+
+    private void WriteToConsole(string msg)
+    {
+        Console.WriteLine(msg);
+    }
+}
+```
+
+**After:**
+```csharp
+public class Logger
+{
+    public void ProcessLog(string message)
+    {
+        Console.WriteLine(message);
+    }
+}
+```
+
+### Example 2: Method with Parameters
+
+**Before:**
+```csharp
+public class Calculator
+{
+    public void DisplayResult()
+    {
+        PrintSum(10, 20);
+    }
+
+    private void PrintSum(int a, int b)
+    {
+        var result = a + b;
+        Console.WriteLine($"Sum: {result}");
+    }
+}
+```
+
+**After:**
+```csharp
+public class Calculator
+{
+    public void DisplayResult()
+    {
+        var result = 10 + 20;
+        Console.WriteLine($"Sum: {result}");
+    }
+}
+```
+
+### Example 3: Comment Preservation
+
+**Before:**
+```csharp
+public class Service
+{
+    public void Run()
+    {
+        // Initialize system
+        Initialize();
+    }
+
+    /// <summary>
+    /// Performs system initialization
+    /// </summary>
+    private void Initialize()
+    {
+        // Load configuration
+        LoadConfig();
+    }
+}
+```
+
+**After:**
+```csharp
+public class Service
+{
+    public void Run()
+    {
+        // Initialize system
+        // Load configuration
+        LoadConfig();
+    }
+}
+```
+
+### MCP Tool Usage
+
+**inline_method Tool**
+```json
+{
+  "tool": "inline_method",
+  "parameters": {
+    "sourceCode": "public class Test { public void Caller() { Helper(); } private void Helper() { Console.WriteLine(\"Work\"); } }",
+    "lineNumber": 1,
+    "columnNumber": 65,
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+### Part 1 Limitations
+
+- **Void methods only**: Methods with return values not supported
+- **Single caller required**: Method must be called exactly once
+- **Simple parameters only**: Primitives (int, string, bool, etc.) and string supported; no ref/out, no complex types
+- **No recursive methods**: Recursive methods cannot be inlined
+- **No virtual/abstract methods**: Virtual, abstract, and override methods cannot be inlined
+
+### Framework-Aware Validation
+
+The Inline Method refactoring uses framework-aware validation to ensure the refactored code is compatible with your target framework:
+
+```csharp
+var inliner = new InlineMethod();
+
+// .NET 8 - Modern C# features supported
+var result = await inliner.ExecuteAsync(sourceCode, lineNumber, columnNumber, "net8.0");
+
+// .NET Framework 4.8 - Validates against C# 7.3 features
+var result48 = await inliner.ExecuteAsync(sourceCode, lineNumber, columnNumber, "net48");
+```
+
 ## Diagnostic Integration (V1.5)
 
 RefactorCsharpMCP provides diagnostic analysis capabilities that enable AI agents to detect code issues and automatically apply fixes using the **analyze → suggest → fix** workflow.
