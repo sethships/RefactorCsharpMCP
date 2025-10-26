@@ -10,7 +10,14 @@ namespace RefactorCsharpMCP.Core.Refactorings;
 /// <summary>
 /// Provides functionality to inline a method by replacing all calls with the method's body.
 /// Maps to Roslyn diagnostic IDE0022 (Use expression body for methods).
-/// Part 1 implementation supports simple methods with no/simple parameters and no/simple returns.
+/// Part 1 implementation capabilities:
+/// - Void methods (block-bodied or expression-bodied)
+/// - Single caller validation
+/// - Simple parameters (primitives and string)
+/// - Comment preservation via trivia
+/// - Framework-aware validation
+/// - Semantic analysis to prevent variable shadowing
+/// - Identifier conflict detection at call sites
 /// </summary>
 public class InlineMethod : RefactoringBase
 {
@@ -117,6 +124,14 @@ public class InlineMethod : RefactoringBase
             if (references.Count > 1)
             {
                 return RefactoringResult.Failure($"Method '{methodInfo.Symbol.Name}' has {references.Count} callers. Part 1 only supports single caller. Use Part 2 for multiple call sites.");
+            }
+
+            // Validate that inlining won't cause identifier conflicts at call sites
+            CurrentPhase = "Identifier Conflict Validation";
+            var conflictValidation = ValidateNoIdentifierConflicts(methodInfo, references, semanticModel, compilation);
+            if (!conflictValidation.IsValid)
+            {
+                return RefactoringResult.Failure(conflictValidation.ErrorMessage ?? "Identifier conflicts detected.");
             }
 
             // Track both the declaration and all reference nodes for safe transformation
@@ -287,6 +302,66 @@ public class InlineMethod : RefactoringBase
     }
 
     /// <summary>
+    /// Validates that inlining the method won't cause identifier conflicts at call sites.
+    /// Checks if any local variables or fields in the method body have the same names as
+    /// identifiers in scope at the call sites.
+    /// </summary>
+    private (bool IsValid, string? ErrorMessage) ValidateNoIdentifierConflicts(
+        MethodInfo methodInfo,
+        List<InvocationExpressionSyntax> callSites,
+        SemanticModel semanticModel,
+        Compilation compilation)
+    {
+        // Get the method body
+        var methodBody = methodInfo.BlockBody ?? (SyntaxNode?)methodInfo.ExpressionBody;
+        if (methodBody == null)
+        {
+            return (true, null); // No body means no conflicts
+        }
+
+        // Extract all identifiers from the method body that refer to local symbols or fields
+        var methodBodyIdentifiers = methodBody.DescendantNodes()
+            .OfType<IdentifierNameSyntax>()
+            .Select(id => semanticModel.GetSymbolInfo(id).Symbol)
+            .Where(s => s is ILocalSymbol || s is IFieldSymbol || s is IPropertySymbol)
+            .Select(s => s!.Name)
+            .Distinct()
+            .ToHashSet();
+
+        if (methodBodyIdentifiers.Count == 0)
+        {
+            return (true, null); // No local identifiers to conflict
+        }
+
+        // Check each call site for conflicts
+        foreach (var callSite in callSites)
+        {
+            // Get the semantic model for the call site's syntax tree
+            var callSiteTree = callSite.SyntaxTree;
+            var callSiteModel = compilation.GetSemanticModel(callSiteTree);
+
+            // Get all symbols in scope at the call site
+            var scopeSymbols = callSiteModel.LookupSymbols(callSite.SpanStart)
+                .Where(s => s is ILocalSymbol || s is IFieldSymbol || s is IPropertySymbol)
+                .Select(s => s.Name)
+                .ToHashSet();
+
+            // Find any conflicts
+            var conflicts = methodBodyIdentifiers.Intersect(scopeSymbols).ToList();
+
+            if (conflicts.Any())
+            {
+                return (false,
+                    $"Cannot inline method '{methodInfo.Symbol.Name}': Method body uses identifiers " +
+                    $"that would conflict with call site scope: {string.Join(", ", conflicts)}. " +
+                    "This could cause the inlined code to reference different variables than intended.");
+            }
+        }
+
+        return (true, null);
+    }
+
+    /// <summary>
     /// Checks if a method is recursive.
     /// </summary>
     private bool IsRecursive(MethodInfo methodInfo, SemanticModel semanticModel)
@@ -426,7 +501,7 @@ public class InlineMethod : RefactoringBase
         // If method has parameters, substitute them with arguments
         if (methodInfo.Parameters.Any())
         {
-            expression = SubstituteParameters(expression, methodInfo, invocation);
+            expression = SubstituteParameters(expression, methodInfo, invocation, semanticModel);
         }
 
         // For void methods, the invocation is a statement, so wrap in expression statement
@@ -451,7 +526,7 @@ public class InlineMethod : RefactoringBase
             var substitutedStatements = new List<StatementSyntax>();
             foreach (var statement in statements)
             {
-                var substitutedStatement = SubstituteParametersInStatement(statement, methodInfo, invocation);
+                var substitutedStatement = SubstituteParametersInStatement(statement, methodInfo, invocation, semanticModel);
                 substitutedStatements.Add(substitutedStatement);
             }
             statements = SyntaxFactory.List(substitutedStatements);
@@ -469,38 +544,49 @@ public class InlineMethod : RefactoringBase
     }
 
     /// <summary>
-    /// Substitutes parameters with arguments in an expression.
+    /// Substitutes parameters with arguments in an expression using semantic analysis.
+    /// Uses symbol information to avoid variable shadowing bugs.
     /// </summary>
     private ExpressionSyntax SubstituteParameters(
         ExpressionSyntax expression,
         MethodInfo methodInfo,
-        InvocationExpressionSyntax invocation)
+        InvocationExpressionSyntax invocation,
+        SemanticModel semanticModel)
     {
         var arguments = invocation.ArgumentList.Arguments;
         if (arguments.Count != methodInfo.Parameters.Count)
         {
-            Logger?.LogWarning("Argument count mismatch: expected {Expected}, got {Actual}",
-                methodInfo.Parameters.Count, arguments.Count);
-            return expression; // Return original on mismatch
+            throw new InvalidOperationException(
+                $"Argument count mismatch: expected {methodInfo.Parameters.Count}, got {arguments.Count}. " +
+                "This indicates a semantic analysis error and should not occur for valid C# code.");
         }
 
-        // Create a mapping from parameter name to argument expression
-        var parameterMap = new Dictionary<string, ExpressionSyntax>();
+        // Create a mapping from parameter symbol to argument expression
+        var parameterMap = new Dictionary<IParameterSymbol, ExpressionSyntax>(SymbolEqualityComparer.Default);
         for (int i = 0; i < methodInfo.Parameters.Count; i++)
         {
-            parameterMap[methodInfo.Parameters[i].Name] = arguments[i].Expression;
+            parameterMap[methodInfo.Parameters[i]] = arguments[i].Expression;
         }
 
-        // Replace all parameter references with arguments
+        // Replace all parameter references with arguments using semantic analysis
         var newExpression = expression.ReplaceNodes(
             expression.DescendantNodesAndSelf().OfType<IdentifierNameSyntax>(),
             (original, _) =>
             {
-                if (parameterMap.TryGetValue(original.Identifier.Text, out var argumentExpr))
+                // Use semantic model to determine what this identifier refers to
+                var symbolInfo = semanticModel.GetSymbolInfo(original);
+
+                // Check if this identifier refers to one of our method's parameters
+                if (symbolInfo.Symbol is IParameterSymbol paramSymbol)
                 {
-                    // Wrap complex expressions in parentheses to preserve precedence
-                    return WrapWithParenthesesIfNeeded(argumentExpr, original.Parent);
+                    // Verify it's one of the parameters we're substituting
+                    if (parameterMap.TryGetValue(paramSymbol, out var argumentExpr))
+                    {
+                        // Wrap complex expressions in parentheses to preserve precedence
+                        return WrapWithParenthesesIfNeeded(argumentExpr, original.Parent);
+                    }
                 }
+
                 return original;
             });
 
@@ -508,38 +594,49 @@ public class InlineMethod : RefactoringBase
     }
 
     /// <summary>
-    /// Substitutes parameters with arguments in a statement.
+    /// Substitutes parameters with arguments in a statement using semantic analysis.
+    /// Uses symbol information to avoid variable shadowing bugs.
     /// </summary>
     private StatementSyntax SubstituteParametersInStatement(
         StatementSyntax statement,
         MethodInfo methodInfo,
-        InvocationExpressionSyntax invocation)
+        InvocationExpressionSyntax invocation,
+        SemanticModel semanticModel)
     {
         var arguments = invocation.ArgumentList.Arguments;
         if (arguments.Count != methodInfo.Parameters.Count)
         {
-            Logger?.LogWarning("Argument count mismatch: expected {Expected}, got {Actual}",
-                methodInfo.Parameters.Count, arguments.Count);
-            return statement; // Return original on mismatch
+            throw new InvalidOperationException(
+                $"Argument count mismatch: expected {methodInfo.Parameters.Count}, got {arguments.Count}. " +
+                "This indicates a semantic analysis error and should not occur for valid C# code.");
         }
 
-        // Create a mapping from parameter name to argument expression
-        var parameterMap = new Dictionary<string, ExpressionSyntax>();
+        // Create a mapping from parameter symbol to argument expression
+        var parameterMap = new Dictionary<IParameterSymbol, ExpressionSyntax>(SymbolEqualityComparer.Default);
         for (int i = 0; i < methodInfo.Parameters.Count; i++)
         {
-            parameterMap[methodInfo.Parameters[i].Name] = arguments[i].Expression;
+            parameterMap[methodInfo.Parameters[i]] = arguments[i].Expression;
         }
 
-        // Replace all parameter references with arguments
+        // Replace all parameter references with arguments using semantic analysis
         var newStatement = statement.ReplaceNodes(
             statement.DescendantNodes().OfType<IdentifierNameSyntax>(),
             (original, _) =>
             {
-                if (parameterMap.TryGetValue(original.Identifier.Text, out var argumentExpr))
+                // Use semantic model to determine what this identifier refers to
+                var symbolInfo = semanticModel.GetSymbolInfo(original);
+
+                // Check if this identifier refers to one of our method's parameters
+                if (symbolInfo.Symbol is IParameterSymbol paramSymbol)
                 {
-                    // Wrap complex expressions in parentheses to preserve precedence
-                    return WrapWithParenthesesIfNeeded(argumentExpr, original.Parent);
+                    // Verify it's one of the parameters we're substituting
+                    if (parameterMap.TryGetValue(paramSymbol, out var argumentExpr))
+                    {
+                        // Wrap complex expressions in parentheses to preserve precedence
+                        return WrapWithParenthesesIfNeeded(argumentExpr, original.Parent);
+                    }
                 }
+
                 return original;
             });
 
