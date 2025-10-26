@@ -214,6 +214,17 @@ public class RenameSymbol : RefactoringBase
     /// </summary>
     private SyntaxNode? DetermineScopeNode(SyntaxNode node)
     {
+        // For lambda parameters, use the lambda expression as scope
+        // Check lambda expressions first to ensure lambda parameters get lambda scope, not method scope
+        var simpleLambda = node.FirstAncestorOrSelf<SimpleLambdaExpressionSyntax>();
+        if (simpleLambda != null) return simpleLambda;
+
+        var parenthesizedLambda = node.FirstAncestorOrSelf<ParenthesizedLambdaExpressionSyntax>();
+        if (parenthesizedLambda != null) return parenthesizedLambda;
+
+        var anonymousMethod = node.FirstAncestorOrSelf<AnonymousMethodExpressionSyntax>();
+        if (anonymousMethod != null) return anonymousMethod;
+
         // For local variables and parameters, use the containing method
         var methodScope = node.FirstAncestorOrSelf<MethodDeclarationSyntax>();
         if (methodScope != null) return methodScope;

@@ -559,7 +559,7 @@ public class Test
         result.RefactoredCode.Should().Contain("=> _data;");
     }
 
-    [Fact(Skip = "TODO: Lambda parameter renaming needs investigation - may be scope or symbol type issue")]
+    [Fact]
     public void Execute_WithLambdaExpression_ShouldRename()
     {
         // Arrange
@@ -574,11 +574,11 @@ public class Test
 }";
         var refactoring = new RenameSymbol();
 
-        // Act - Rename lambda parameter x
-        var result = refactoring.Execute(sourceCode, 7, 40, "item");
+        // Act - Rename lambda parameter x (at column 36: the 'x' in "Where(x =>")
+        var result = refactoring.Execute(sourceCode, 7, 36, "item");
 
         // Assert
-        result.IsSuccess.Should().BeTrue();
+        result.IsSuccess.Should().BeTrue($"Error: {result.Message}");
         result.RefactoredCode.Should().Contain("item => item > 1");
     }
 
@@ -871,5 +871,133 @@ public class Test
         // Assert
         result.IsSuccess.Should().BeFalse();
         result.ErrorMessage.Should().Contain("Syntax errors");
+    }
+
+    [Fact]
+    public void Execute_WithParenthesizedLambda_ShouldRename()
+    {
+        // Arrange - Lambda with multiple parameters
+        var sourceCode = @"
+public class Test
+{
+    public void Method()
+    {
+        var items = new[] { 1, 2, 3 };
+        var result = items.Select((x, i) => x + i);
+    }
+}";
+        var refactoring = new RenameSymbol();
+
+        // Act - Rename first lambda parameter 'x' to 'item' (column 36 is the 'x' in "(x, i)")
+        var result = refactoring.Execute(sourceCode, 7, 36, "item");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue($"Error: {result.Message}");
+        result.RefactoredCode.Should().Contain("(item, i) => item + i");
+        // Verify 'i' parameter remains unchanged
+        result.RefactoredCode.Should().Contain("(item, i)");
+    }
+
+    [Fact]
+    public void Execute_WithNestedLambdas_ShouldRenameInnerParameter()
+    {
+        // Arrange - Nested lambda expressions
+        var sourceCode = @"
+public class Test
+{
+    public void Method()
+    {
+        var items = new[] { 1, 2, 3 };
+        var result = items.Select(x => items.Where(y => y > x));
+    }
+}";
+        var refactoring = new RenameSymbol();
+
+        // Act - Rename inner lambda parameter 'y' to 'item' (column 52 is the 'y' in "Where(y =>")
+        var result = refactoring.Execute(sourceCode, 7, 52, "item");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue($"Error: {result.Message}");
+        result.RefactoredCode.Should().Contain("Where(item => item > x)");
+        // Verify outer lambda parameter 'x' remains unchanged
+        result.RefactoredCode.Should().Contain("Select(x =>");
+    }
+
+    [Fact]
+    public void Execute_WithLambdaBlockBody_ShouldRename()
+    {
+        // Arrange - Lambda with block body
+        var sourceCode = @"
+public class Test
+{
+    public void Method()
+    {
+        var items = new[] { 1, 2, 3 };
+        var filtered = items.Where(x =>
+        {
+            return x > 1;
+        });
+    }
+}";
+        var refactoring = new RenameSymbol();
+
+        // Act - Rename lambda parameter 'x' to 'value' (column 36 is the 'x' in "Where(x =>")
+        var result = refactoring.Execute(sourceCode, 7, 36, "value");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue($"Error: {result.Message}");
+        result.RefactoredCode.Should().Contain("Where(value =>");
+        result.RefactoredCode.Should().Contain("return value > 1;");
+    }
+
+    [Fact]
+    public void Execute_WithLambdaConflict_ShouldReturnFailure()
+    {
+        // Arrange - Lambda with local variable that conflicts with proposed name
+        var sourceCode = @"
+public class Test
+{
+    public void Method()
+    {
+        var items = new[] { 1, 2, 3 };
+        var filtered = items.Where(x =>
+        {
+            var item = x * 2;
+            return item > 1;
+        });
+    }
+}";
+        var refactoring = new RenameSymbol();
+
+        // Act - Attempt to rename 'x' to 'item' which conflicts with local variable
+        var result = refactoring.Execute(sourceCode, 7, 36, "item");
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorMessage.Should().Contain("conflicts with existing symbols");
+    }
+
+    [Fact]
+    public void Execute_WithAnonymousMethodExpression_ShouldRename()
+    {
+        // Arrange - Anonymous method (delegate expression)
+        var sourceCode = @"
+using System;
+public class Test
+{
+    public void Method()
+    {
+        Func<int, bool> filter = delegate(int x) { return x > 1; };
+    }
+}";
+        var refactoring = new RenameSymbol();
+
+        // Act - Rename anonymous method parameter 'x' to 'value' (column 47 is the 'x' in "delegate(int x)")
+        var result = refactoring.Execute(sourceCode, 7, 47, "value");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue($"Error: {result.Message}");
+        result.RefactoredCode.Should().Contain("delegate (int value)"); // Note: NormalizeWhitespace adds space
+        result.RefactoredCode.Should().Contain("return value > 1;");
     }
 }
