@@ -141,7 +141,7 @@ public class InlineMethod : RefactoringBase
                     conflicts.Count);
 
                 CurrentPhase = "Identifier Conflict Resolution";
-                methodInfo = ResolveIdentifierConflicts(methodInfo, conflicts, semanticModel);
+                methodInfo = ResolveIdentifierConflicts(methodInfo, conflicts, references, semanticModel, compilation);
             }
 
             // Track both the ORIGINAL declaration and all reference nodes for safe transformation
@@ -386,15 +386,18 @@ public class InlineMethod : RefactoringBase
 
     /// <summary>
     /// Resolves identifier conflicts by renaming conflicting variables in the method body.
-    /// Uses _1, _2, _3 suffixes to generate unique names.
+    /// Uses _1, _2, _3 suffixes to generate unique names that don't conflict with existing identifiers.
     /// Returns a new MethodInfo with the renamed method body.
     /// </summary>
     private MethodInfo ResolveIdentifierConflicts(
         MethodInfo methodInfo,
         HashSet<string> conflicts,
-        SemanticModel semanticModel)
+        List<InvocationExpressionSyntax> callSites,
+        SemanticModel semanticModel,
+        Compilation compilation)
     {
-        if (conflicts.Count == 0)
+        // Defensive null check
+        if (conflicts == null || conflicts.Count == 0)
         {
             return methodInfo; // No conflicts to resolve
         }
@@ -405,12 +408,36 @@ public class InlineMethod : RefactoringBase
             methodInfo.Symbol.Name,
             string.Join(", ", conflicts));
 
-        // Generate renamings: conflict -> conflict_1
+        // Gather all existing identifier names from all call site scopes
+        // This ensures we don't create new conflicts with _1, _2, etc. suffixes
+        var allScopeNames = new HashSet<string>();
+        foreach (var callSite in callSites)
+        {
+            var callSiteTree = callSite.SyntaxTree;
+            var callSiteModel = compilation.GetSemanticModel(callSiteTree);
+            var scopeNames = callSiteModel.LookupSymbols(callSite.SpanStart)
+                .Where(s => s is ILocalSymbol || s is IFieldSymbol || s is IPropertySymbol)
+                .Select(s => s.Name);
+            foreach (var name in scopeNames)
+            {
+                allScopeNames.Add(name);
+            }
+        }
+
+        // Generate renamings with iterative suffix finding
         var renamings = new Dictionary<string, string>();
         foreach (var conflict in conflicts)
         {
-            // Use _1 suffix for simplicity (could increment if _1 also conflicts)
-            renamings[conflict] = $"{conflict}_1";
+            // Increment suffix until we find a unique name that doesn't exist in any scope
+            int suffix = 1;
+            string newName;
+            while (allScopeNames.Contains(newName = $"{conflict}_{suffix}"))
+            {
+                suffix++;
+            }
+            renamings[conflict] = newName;
+
+            Logger?.LogDebug("Renaming '{Old}' to '{New}' (suffix: {Suffix})", conflict, newName, suffix);
         }
 
         // Apply renamings to the method body
@@ -448,7 +475,11 @@ public class InlineMethod : RefactoringBase
 
     /// <summary>
     /// Renames identifiers in a syntax node based on the provided renaming map.
-    /// Uses semantic analysis to ensure only local variables/fields are renamed.
+    /// Uses semantic analysis to ensure only local variables/fields/properties are renamed.
+    ///
+    /// IMPORTANT: The semanticModel must be from the ORIGINAL syntax tree before any renaming transformations.
+    /// This works correctly because ReplaceNodes lambda receives the original unmodified node,
+    /// allowing semantic lookups to succeed. The node identity is preserved through Roslyn's transformation.
     /// </summary>
     private T RenameIdentifiersInNode<T>(T node, Dictionary<string, string> renamings, SemanticModel semanticModel) where T : SyntaxNode
     {
@@ -698,16 +729,17 @@ public class InlineMethod : RefactoringBase
         var arguments = invocation.ArgumentList.Arguments;
         if (arguments.Count != methodInfo.Parameters.Count)
         {
-            // This should never happen for valid C# code that passed compilation,
-            // but if it does, log and return unchanged to avoid throwing exceptions
+            // This should never happen for valid C# code that passed compilation
+            // If it does, it indicates a serious semantic analysis bug - fail fast
             Logger?.LogError(
-                "Argument count mismatch during parameter substitution: expected {Expected}, got {Actual}. " +
-                "Returning original syntax unchanged.",
+                "Argument count mismatch during parameter substitution: expected {Expected}, got {Actual}.",
                 methodInfo.Parameters.Count,
                 arguments.Count);
 
-            // Return original unchanged as safe fallback
-            return expression;
+            throw new InvalidOperationException(
+                $"Argument count mismatch during parameter substitution: " +
+                $"expected {methodInfo.Parameters.Count} parameters, got {arguments.Count} arguments. " +
+                "This indicates a compiler semantic analysis error.");
         }
 
         // Create a mapping from parameter symbol to argument expression
@@ -755,16 +787,17 @@ public class InlineMethod : RefactoringBase
         var arguments = invocation.ArgumentList.Arguments;
         if (arguments.Count != methodInfo.Parameters.Count)
         {
-            // This should never happen for valid C# code that passed compilation,
-            // but if it does, log and return unchanged to avoid throwing exceptions
+            // This should never happen for valid C# code that passed compilation
+            // If it does, it indicates a serious semantic analysis bug - fail fast
             Logger?.LogError(
-                "Argument count mismatch during parameter substitution: expected {Expected}, got {Actual}. " +
-                "Returning original syntax unchanged.",
+                "Argument count mismatch during parameter substitution: expected {Expected}, got {Actual}.",
                 methodInfo.Parameters.Count,
                 arguments.Count);
 
-            // Return original unchanged as safe fallback
-            return statement;
+            throw new InvalidOperationException(
+                $"Argument count mismatch during parameter substitution: " +
+                $"expected {methodInfo.Parameters.Count} parameters, got {arguments.Count} arguments. " +
+                "This indicates a compiler semantic analysis error.");
         }
 
         // Create a mapping from parameter symbol to argument expression

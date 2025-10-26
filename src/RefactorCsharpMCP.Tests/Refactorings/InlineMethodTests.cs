@@ -577,7 +577,7 @@ public class Test
         // Assert - Part 2 should inline at both call sites
         result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
         var occurrences = System.Text.RegularExpressions.Regex.Matches(
-            result.RefactoredCode,
+            result.RefactoredCode!,  // Null-forgiving operator: we asserted IsSuccess
             System.Text.RegularExpressions.Regex.Escape("Console.WriteLine(\"Hello\");"));
         occurrences.Count.Should().Be(2, "Both call sites should be inlined");
         result.RefactoredCode.Should().NotContain("private void DoSomething()");
@@ -878,6 +878,77 @@ public class Test
         result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
         // The property reference 'Count' should be renamed to 'Count_1'
         result.RefactoredCode.Should().Contain("Console.WriteLine(Count_1)", "Property reference should be renamed");
+        result.RefactoredCode.Should().NotContain("private void Helper");
+    }
+
+    [Fact]
+    public void Execute_WithNestedConflict_ShouldUseIncrementedSuffix()
+    {
+        // Arrange - Tests that conflict resolution uses counter_2 when counter_1 already exists
+        // This addresses Issue #10 from the code review - nested conflict scenario
+        var sourceCode = @"
+public class Test
+{
+    public void Caller()
+    {
+        var counter = 100;      // First conflict
+        var counter_1 = 200;    // Pre-existing! Should force counter_2
+        Helper();
+    }
+
+    private void Helper()
+    {
+        var counter = 0;  // Conflicts with caller's 'counter'
+        Console.WriteLine(counter);
+    }
+}";
+        var inliner = new InlineMethod();
+
+        // Act - inline Helper method (line 11, column 18)
+        var result = inliner.Execute(sourceCode, 11, 18);
+
+        // Assert - Should rename to counter_2 (not counter_1 which already exists)
+        result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
+        result.RefactoredCode!.Should().Contain("counter_2 = 0", "Should use counter_2 since counter_1 already exists");
+        result.RefactoredCode.Should().Contain("Console.WriteLine(counter_2)", "Should reference counter_2");
+        result.RefactoredCode.Should().NotContain("private void Helper");
+    }
+
+    [Fact]
+    public void Execute_WithMultipleSimultaneousConflicts_ShouldRenameAll()
+    {
+        // Arrange - Tests that multiple conflicting identifiers are all renamed consistently
+        // This addresses Issue #11 from the code review - multiple simultaneous conflicts
+        var sourceCode = @"
+public class Test
+{
+    public void Caller()
+    {
+        var counter = 100;
+        var temp = 200;
+        var result = 300;
+        Helper();
+    }
+
+    private void Helper()
+    {
+        var counter = 1;  // Conflict #1
+        var temp = 2;     // Conflict #2
+        var result = 3;   // Conflict #3
+        Console.WriteLine(counter + temp + result);
+    }
+}";
+        var inliner = new InlineMethod();
+
+        // Act - inline Helper method (line 12, column 18)
+        var result = inliner.Execute(sourceCode, 12, 18);
+
+        // Assert - All conflicting variables should be renamed with _1 suffix
+        result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
+        result.RefactoredCode!.Should().Contain("counter_1 = 1", "counter should be renamed to counter_1");
+        result.RefactoredCode.Should().Contain("temp_1 = 2", "temp should be renamed to temp_1");
+        result.RefactoredCode.Should().Contain("result_1 = 3", "result should be renamed to result_1");
+        result.RefactoredCode.Should().Contain("Console.WriteLine(counter_1 + temp_1 + result_1)", "All references should use renamed identifiers");
         result.RefactoredCode.Should().NotContain("private void Helper");
     }
 
@@ -1307,7 +1378,7 @@ public class Test
         result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
         // Both calls should be inlined
         var occurrences = System.Text.RegularExpressions.Regex.Matches(
-            result.RefactoredCode,
+            result.RefactoredCode!,  // Null-forgiving operator: we asserted IsSuccess
             System.Text.RegularExpressions.Regex.Escape("Console.WriteLine(\"Inline me\");"));
         occurrences.Count.Should().Be(2, "Both call sites should be inlined");
         result.RefactoredCode.Should().NotContain("private void Helper()");
@@ -1341,7 +1412,7 @@ public class Test
         result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
         // All 5 calls should be inlined
         var occurrences = System.Text.RegularExpressions.Regex.Matches(
-            result.RefactoredCode,
+            result.RefactoredCode!,  // Null-forgiving operator: we asserted IsSuccess
             System.Text.RegularExpressions.Regex.Escape("Console.WriteLine(\"Working\");"));
         occurrences.Count.Should().Be(5, "All 5 call sites should be inlined");
         result.RefactoredCode.Should().NotContain("private void Worker()");
@@ -1374,7 +1445,7 @@ public class Test
         result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
         // All 10 calls should be inlined
         var occurrences = System.Text.RegularExpressions.Regex.Matches(
-            result.RefactoredCode,
+            result.RefactoredCode!,  // Null-forgiving operator: we asserted IsSuccess
             System.Text.RegularExpressions.Regex.Escape("Console.WriteLine(\"Log entry\");"));
         occurrences.Count.Should().Be(10, "All 10 call sites should be inlined");
         result.RefactoredCode.Should().NotContain("private void Log()");
@@ -1446,7 +1517,7 @@ public class Test
         result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
         // Both static and instance calls should be inlined
         var occurrences = System.Text.RegularExpressions.Regex.Matches(
-            result.RefactoredCode,
+            result.RefactoredCode!,  // Null-forgiving operator: we asserted IsSuccess
             System.Text.RegularExpressions.Regex.Escape("Console.WriteLine(\"Message\");"));
         occurrences.Count.Should().Be(2, "Both static and instance call sites should be inlined");
         result.RefactoredCode.Should().NotContain("private static void Print()");
