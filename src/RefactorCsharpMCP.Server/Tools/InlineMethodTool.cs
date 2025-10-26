@@ -6,15 +6,16 @@ using RefactorCsharpMCP.Core.Refactorings;
 namespace RefactorCsharpMCP.Server.Tools;
 
 /// <summary>
-/// MCP tool for inlining a method by replacing its invocation with the method's body.
-/// Part 1: Supports simple void methods with single caller.
+/// MCP tool for inlining a method by replacing all invocations with the method's body.
+/// Part 2: Supports multiple call sites with automatic identifier conflict resolution.
 /// </summary>
 [McpServerToolType]
 public class InlineMethodTool
 {
     /// <summary>
-    /// Inlines a method by replacing its invocation with the method's body, then removes the method declaration.
-    /// Part 1 scope: void methods only, single caller, simple parameters (primitives and string).
+    /// Inlines a method by replacing all invocations with the method's body, then removes the method declaration.
+    /// Part 2 capabilities: void methods, multiple call sites, automatic identifier conflict resolution.
+    /// Simple parameters (primitives and string) are supported.
     /// </summary>
     /// <param name="sourceCode">The source code containing the method to inline.</param>
     /// <param name="lineNumber">The line number (1-based) where the method is declared.</param>
@@ -22,7 +23,7 @@ public class InlineMethodTool
     /// <param name="targetFramework">The target .NET framework (e.g., "net8.0", "net48", "netstandard2.0"). Defaults to "net8.0".</param>
     /// <returns>A JSON object containing the refactored code and status.</returns>
     [McpServerTool]
-    [Description("Inlines a method by replacing its single invocation with the method's body, then removes the method declaration. Part 1: Supports void methods with single caller and simple parameters (primitives, string). Provide the source code, line and column position (1-based) of the method declaration, and optionally target framework (defaults to net8.0).")]
+    [Description("Inlines a method by replacing all invocations with the method's body, then removes the method declaration. Part 2: Supports void methods with multiple call sites and automatic identifier conflict resolution (conflicting variables renamed with _1 suffix). Provide the source code, line and column position (1-based) of the method declaration, and optionally target framework (defaults to net8.0).")]
     public async Task<object> InlineMethod(
         [Description("The complete C# source code")] string sourceCode,
         [Description("The line number (1-based) where the method is declared")] int lineNumber,
