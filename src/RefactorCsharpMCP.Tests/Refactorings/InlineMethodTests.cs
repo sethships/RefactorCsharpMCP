@@ -548,9 +548,9 @@ public class Test
     }
 
     [Fact]
-    public void Execute_WithMultipleCallers_ShouldReturnFailure()
+    public void Execute_WithMultipleCallers_ShouldSucceed()
     {
-        // Arrange
+        // Arrange - Part 2 now supports multiple callers
         var sourceCode = @"
 public class Test
 {
@@ -571,13 +571,16 @@ public class Test
 }";
         var inliner = new InlineMethod();
 
-        // Act
+        // Act - inline DoSomething at line 14, column 18
         var result = inliner.Execute(sourceCode, 14, 18);
 
-        // Assert
-        result.IsSuccess.Should().BeFalse();
-        result.Message.Should().Contain("2 callers");
-        result.Message.Should().Contain("Part 1 only supports single caller");
+        // Assert - Part 2 should inline at both call sites
+        result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
+        var occurrences = System.Text.RegularExpressions.Regex.Matches(
+            result.RefactoredCode,
+            System.Text.RegularExpressions.Regex.Escape("Console.WriteLine(\"Hello\");"));
+        occurrences.Count.Should().Be(2, "Both call sites should be inlined");
+        result.RefactoredCode.Should().NotContain("private void DoSomething()");
     }
 
     [Fact]
@@ -1266,6 +1269,187 @@ public class Test
         // For now, just verify it doesn't crash
         result.Should().NotBeNull();
     }
+
+    #endregion
+
+    #region Multiple Call Site Tests (Part 2)
+
+    [Fact]
+    public void Execute_WithTwoCallSites_ShouldInlineBoth()
+    {
+        // Arrange - Test multiple call site support
+        var sourceCode = @"
+public class Test
+{
+    public void Caller()
+    {
+        Helper();
+        Console.WriteLine(""Between calls"");
+        Helper();
+    }
+
+    private void Helper()
+    {
+        Console.WriteLine(""Inline me"");
+    }
+}";
+        var inliner = new InlineMethod();
+
+        // Act - inline Helper method (line 11, column 18)
+        var result = inliner.Execute(sourceCode, 11, 18);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
+        // Both calls should be inlined
+        var occurrences = System.Text.RegularExpressions.Regex.Matches(
+            result.RefactoredCode,
+            System.Text.RegularExpressions.Regex.Escape("Console.WriteLine(\"Inline me\");"));
+        occurrences.Count.Should().Be(2, "Both call sites should be inlined");
+        result.RefactoredCode.Should().NotContain("private void Helper()");
+        result.RefactoredCode.Should().Contain("Between calls");
+    }
+
+    [Fact]
+    public void Execute_WithFiveCallSites_ShouldInlineAll()
+    {
+        // Arrange - Test with 5 call sites
+        var sourceCode = @"
+public class Test
+{
+    public void Caller1() { Worker(); }
+    public void Caller2() { Worker(); }
+    public void Caller3() { Worker(); }
+    public void Caller4() { Worker(); }
+    public void Caller5() { Worker(); }
+
+    private void Worker()
+    {
+        Console.WriteLine(""Working"");
+    }
+}";
+        var inliner = new InlineMethod();
+
+        // Act - inline Worker method (line 10, column 18)
+        var result = inliner.Execute(sourceCode, 10, 18);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
+        // All 5 calls should be inlined
+        var occurrences = System.Text.RegularExpressions.Regex.Matches(
+            result.RefactoredCode,
+            System.Text.RegularExpressions.Regex.Escape("Console.WriteLine(\"Working\");"));
+        occurrences.Count.Should().Be(5, "All 5 call sites should be inlined");
+        result.RefactoredCode.Should().NotContain("private void Worker()");
+    }
+
+    [Fact]
+    public void Execute_WithTenCallSites_ShouldInlineAll()
+    {
+        // Arrange - Performance test with 10 call sites
+        var sourceCode = @"
+public class Test
+{
+    public void Execute()
+    {
+        Log(); Log(); Log(); Log(); Log();
+        Log(); Log(); Log(); Log(); Log();
+    }
+
+    private void Log()
+    {
+        Console.WriteLine(""Log entry"");
+    }
+}";
+        var inliner = new InlineMethod();
+
+        // Act - inline Log method (line 10, column 18)
+        var result = inliner.Execute(sourceCode, 10, 18);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
+        // All 10 calls should be inlined
+        var occurrences = System.Text.RegularExpressions.Regex.Matches(
+            result.RefactoredCode,
+            System.Text.RegularExpressions.Regex.Escape("Console.WriteLine(\"Log entry\");"));
+        occurrences.Count.Should().Be(10, "All 10 call sites should be inlined");
+        result.RefactoredCode.Should().NotContain("private void Log()");
+    }
+
+    [Fact]
+    public void Execute_WithMultipleCallSites_DifferentArguments_ShouldSubstituteCorrectly()
+    {
+        // Arrange - Different arguments at each call site
+        var sourceCode = @"
+public class Test
+{
+    public void Caller()
+    {
+        Process(1);
+        Process(2);
+        Process(42);
+    }
+
+    private void Process(int value)
+    {
+        Console.WriteLine(value * 2);
+    }
+}";
+        var inliner = new InlineMethod();
+
+        // Act - inline Process method (line 11, column 18)
+        var result = inliner.Execute(sourceCode, 11, 18);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
+        // Each call should be substituted with correct argument
+        result.RefactoredCode.Should().Contain("Console.WriteLine(1 * 2);");
+        result.RefactoredCode.Should().Contain("Console.WriteLine(2 * 2);");
+        result.RefactoredCode.Should().Contain("Console.WriteLine(42 * 2);");
+        result.RefactoredCode.Should().NotContain("private void Process");
+    }
+
+    [Fact]
+    public void Execute_WithMultipleCallSites_StaticAndInstance_ShouldInlineBoth()
+    {
+        // Arrange - Both static and instance calls
+        var sourceCode = @"
+public class Test
+{
+    private int field = 10;
+
+    public void InstanceMethod()
+    {
+        Print();
+    }
+
+    public static void StaticMethod()
+    {
+        Print();
+    }
+
+    private static void Print()
+    {
+        Console.WriteLine(""Message"");
+    }
+}";
+        var inliner = new InlineMethod();
+
+        // Act - inline Print method (line 14, column 25)
+        var result = inliner.Execute(sourceCode, 14, 25);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
+        // Both static and instance calls should be inlined
+        var occurrences = System.Text.RegularExpressions.Regex.Matches(
+            result.RefactoredCode,
+            System.Text.RegularExpressions.Regex.Escape("Console.WriteLine(\"Message\");"));
+        occurrences.Count.Should().Be(2, "Both static and instance call sites should be inlined");
+        result.RefactoredCode.Should().NotContain("private static void Print()");
+    }
+
+    // Note: Expression-bodied callers calling expression-bodied methods is a known limitation
+    // The current implementation expects invocations to be in ExpressionStatements.
+    // This edge case can be addressed in a future enhancement.
 
     #endregion
 }
