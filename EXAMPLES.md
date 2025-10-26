@@ -387,6 +387,170 @@ const result = await use_mcp_tool({
 4. **Review operator precedence** - while parentheses are added automatically, verify the result is semantically correct.
 5. **Consider readability trade-offs** - sometimes a well-named intermediate variable improves code clarity even if it's technically unnecessary.
 
+## 4. Extract Class
+
+Extract Class refactoring helps decompose large classes by moving fields and methods into a new class, following the composition pattern. The refactoring automatically updates references within the same class and warns about external references that need manual updates.
+
+### Basic Usage - Single Field
+
+**Before:**
+```csharp
+public class UserService
+{
+    private string _username;
+    private string _email;
+    private IDatabase _database;
+
+    public void SaveUser()
+    {
+        _database.Save(_username, _email);
+    }
+}
+```
+
+**After extraction** of `_username` and `_email` into `UserProfile`:
+```csharp
+public class UserService
+{
+    private readonly UserProfile _userProfile = new UserProfile();
+    private IDatabase _database;
+
+    public void SaveUser()
+    {
+        // References automatically updated
+        _database.Save(_userProfile._username, _userProfile._email);
+    }
+}
+
+public class UserProfile
+{
+    private string _username;
+    private string _email;
+}
+```
+
+### Multiple Fields and Methods
+
+**Before:**
+```csharp
+public class OrderService
+{
+    private string _street;
+    private string _city;
+    private string _state;
+    private string _zipCode;
+
+    private string FormatAddress()
+    {
+        return $"{_street}, {_city}, {_state} {_zipCode}";
+    }
+
+    private bool ValidateAddress()
+    {
+        return !string.IsNullOrEmpty(_street) && !string.IsNullOrEmpty(_city);
+    }
+
+    public void PrintOrder()
+    {
+        var address = FormatAddress();
+        System.Console.WriteLine($"Shipping to: {address}");
+    }
+}
+```
+
+**After extraction** of address-related fields and methods into `Address`:
+```csharp
+public class OrderService
+{
+    private readonly Address _address = new Address();
+
+    public void PrintOrder()
+    {
+        // Method call automatically updated
+        var address = _address.FormatAddress();
+        System.Console.WriteLine($"Shipping to: {address}");
+    }
+}
+
+public class Address
+{
+    private string _street;
+    private string _city;
+    private string _state;
+    private string _zipCode;
+
+    private string FormatAddress()
+    {
+        return $"{_street}, {_city}, {_state} {_zipCode}";
+    }
+
+    private bool ValidateAddress()
+    {
+        return !string.IsNullOrEmpty(_street) && !string.IsNullOrEmpty(_city);
+    }
+}
+```
+
+### Automatic Reference Updating
+
+The refactoring uses semantic analysis to automatically update references within the same class:
+
+**Field references:**
+- `_city` → `_address._city`
+- `this._city` → `_address._city`
+
+**Method calls:**
+- `FormatAddress()` → `_address.FormatAddress()`
+
+**Preserved correctly:**
+- Local variables with same name remain unchanged
+- Method parameters with same name remain unchanged
+- Fields in unrelated classes remain unchanged
+
+### External Reference Warnings
+
+When extracted members are referenced from other classes, the refactoring warns you:
+
+**Example:**
+```csharp
+public class UserService
+{
+    internal string _city; // Extracted to Address class
+}
+
+public class ReportGenerator
+{
+    private UserService _userService;
+
+    public void PrintReport()
+    {
+        // ⚠️ External reference - needs manual update
+        System.Console.WriteLine(_userService._city);
+    }
+}
+```
+
+**Result message:**
+```
+Extracted 1 field(s) and 0 method(s) into new class 'Address'.
+⚠️ WARNING: Found external references that require manual updates:
+ReportGenerator.cs (1 reference(s)).
+```
+
+You must manually update external references:
+```csharp
+System.Console.WriteLine(_userService._address._city);
+```
+
+### Best Practices
+
+1. **Group related fields and methods** - Extract cohesive groups that represent a single concept (e.g., all address-related members).
+2. **Use descriptive class names** - The new class name should clearly describe what it represents (`Address`, `Configuration`, `Credentials`).
+3. **Handle external references** - Always review and update external references after the refactoring completes.
+4. **Test after refactoring** - Run your tests to ensure all references were updated correctly.
+5. **Consider partial classes** - References in all parts of a partial class are automatically updated.
+6. **Encapsulation** - After extraction, consider making extracted fields private and adding public properties/methods as needed.
+
 ## Combined Refactoring Workflow
 
 ### Starting Code

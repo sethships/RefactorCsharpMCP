@@ -344,6 +344,36 @@ Replaces all uses of a local variable with its initialization expression, then r
 - Framework-aware validation
 ```
 
+#### Extract Class
+Extracts fields and methods into a new class with automatic reference updating within the same class.
+
+```bash
+# Parameters:
+- sourceCode: Complete C# source code
+- className: Name of the source class
+- newClassName: Name for the new extracted class
+- fieldNames: Comma or semicolon-separated field names to extract
+- methodNames: Comma or semicolon-separated method names to extract (optional)
+
+# Features:
+- Automatic reference updating for same-class references (field accesses, method calls)
+- Semantic analysis prevents false positives (local variables, parameters remain unchanged)
+- Partial class support (references in all parts are updated)
+- Composition pattern with readonly field and instantiation
+- External reference warnings for manual updates
+- Handles qualified member access (this._field)
+```
+
+**Automatic transformations:**
+- `_city` → `_address._city`
+- `this._city` → `_address._city`
+- `GetAddress()` → `_address.GetAddress()`
+
+**Preserved correctly:**
+- Local variables with same name
+- Method parameters with same name
+- Fields in unrelated classes
+
 ### Diagnostic Integration (V1.5)
 
 RefactorCsharpMCP provides powerful diagnostic capabilities that enable AI agents to detect code issues and automatically fix them using the **analyze → suggest → fix** workflow.
