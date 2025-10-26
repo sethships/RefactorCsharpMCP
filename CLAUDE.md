@@ -91,8 +91,9 @@ dotnet test
 # Run with code coverage
 dotnet test --collect:"XPlat Code Coverage"
 
-# Current test coverage: ~87% lines, ~83% branches (estimated after CR fixes)
-# Total: 452 tests (424 unit + 20 component + 8 integration)
+# Current test coverage: ~87% lines, ~83% branches (estimated)
+# Total: 491 tests (463 unit + 20 component + 8 integration)
+# Includes 39 InlineMethod tests (38 passing, 1 skipped for net48)
 ```
 
 ## Technology Stack
@@ -117,6 +118,7 @@ dotnet test --collect:"XPlat Code Coverage"
 4. **Safe Delete**: Delete methods/classes after verifying no references exist
 5. **Extract Class**: Extract fields and methods into a new class with composition pattern
 6. **Remove Unused Usings**: Remove unused using directives detected via Roslyn diagnostics (IDE0005, CS8019), with framework-aware handling of global usings (C# 10+)
+7. **Inline Method (Part 1)**: Inline a method by replacing its single invocation with the method's body. Supports void methods with simple parameters (primitives, string). Single caller only. Framework-aware with automatic syntax validation.
 
 ### Phase 2 (Planned - See docs/SDD-Framework-Version-Awareness.md)
 - Framework Version Awareness: Support for targeting different .NET framework versions (net8.0, net48, netstandard2.0, etc.)
@@ -170,6 +172,7 @@ The server exposes MCP tools that can be called from Claude Code:
 4. `safe_delete_method`: Delete methods with reference checking
 5. `extract_class`: Extract fields/methods into a new class
 6. `remove_unused_usings`: Remove unused using directives with framework-aware global using preservation
+7. `inline_method`: Inline a method by replacing its single invocation with the method body (Part 1: void methods, simple parameters, single caller)
 
 Each tool accepts source code and refactoring parameters, returning either:
 - Success: Refactored source code

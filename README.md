@@ -374,6 +374,32 @@ Extracts fields and methods into a new class with automatic reference updating w
 - Method parameters with same name
 - Fields in unrelated classes
 
+#### Inline Method (Part 1)
+Inlines a method by replacing its single invocation with the method's body, then removes the method declaration. Part 1 supports void methods with simple parameters (primitives, string) and single caller only.
+
+```bash
+# MCP Tool: inline_method
+# Parameters:
+- sourceCode: Complete C# source code
+- lineNumber: Line number where method is declared (1-based)
+- columnNumber: Column number within the line (1-based)
+- targetFramework: Target .NET framework (default: "net8.0")
+
+# Features:
+- Void method inlining with single caller
+- Parameter substitution for primitives and strings
+- Comment preservation (invocation site and method body)
+- Framework-aware validation
+- Safety checks: rejects virtual/abstract/recursive methods, multiple callers, ref/out parameters
+
+# Part 1 Limitations:
+- Void methods only (no return values)
+- Single caller required
+- Simple parameters only (primitives, string)
+- No virtual/abstract/override methods
+- No recursive methods
+```
+
 ### Diagnostic Integration (V1.5)
 
 RefactorCsharpMCP provides powerful diagnostic capabilities that enable AI agents to detect code issues and automatically fix them using the **analyze → suggest → fix** workflow.
