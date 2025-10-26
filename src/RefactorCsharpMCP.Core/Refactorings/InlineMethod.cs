@@ -17,8 +17,8 @@ namespace RefactorCsharpMCP.Core.Refactorings;
 /// - Comment preservation via trivia
 /// - Framework-aware validation
 /// - Semantic analysis to prevent variable shadowing
-/// - Identifier conflict detection at call sites
-/// - Automatic variable conflict resolution with renaming
+/// - Automatic identifier conflict detection and resolution
+/// - Conflicting variables renamed with _1 suffix
 /// </summary>
 public class InlineMethod : RefactoringBase
 {
@@ -127,16 +127,27 @@ public class InlineMethod : RefactoringBase
                 methodInfo.Symbol.Name,
                 references.Count);
 
-            // Validate that inlining won't cause identifier conflicts at call sites
-            CurrentPhase = "Identifier Conflict Validation";
-            var conflictValidation = ValidateNoIdentifierConflicts(methodInfo, references, semanticModel, compilation);
-            if (!conflictValidation.IsValid)
+            // Store the original declaration for tracking (before any renaming)
+            var originalDeclaration = methodInfo.MethodDeclaration;
+
+            // Detect and resolve identifier conflicts at call sites
+            CurrentPhase = "Identifier Conflict Detection";
+            var conflicts = DetectIdentifierConflicts(methodInfo, references, semanticModel, compilation);
+
+            if (conflicts.Count > 0)
             {
-                return RefactoringResult.Failure(conflictValidation.ErrorMessage ?? "Identifier conflicts detected.");
+                Logger?.LogInformation(
+                    "Detected {Count} identifier conflict(s), applying automatic resolution",
+                    conflicts.Count);
+
+                CurrentPhase = "Identifier Conflict Resolution";
+                methodInfo = ResolveIdentifierConflicts(methodInfo, conflicts, semanticModel);
             }
 
-            // Track both the declaration and all reference nodes for safe transformation
-            var nodesToTrack = new List<SyntaxNode> { methodInfo.MethodDeclaration };
+            // Track both the ORIGINAL declaration and all reference nodes for safe transformation
+            // Important: We track the original declaration (before renaming) since the renamed
+            // declaration is a new node not yet in the tree
+            var nodesToTrack = new List<SyntaxNode> { originalDeclaration };
             nodesToTrack.AddRange(references);
             var trackedRoot = root.TrackNodes(nodesToTrack);
 
@@ -162,7 +173,8 @@ public class InlineMethod : RefactoringBase
                 semanticModel);
 
             // Find the method declaration in the transformed tree
-            var trackedDeclaration = newRoot.GetCurrentNode(methodInfo.MethodDeclaration);
+            // Use originalDeclaration since that's what we tracked (before conflict resolution)
+            var trackedDeclaration = newRoot.GetCurrentNode(originalDeclaration);
             if (trackedDeclaration == null)
             {
                 Logger?.LogWarning("Failed to track method declaration across transformation");
@@ -321,22 +333,23 @@ public class InlineMethod : RefactoringBase
     }
 
     /// <summary>
-    /// Validates that inlining the method won't cause identifier conflicts at call sites.
-    /// Checks if any local variables or fields in the method body have the same names as
-    /// identifiers in scope at the call sites.
+    /// Detects identifier conflicts between method body and call sites.
+    /// Returns the set of conflicting identifier names across all call sites.
     /// Performance optimization: Extracts method body identifiers once and reuses for all call sites.
     /// </summary>
-    private (bool IsValid, string? ErrorMessage) ValidateNoIdentifierConflicts(
+    private HashSet<string> DetectIdentifierConflicts(
         MethodInfo methodInfo,
         List<InvocationExpressionSyntax> callSites,
         SemanticModel semanticModel,
         Compilation compilation)
     {
+        var allConflicts = new HashSet<string>();
+
         // Get the method body
         var methodBody = methodInfo.BlockBody ?? (SyntaxNode?)methodInfo.ExpressionBody;
         if (methodBody == null)
         {
-            return (true, null); // No body means no conflicts
+            return allConflicts; // No body means no conflicts
         }
 
         // Extract all identifiers from the method body ONCE (performance optimization for multiple call sites)
@@ -344,7 +357,7 @@ public class InlineMethod : RefactoringBase
 
         if (methodBodyIdentifiers.Count == 0)
         {
-            return (true, null); // No local identifiers to conflict
+            return allConflicts; // No local identifiers to conflict
         }
 
         // Check each call site for conflicts
@@ -360,19 +373,134 @@ public class InlineMethod : RefactoringBase
                 .Select(s => s.Name)
                 .ToHashSet();
 
-            // Find any conflicts
-            var conflicts = methodBodyIdentifiers.Intersect(scopeSymbols).ToList();
-
-            if (conflicts.Any())
+            // Find any conflicts and add to the set
+            var conflicts = methodBodyIdentifiers.Intersect(scopeSymbols);
+            foreach (var conflict in conflicts)
             {
-                return (false,
-                    $"Cannot inline method '{methodInfo.Symbol.Name}': Method body uses identifiers " +
-                    $"that would conflict with call site scope: {string.Join(", ", conflicts)}. " +
-                    "This could cause the inlined code to reference different variables than intended.");
+                allConflicts.Add(conflict);
             }
         }
 
-        return (true, null);
+        return allConflicts;
+    }
+
+    /// <summary>
+    /// Resolves identifier conflicts by renaming conflicting variables in the method body.
+    /// Uses _1, _2, _3 suffixes to generate unique names.
+    /// Returns a new MethodInfo with the renamed method body.
+    /// </summary>
+    private MethodInfo ResolveIdentifierConflicts(
+        MethodInfo methodInfo,
+        HashSet<string> conflicts,
+        SemanticModel semanticModel)
+    {
+        if (conflicts.Count == 0)
+        {
+            return methodInfo; // No conflicts to resolve
+        }
+
+        Logger?.LogInformation(
+            "Resolving {Count} identifier conflict(s) in method '{Name}': {Conflicts}",
+            conflicts.Count,
+            methodInfo.Symbol.Name,
+            string.Join(", ", conflicts));
+
+        // Generate renamings: conflict -> conflict_1
+        var renamings = new Dictionary<string, string>();
+        foreach (var conflict in conflicts)
+        {
+            // Use _1 suffix for simplicity (could increment if _1 also conflicts)
+            renamings[conflict] = $"{conflict}_1";
+        }
+
+        // Apply renamings to the method body
+        MethodDeclarationSyntax renamedDeclaration;
+
+        if (methodInfo.BlockBody != null)
+        {
+            // Rename in block body
+            var renamedBody = RenameIdentifiersInNode(methodInfo.BlockBody, renamings, semanticModel);
+            renamedDeclaration = methodInfo.MethodDeclaration.WithBody((BlockSyntax)renamedBody);
+        }
+        else if (methodInfo.ExpressionBody != null)
+        {
+            // Rename in expression body
+            var renamedExprBody = RenameIdentifiersInNode(methodInfo.ExpressionBody, renamings, semanticModel);
+            renamedDeclaration = methodInfo.MethodDeclaration.WithExpressionBody((ArrowExpressionClauseSyntax)renamedExprBody);
+        }
+        else
+        {
+            // Should never happen
+            return methodInfo;
+        }
+
+        // Return updated MethodInfo
+        return new MethodInfo
+        {
+            Symbol = methodInfo.Symbol,
+            MethodDeclaration = renamedDeclaration,
+            BlockBody = renamedDeclaration.Body,
+            ExpressionBody = renamedDeclaration.ExpressionBody,
+            IsVoid = methodInfo.IsVoid,
+            Parameters = methodInfo.Parameters
+        };
+    }
+
+    /// <summary>
+    /// Renames identifiers in a syntax node based on the provided renaming map.
+    /// Uses semantic analysis to ensure only local variables/fields are renamed.
+    /// </summary>
+    private T RenameIdentifiersInNode<T>(T node, Dictionary<string, string> renamings, SemanticModel semanticModel) where T : SyntaxNode
+    {
+        // First pass: Rename IdentifierNameSyntax nodes (usages)
+        var renamedNode = node.ReplaceNodes(
+            node.DescendantNodesAndSelf().OfType<IdentifierNameSyntax>(),
+            (original, _) =>
+            {
+                // Skip identifiers that are part of member access (e.g., this.value, obj.field)
+                // These are already qualified and unambiguous, so no renaming needed
+                if (original.Parent is MemberAccessExpressionSyntax memberAccess &&
+                    memberAccess.Name == original)
+                {
+                    return original;
+                }
+
+                // Use semantic analysis to determine what this identifier refers to
+                var symbolInfo = semanticModel.GetSymbolInfo(original);
+                var symbol = symbolInfo.Symbol;
+
+                // Only rename local variables, fields, and properties
+                if (symbol is ILocalSymbol || symbol is IFieldSymbol || symbol is IPropertySymbol)
+                {
+                    var name = original.Identifier.Text;
+                    if (renamings.TryGetValue(name, out var newName))
+                    {
+                        Logger?.LogDebug("Renaming identifier usage '{Old}' to '{New}'", name, newName);
+                        return SyntaxFactory.IdentifierName(newName)
+                            .WithTriviaFrom(original);
+                    }
+                }
+
+                return original;
+            });
+
+        // Second pass: Rename VariableDeclaratorSyntax nodes (declarations like "var counter = 0")
+        renamedNode = renamedNode.ReplaceNodes(
+            renamedNode.DescendantNodes().OfType<VariableDeclaratorSyntax>(),
+            (original, _) =>
+            {
+                var name = original.Identifier.Text;
+                if (renamings.TryGetValue(name, out var newName))
+                {
+                    Logger?.LogDebug("Renaming variable declaration '{Old}' to '{New}'", name, newName);
+                    return original.WithIdentifier(
+                        SyntaxFactory.Identifier(newName)
+                            .WithTriviaFrom(original.Identifier));
+                }
+                return original;
+            });
+
+        return renamedNode;
     }
 
     /// <summary>

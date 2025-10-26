@@ -751,10 +751,11 @@ public class Test
     }
 
     [Fact]
-    public void Execute_WithLocalVariableConflict_ShouldReturnFailure()
+    public void Execute_WithLocalVariableConflict_ShouldResolveAutomatically()
     {
-        // Arrange - Tests identifier conflict validation
+        // Arrange - Tests automatic identifier conflict resolution
         // Method body uses local variable 'counter', call site also has local 'counter'
+        // Part 2 should automatically rename the method's 'counter' to 'counter_1'
         var sourceCode = @"
 public class Test
 {
@@ -775,17 +776,19 @@ public class Test
         // Act - inline Helper method (line 10, column 18)
         var result = inliner.Execute(sourceCode, 10, 18);
 
-        // Assert
-        result.IsSuccess.Should().BeFalse(because: "Identifier conflict should be detected");
-        result.Message.Should().Contain("conflict", "Error message should mention conflict");
-        result.Message.Should().Contain("counter", "Error message should list the conflicting identifier");
+        // Assert - Part 2 automatically resolves conflicts by renaming
+        result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
+        // The conflicting 'counter' should be renamed to 'counter_1'
+        result.RefactoredCode.Should().Contain("counter_1 = 0", "Conflicting variable should be renamed");
+        result.RefactoredCode.Should().Contain("Console.WriteLine(counter_1)", "Renamed variable should be used");
+        result.RefactoredCode.Should().NotContain("private void Helper");
     }
 
     [Fact]
-    public void Execute_WithFieldConflict_ShouldReturnFailure()
+    public void Execute_WithFieldConflict_ShouldSucceed()
     {
-        // Arrange - Tests field identifier conflict validation
-        // Method body references field 'value', call site has local variable 'value'
+        // Arrange - Field reference with this.value
+        // When field is explicitly qualified with 'this.', no renaming needed
         var sourceCode = @"
 public class Test
 {
@@ -793,13 +796,13 @@ public class Test
 
     public void Caller()
     {
-        var value = 10;  // Local variable shadows field - CONFLICT!
+        var value = 10;  // Local variable shadows field
         Helper();
     }
 
     private void Helper()
     {
-        Console.WriteLine(this.value);  // References field
+        Console.WriteLine(this.value);  // Explicitly references field - no conflict
     }
 }";
         var inliner = new InlineMethod();
@@ -807,10 +810,10 @@ public class Test
         // Act - inline Helper method (line 12, column 18)
         var result = inliner.Execute(sourceCode, 12, 18);
 
-        // Assert
-        result.IsSuccess.Should().BeFalse(because: "Field identifier conflict should be detected");
-        result.Message.Should().Contain("conflict", "Error message should mention conflict");
-        result.Message.Should().Contain("value", "Error message should list the conflicting identifier");
+        // Assert - this.value is unambiguous, should succeed without renaming
+        result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
+        result.RefactoredCode.Should().Contain("Console.WriteLine(this.value)", "Explicit field reference should remain unchanged");
+        result.RefactoredCode.Should().NotContain("private void Helper");
     }
 
     [Fact]
@@ -845,10 +848,11 @@ public class Test
     }
 
     [Fact]
-    public void Execute_WithPropertyConflict_ShouldReturnFailure()
+    public void Execute_WithPropertyConflict_ShouldResolveAutomatically()
     {
-        // Arrange - Tests property identifier conflict validation
+        // Arrange - Tests automatic property identifier conflict resolution
         // Method body references property, call site has local with same name
+        // Part 2 should automatically rename the property reference to Count_1
         var sourceCode = @"
 public class Test
 {
@@ -870,10 +874,11 @@ public class Test
         // Act - inline Helper method (line 12, column 18)
         var result = inliner.Execute(sourceCode, 12, 18);
 
-        // Assert
-        result.IsSuccess.Should().BeFalse(because: "Property identifier conflict should be detected");
-        result.Message.Should().Contain("conflict", "Error message should mention conflict");
-        result.Message.Should().Contain("Count", "Error message should list the conflicting identifier");
+        // Assert - Part 2 automatically resolves conflicts by renaming
+        result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
+        // The property reference 'Count' should be renamed to 'Count_1'
+        result.RefactoredCode.Should().Contain("Console.WriteLine(Count_1)", "Property reference should be renamed");
+        result.RefactoredCode.Should().NotContain("private void Helper");
     }
 
     #endregion
