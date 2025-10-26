@@ -559,29 +559,6 @@ public class Test
         result.RefactoredCode.Should().Contain("=> _data;");
     }
 
-    [Fact(Skip = "TODO: Lambda parameter renaming needs investigation - may be scope or symbol type issue")]
-    public void Execute_WithLambdaExpression_ShouldRename()
-    {
-        // Arrange
-        var sourceCode = @"
-public class Test
-{
-    public void Method()
-    {
-        var items = new[] { 1, 2, 3 };
-        var filtered = items.Where(x => x > 1);
-    }
-}";
-        var refactoring = new RenameSymbol();
-
-        // Act - Rename lambda parameter x
-        var result = refactoring.Execute(sourceCode, 7, 40, "item");
-
-        // Assert
-        result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("item => item > 1");
-    }
-
     [Fact]
     public void Execute_RenameToSameName_ShouldReturnFailure()
     {
@@ -871,5 +848,213 @@ public class Test
         // Assert
         result.IsSuccess.Should().BeFalse();
         result.ErrorMessage.Should().Contain("Syntax errors");
+    }
+
+    // ============================================================================
+    // Lambda Expression and Local Function Tests
+    // ============================================================================
+
+    [Fact]
+    public void Execute_WithLambdaExpression_ShouldRename()
+    {
+        // Arrange - Simple lambda with single parameter
+        var sourceCode = @"
+public class Test
+{
+    public void Method()
+    {
+        var items = new[] { 1, 2, 3 };
+        var filtered = items.Where(x => x > 1);
+    }
+}";
+        var refactoring = new RenameSymbol();
+
+        // Act - Rename lambda parameter 'x' (single parameter in Where lambda)
+        var result = refactoring.Execute(sourceCode, 7, 36, "item");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue($"Error: {result.Message}");
+        result.RefactoredCode.Should().Contain("item => item > 1");
+    }
+
+    [Fact]
+    public void Execute_WithParenthesizedLambda_ShouldRename()
+    {
+        // Arrange - Lambda with multiple parameters
+        var sourceCode = @"
+public class Test
+{
+    public void Method()
+    {
+        var items = new[] { 1, 2, 3 };
+        var result = items.Select((x, i) => x + i);
+    }
+}";
+        var refactoring = new RenameSymbol();
+
+        // Act - Rename first lambda parameter 'x' (first parameter in Select lambda)
+        var result = refactoring.Execute(sourceCode, 7, 36, "item");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue($"Error: {result.Message}");
+        result.RefactoredCode.Should().Contain("(item, i) => item + i");
+        // Verify 'i' parameter remains unchanged
+        result.RefactoredCode.Should().Contain("(item, i)");
+    }
+
+    [Fact]
+    public void Execute_WithNestedLambdas_ShouldRenameInnerParameter()
+    {
+        // Arrange - Nested lambda expressions
+        var sourceCode = @"
+public class Test
+{
+    public void Method()
+    {
+        var items = new[] { 1, 2, 3 };
+        var result = items.Select(x => items.Where(y => y > x));
+    }
+}";
+        var refactoring = new RenameSymbol();
+
+        // Act - Rename inner lambda parameter 'y' (inner Where lambda parameter)
+        var result = refactoring.Execute(sourceCode, 7, 52, "item");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue($"Error: {result.Message}");
+        result.RefactoredCode.Should().Contain("Where(item => item > x)");
+        // Verify outer lambda parameter 'x' remains unchanged
+        result.RefactoredCode.Should().Contain("Select(x =>");
+    }
+
+    [Fact]
+    public void Execute_WithLambdaBlockBody_ShouldRename()
+    {
+        // Arrange - Lambda with block body
+        var sourceCode = @"
+public class Test
+{
+    public void Method()
+    {
+        var items = new[] { 1, 2, 3 };
+        var filtered = items.Where(x =>
+        {
+            return x > 1;
+        });
+    }
+}";
+        var refactoring = new RenameSymbol();
+
+        // Act - Rename lambda parameter 'x' (Where lambda with block body)
+        var result = refactoring.Execute(sourceCode, 7, 36, "value");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue($"Error: {result.Message}");
+        result.RefactoredCode.Should().Contain("Where(value =>");
+        result.RefactoredCode.Should().Contain("return value > 1;");
+    }
+
+    [Fact]
+    public void Execute_WithLambdaConflict_ShouldReturnFailure()
+    {
+        // Arrange - Lambda with local variable that conflicts with proposed name
+        var sourceCode = @"
+public class Test
+{
+    public void Method()
+    {
+        var items = new[] { 1, 2, 3 };
+        var filtered = items.Where(x =>
+        {
+            var item = x * 2;
+            return item > 1;
+        });
+    }
+}";
+        var refactoring = new RenameSymbol();
+
+        // Act - Attempt to rename lambda parameter 'x' to conflicting name 'item'
+        var result = refactoring.Execute(sourceCode, 7, 36, "item");
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorMessage.Should().Contain("conflicts with existing symbols");
+    }
+
+    [Fact]
+    public void Execute_WithAnonymousMethodExpression_ShouldRename()
+    {
+        // Arrange - Anonymous method (delegate expression)
+        var sourceCode = @"
+using System;
+public class Test
+{
+    public void Method()
+    {
+        Func<int, bool> filter = delegate(int x) { return x > 1; };
+    }
+}";
+        var refactoring = new RenameSymbol();
+
+        // Act - Rename anonymous method parameter 'x' (delegate expression parameter)
+        var result = refactoring.Execute(sourceCode, 7, 47, "value");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue($"Error: {result.Message}");
+        result.RefactoredCode.Should().Contain("delegate (int value)"); // Note: NormalizeWhitespace adds space
+        result.RefactoredCode.Should().Contain("return value > 1;");
+    }
+
+    [Fact]
+    public void Execute_WithNestedLambdas_ShouldRenameOuterParameter()
+    {
+        // Arrange - Nested lambda expressions with outer parameter used in inner lambda
+        var sourceCode = @"
+public class Test
+{
+    public void Method()
+    {
+        var items = new[] { 1, 2, 3 };
+        var result = items.Select(x => items.Where(y => y > x));
+    }
+}";
+        var refactoring = new RenameSymbol();
+
+        // Act - Rename outer lambda parameter 'x' (first parameter in Select lambda)
+        var result = refactoring.Execute(sourceCode, 7, 35, "item");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue($"Error: {result.Message}");
+        result.RefactoredCode.Should().Contain("Select(item =>");
+        result.RefactoredCode.Should().Contain("y > item"); // Inner lambda references renamed outer parameter
+        // Verify inner lambda parameter 'y' remains unchanged
+        result.RefactoredCode.Should().Contain("Where(y =>");
+    }
+
+    [Fact]
+    public void Execute_WithLocalFunctionParameter_ShouldRename()
+    {
+        // Arrange - Local function with parameter
+        var sourceCode = @"
+public class Test
+{
+    public void Method()
+    {
+        int LocalFunc(int x)
+        {
+            return x * 2;
+        }
+        var result = LocalFunc(5);
+    }
+}";
+        var refactoring = new RenameSymbol();
+
+        // Act - Rename local function parameter 'x' (parameter in local function)
+        var result = refactoring.Execute(sourceCode, 6, 27, "value");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue($"Error: {result.Message}");
+        result.RefactoredCode.Should().Contain("int LocalFunc(int value)");
+        result.RefactoredCode.Should().Contain("return value * 2;");
     }
 }
