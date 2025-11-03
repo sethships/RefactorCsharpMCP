@@ -38,6 +38,9 @@ bld/
 # Visual Studio Code
 .vscode/
 
+# Claude Code
+.claude/
+
 # Rider
 .idea/
 

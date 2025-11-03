@@ -87,7 +87,7 @@ internal class ReturnValueAnalyzer
 
         // Has output variables but no explicit returns
         _logger?.LogDebug("Analyzing output variables for return type");
-        return AnalyzeOutputVariables(outputVariables, dataFlowInfo.Parameters, semanticModel);
+        return AnalyzeOutputVariables(outputVariables, dataFlowInfo.OutputVariableSymbols, dataFlowInfo.Parameters, semanticModel);
     }
 
     /// <summary>
@@ -186,6 +186,7 @@ internal class ReturnValueAnalyzer
     /// </summary>
     private ReturnTypeInfo AnalyzeOutputVariables(
         List<string> outputVariables,
+        List<ILocalSymbol> outputSymbols,
         List<ParameterInfo> parameters,
         SemanticModel semanticModel)
     {
@@ -199,7 +200,19 @@ internal class ReturnValueAnalyzer
             // Single output variable
             var varName = outputVariables[0];
 
-            // Try to find the type from parameters (it should be in the parameter list as input)
+            // First try to find in output symbols (locally declared variables)
+            var outputSymbol = outputSymbols?.FirstOrDefault(s => s.Name == varName);
+            if (outputSymbol != null)
+            {
+                return new ReturnTypeInfo
+                {
+                    Kind = ReturnKind.Single,
+                    SingleReturnType = SymbolTypeFormatter.GetSymbolType(outputSymbol),
+                    SingleReturnName = varName
+                };
+            }
+
+            // Fall back to parameter lookup (variables that flow in and out)
             var parameter = parameters.FirstOrDefault(p => p.Name == varName);
             if (parameter != null)
             {
@@ -211,7 +224,7 @@ internal class ReturnValueAnalyzer
                 };
             }
 
-            // Fallback - couldn't determine type
+            // Final fallback - couldn't determine type
             return new ReturnTypeInfo
             {
                 Kind = ReturnKind.Single,
@@ -225,8 +238,21 @@ internal class ReturnValueAnalyzer
 
         foreach (var varName in outputVariables)
         {
-            var parameter = parameters.FirstOrDefault(p => p.Name == varName);
-            var type = parameter?.Type ?? "object";
+            // First try to find in output symbols (locally declared)
+            var outputSymbol = outputSymbols?.FirstOrDefault(s => s.Name == varName);
+            string type;
+
+            if (outputSymbol != null)
+            {
+                type = SymbolTypeFormatter.GetSymbolType(outputSymbol);
+            }
+            else
+            {
+                // Fall back to parameter lookup (variables that flow in and out)
+                var parameter = parameters.FirstOrDefault(p => p.Name == varName);
+                type = parameter?.Type ?? "object";
+            }
+
             tupleElements.Add((varName, type));
         }
 
