@@ -159,24 +159,23 @@ internal class ReturnValueAnalyzer
         }
 
         // Multiple different return types detected (Issue #52)
-        // Mark this case with a special return info that indicates an error
+        // Return error state instead of attempting to generate invalid code
         _logger?.LogWarning(
             "Mixed return types detected: {Types}",
             string.Join(", ", returnTypes.Select(t => t?.Name ?? "unknown")));
 
         // Build detailed error message with all detected types
         var typeNames = returnTypes
-            .Select(t => t?.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat) ?? "unknown")
+            .Select(t => t?.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) ?? "unknown")
             .Distinct()
             .ToList();
 
-        // Return a special error indicator - Kind will be Single but with error message
+        // Return error state with descriptive message (Issue #52, CR Issue #1)
         return new ReturnTypeInfo
         {
-            Kind = ReturnKind.Single,
-            SingleReturnType = "ERROR_MIXED_TYPES",  // Special marker for mixed types error
-            SingleReturnName = "result",
-            // Store error details in an internal field if available (for future enhancement)
+            Kind = ReturnKind.Error,
+            SingleReturnType = null,
+            SingleReturnName = null,
             ErrorMessage = $"Cannot extract method: Multiple return statements have incompatible types ({string.Join(", ", typeNames)}). " +
                           $"Please refactor to use a common return type or extract the code separately."
         };
@@ -300,7 +299,12 @@ internal enum ReturnKind
     /// <summary>
     /// Multiple return values (tuple).
     /// </summary>
-    Multiple
+    Multiple,
+
+    /// <summary>
+    /// Analysis detected an error - see ErrorMessage for details.
+    /// </summary>
+    Error
 }
 
 /// <summary>

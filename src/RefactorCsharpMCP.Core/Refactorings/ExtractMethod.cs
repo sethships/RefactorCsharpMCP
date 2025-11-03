@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.Extensions.Logging;
 using RefactorCsharpMCP.Core.Validation;
 using System.Text.RegularExpressions;
 
@@ -64,6 +65,29 @@ public class ExtractMethod : RefactoringBase
             return RefactoringResult.Failure($"Invalid line range: {startLine}-{endLine}");
         }
 
+        // Validate framework support early (before expensive semantic analysis) - CR Issue #2
+        if (string.IsNullOrWhiteSpace(targetFramework))
+        {
+            return RefactoringResult.Failure(
+                $"Target framework cannot be null or empty. " +
+                $"Supported frameworks: {string.Join(", ", Infrastructure.FrameworkSupport.FrameworkMoniker.SupportedFrameworks)}");
+        }
+
+        if (!Infrastructure.FrameworkSupport.FrameworkMoniker.IsSupported(targetFramework))
+        {
+            var normalized = Infrastructure.FrameworkSupport.FrameworkMoniker.Normalize(targetFramework);
+            if (Infrastructure.FrameworkSupport.FrameworkMoniker.IsEndOfLife(normalized))
+            {
+                var suggestion = Infrastructure.FrameworkSupport.FrameworkMoniker.SuggestAlternative(normalized);
+                return RefactoringResult.Failure(
+                    $"Target framework '{targetFramework}' is end-of-life and not supported. " +
+                    $"Consider using '{suggestion ?? "net8.0"}' instead.");
+            }
+            return RefactoringResult.Failure(
+                $"Target framework '{targetFramework}' is not supported. " +
+                $"Supported frameworks: {string.Join(", ", Infrastructure.FrameworkSupport.FrameworkMoniker.SupportedFrameworks)}");
+        }
+
         try
         {
             // Parse and validate syntax
@@ -94,20 +118,32 @@ public class ExtractMethod : RefactoringBase
             // Analyze data flow for the selected statements
             var dataFlowAnalysis = AnalyzeDataFlow(semanticModel, statementsToExtract, containingMethod);
 
-            // Check for return type analysis errors (Issue #52)
-            if (dataFlowAnalysis.ReturnInfo?.ErrorMessage != null)
+            // Validate return info was successfully analyzed (CR Issue #3)
+            if (dataFlowAnalysis.ReturnInfo == null)
             {
+                return RefactoringResult.Failure(
+                    "Failed to analyze return type for extracted method. " +
+                    "The code may contain unsupported patterns.");
+            }
+
+            // Check for return type analysis errors (Issue #52, CR Issue #1)
+            if (dataFlowAnalysis.ReturnInfo?.Kind == ReturnKind.Error)
+            {
+                if (string.IsNullOrEmpty(dataFlowAnalysis.ReturnInfo.ErrorMessage))
+                {
+                    return RefactoringResult.Failure("Return type analysis failed with unknown error.");
+                }
                 return RefactoringResult.Failure(dataFlowAnalysis.ReturnInfo.ErrorMessage);
             }
 
-            // Validate framework compatibility for return type (Issue #51)
+            // Validate framework compatibility for return type (Issue #51, CR Issue #5)
             var languageVersion = Infrastructure.FrameworkSupport.FrameworkMoniker.GetLanguageVersion(targetFramework);
             if (dataFlowAnalysis.ReturnInfo?.Kind == ReturnKind.Multiple && languageVersion < LanguageVersion.CSharp7)
             {
                 return RefactoringResult.Failure(
                     $"Multiple return values detected but tuple syntax requires C# 7.0+. " +
                     $"Target framework '{targetFramework}' supports {languageVersion}. " +
-                    $"Consider upgrading to .NET Framework 4.7+, .NET Standard 2.0+, or .NET Core 1.0+.");
+                    $"Consider upgrading to .NET 8 (recommended), .NET Framework 4.7+, or .NET Standard 2.0+.");
             }
 
             // Build the new extracted method
@@ -249,9 +285,14 @@ public class ExtractMethod : RefactoringBase
         }
         catch (Exception ex)
         {
-            // Data flow analysis failed - log for debugging but continue with best effort
-            // In production, consider returning an error instead of degraded behavior
-            System.Diagnostics.Debug.WriteLine($"Data flow analysis failed: {ex.Message}");
+            // Data flow analysis failed - return error instead of silent degradation (CR Issue #7)
+            Logger?.LogError(ex, "Data flow analysis failed");
+            dataFlow.ReturnInfo = new ReturnTypeInfo
+            {
+                Kind = ReturnKind.Error,
+                ErrorMessage = "Failed to analyze data flow for the selected code."
+            };
+            return dataFlow;
         }
 
         // Detect return type based on data flow and control flow
