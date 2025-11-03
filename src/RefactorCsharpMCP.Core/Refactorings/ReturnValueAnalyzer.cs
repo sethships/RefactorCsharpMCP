@@ -207,7 +207,7 @@ internal class ReturnValueAnalyzer
                 return new ReturnTypeInfo
                 {
                     Kind = ReturnKind.Single,
-                    SingleReturnType = GetSymbolType(outputSymbol),
+                    SingleReturnType = SymbolTypeFormatter.GetSymbolType(outputSymbol),
                     SingleReturnName = varName
                 };
             }
@@ -244,7 +244,7 @@ internal class ReturnValueAnalyzer
 
             if (outputSymbol != null)
             {
-                type = GetSymbolType(outputSymbol);
+                type = SymbolTypeFormatter.GetSymbolType(outputSymbol);
             }
             else
             {
@@ -304,25 +304,6 @@ internal class ReturnValueAnalyzer
 
         _logger?.LogDebug("Generated unique name: {UniqueName} (base: {BaseName})", candidateName, baseName);
         return candidateName;
-    }
-
-    /// <summary>
-    /// Gets the fully-qualified type name from a local symbol.
-    /// Uses the same format as ExtractMethod.GetSymbolType() for consistency.
-    /// </summary>
-    /// <param name="symbol">The local variable symbol.</param>
-    /// <returns>Fully-qualified type name.</returns>
-    private string GetSymbolType(ILocalSymbol symbol)
-    {
-        var format = new SymbolDisplayFormat(
-            typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
-            genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
-            memberOptions: SymbolDisplayMemberOptions.None,
-            parameterOptions: SymbolDisplayParameterOptions.None,
-            miscellaneousOptions: SymbolDisplayMiscellaneousOptions.UseSpecialTypes
-        );
-
-        return symbol.Type.ToDisplayString(format);
     }
 }
 

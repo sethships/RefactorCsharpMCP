@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.Extensions.Logging;
 using RefactorCsharpMCP.Core.Validation;
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 
 namespace RefactorCsharpMCP.Core.Refactorings;
@@ -259,7 +260,7 @@ public class ExtractMethod : RefactoringBase
                 .Select(symbol => new ParameterInfo
                 {
                     Name = symbol.Name,
-                    Type = GetSymbolType(symbol)
+                    Type = SymbolTypeFormatter.GetSymbolType(symbol)
                 })
                 .ToList();
 
@@ -273,6 +274,11 @@ public class ExtractMethod : RefactoringBase
             dataFlow.OutputVariableSymbols = outputSymbols;
             dataFlow.OutputVariables = outputSymbols.Select(s => s.Name).ToList();
 
+            // Verify that symbol and variable lists stay synchronized (CR Issue #2)
+            Debug.Assert(
+                dataFlow.OutputVariableSymbols.Count == dataFlow.OutputVariables.Count,
+                "OutputVariableSymbols and OutputVariables must have the same count");
+
             // Variables declared outside but assigned inside need to be captured
             // Exclude variables already in the parameter list to avoid duplicates
             dataFlow.AssignedOutsideVariables = analysis.WrittenInside
@@ -282,7 +288,7 @@ public class ExtractMethod : RefactoringBase
                 .Select(symbol => new ParameterInfo
                 {
                     Name = symbol.Name,
-                    Type = GetSymbolType(symbol)
+                    Type = SymbolTypeFormatter.GetSymbolType(symbol)
                 })
                 .ToList();
         }
@@ -304,31 +310,6 @@ public class ExtractMethod : RefactoringBase
         dataFlow.ReturnInfo = returnAnalyzer.DetectReturnType(dataFlow, statements, semanticModel, position);
 
         return dataFlow;
-    }
-
-    private string GetSymbolType(ISymbol symbol)
-    {
-        // Use FullyQualifiedFormat to ensure we get complete type information
-        // This includes namespace and generic type parameters
-        var format = new SymbolDisplayFormat(
-            typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
-            genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
-            memberOptions: SymbolDisplayMemberOptions.None,
-            parameterOptions: SymbolDisplayParameterOptions.None,
-            miscellaneousOptions: SymbolDisplayMiscellaneousOptions.UseSpecialTypes
-        );
-
-        var typeString = symbol switch
-        {
-            ILocalSymbol local => local.Type.ToDisplayString(format),
-            IParameterSymbol param => param.Type.ToDisplayString(format),
-            IFieldSymbol field => field.Type.ToDisplayString(format),
-            IPropertySymbol prop => prop.Type.ToDisplayString(format),
-            _ => "object"
-        };
-
-        // Fallback to "object" if we got an empty string
-        return string.IsNullOrWhiteSpace(typeString) ? "object" : typeString;
     }
 
     private MethodDeclarationSyntax BuildExtractedMethod(
