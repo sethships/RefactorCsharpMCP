@@ -488,6 +488,8 @@ public class InlineMethod : RefactoringBase
     private T RenameIdentifiersInNode<T>(T node, Dictionary<string, string> renamings, SemanticModel semanticModel) where T : SyntaxNode
     {
         // Handle both identifier usages and variable declarations in a single pass
+        // Note: We only rename IdentifierNameSyntax (variable usages) and VariableDeclaratorSyntax (variable declarations).
+        // Other identifier nodes like ParameterSyntax, TypeParameterSyntax, and method names are intentionally excluded.
         var renamedNode = node.ReplaceNodes(
             node.DescendantNodesAndSelf().Where(n => n is IdentifierNameSyntax or VariableDeclaratorSyntax),
             (original, _) =>
@@ -537,7 +539,9 @@ public class InlineMethod : RefactoringBase
                 }
 
                 // Safety fallback - should never reach here due to Where filter
-                return original;
+                throw new InvalidOperationException(
+                    $"Unexpected node type '{original.GetType().Name}' in RenameIdentifiersInNode. " +
+                    "This indicates a bug in the Where filter predicate.");
             });
 
         return renamedNode;
