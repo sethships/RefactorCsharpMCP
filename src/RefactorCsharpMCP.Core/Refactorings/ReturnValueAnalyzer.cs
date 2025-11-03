@@ -158,17 +158,27 @@ internal class ReturnValueAnalyzer
             };
         }
 
-        // Multiple different return types - would need tuple or complex refactoring
-        // For now, treat as single with most common/first type
-        // TODO: Consider if we should support tuple returns from mixed return statements
+        // Multiple different return types detected (Issue #52)
+        // Mark this case with a special return info that indicates an error
         _logger?.LogWarning(
-            "Mixed return types detected, using first type: {TypeName}",
-            firstType?.Name ?? "unknown");
+            "Mixed return types detected: {Types}",
+            string.Join(", ", returnTypes.Select(t => t?.Name ?? "unknown")));
+
+        // Build detailed error message with all detected types
+        var typeNames = returnTypes
+            .Select(t => t?.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat) ?? "unknown")
+            .Distinct()
+            .ToList();
+
+        // Return a special error indicator - Kind will be Single but with error message
         return new ReturnTypeInfo
         {
             Kind = ReturnKind.Single,
-            SingleReturnType = firstType?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ?? "object",
-            SingleReturnName = GenerateUniqueVariableName("result", semanticModel, position)
+            SingleReturnType = "ERROR_MIXED_TYPES",  // Special marker for mixed types error
+            SingleReturnName = "result",
+            // Store error details in an internal field if available (for future enhancement)
+            ErrorMessage = $"Cannot extract method: Multiple return statements have incompatible types ({string.Join(", ", typeNames)}). " +
+                          $"Please refactor to use a common return type or extract the code separately."
         };
     }
 
@@ -317,4 +327,10 @@ internal class ReturnTypeInfo
     /// List of (name, type) pairs for multiple return values (empty if not multiple).
     /// </summary>
     public List<(string Name, string Type)> MultipleReturns { get; set; } = new();
+
+    /// <summary>
+    /// Error message if return type analysis detected an error (e.g., mixed incompatible types).
+    /// Null if no error. Used for Issue #52.
+    /// </summary>
+    public string? ErrorMessage { get; set; }
 }

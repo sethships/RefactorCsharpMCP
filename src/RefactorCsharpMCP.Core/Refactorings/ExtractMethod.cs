@@ -94,6 +94,22 @@ public class ExtractMethod : RefactoringBase
             // Analyze data flow for the selected statements
             var dataFlowAnalysis = AnalyzeDataFlow(semanticModel, statementsToExtract, containingMethod);
 
+            // Check for return type analysis errors (Issue #52)
+            if (dataFlowAnalysis.ReturnInfo?.ErrorMessage != null)
+            {
+                return RefactoringResult.Failure(dataFlowAnalysis.ReturnInfo.ErrorMessage);
+            }
+
+            // Validate framework compatibility for return type (Issue #51)
+            var languageVersion = Infrastructure.FrameworkSupport.FrameworkMoniker.GetLanguageVersion(targetFramework);
+            if (dataFlowAnalysis.ReturnInfo?.Kind == ReturnKind.Multiple && languageVersion < LanguageVersion.CSharp7)
+            {
+                return RefactoringResult.Failure(
+                    $"Multiple return values detected but tuple syntax requires C# 7.0+. " +
+                    $"Target framework '{targetFramework}' supports {languageVersion}. " +
+                    $"Consider upgrading to .NET Framework 4.7+, .NET Standard 2.0+, or .NET Core 1.0+.");
+            }
+
             // Build the new extracted method
             var extractedMethod = BuildExtractedMethod(
                 newMethodName,
@@ -281,6 +297,9 @@ public class ExtractMethod : RefactoringBase
         // Get language version for framework-aware syntax generation
         var languageVersion = Infrastructure.FrameworkSupport.FrameworkMoniker.GetLanguageVersion(targetFramework);
 
+        // Note: Framework compatibility validation performed in Execute method (Issue #51)
+        // This method should only be called if validation passed
+
         // Build parameter list
         var parameters = SyntaxFactory.ParameterList(
             SyntaxFactory.SeparatedList(
@@ -462,13 +481,8 @@ public class ExtractMethod : RefactoringBase
         // Handle multiple return values (tuple)
         if (returnInfo.Kind == ReturnKind.Multiple)
         {
-            // Validate tuple support - requires C# 7.0+
-            if (languageVersion < LanguageVersion.CSharp7)
-            {
-                // Fallback to void for frameworks that don't support tuples
-                // In future, this could throw an error or use out parameters
-                return SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.VoidKeyword));
-            }
+            // Note: Framework compatibility validated in BuildExtractedMethod (Issue #51)
+            // This code path should only be reached if languageVersion >= CSharp7
 
             // Build value tuple type: (int x, string y)
             var tupleElements = returnInfo.MultipleReturns
