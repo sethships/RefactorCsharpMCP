@@ -487,6 +487,10 @@ public class InlineMethod : RefactoringBase
     /// </summary>
     private T RenameIdentifiersInNode<T>(T node, Dictionary<string, string> renamings, SemanticModel semanticModel) where T : SyntaxNode
     {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(renamings);
+        ArgumentNullException.ThrowIfNull(semanticModel);
+
         // Handle both identifier usages and variable declarations in a single pass
         // Note: We only rename IdentifierNameSyntax (variable usages) and VariableDeclaratorSyntax (variable declarations).
         // Other identifier nodes like ParameterSyntax, TypeParameterSyntax, and method names are intentionally excluded.
