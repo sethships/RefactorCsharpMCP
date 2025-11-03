@@ -265,10 +265,13 @@ public class ExtractMethod : RefactoringBase
 
             // Variables that flow out (might need return value or out parameter)
             // Include variables that are assigned within the region but declared outside
-            dataFlow.OutputVariables = analysis.DataFlowsOut
+            var outputSymbols = analysis.DataFlowsOut
                 .Where(symbol => symbol is ILocalSymbol) // Only local variables can flow out
-                .Select(symbol => symbol.Name)
+                .Cast<ILocalSymbol>()
                 .ToList();
+
+            dataFlow.OutputVariableSymbols = outputSymbols;
+            dataFlow.OutputVariables = outputSymbols.Select(s => s.Name).ToList();
 
             // Variables declared outside but assigned inside need to be captured
             // Exclude variables already in the parameter list to avoid duplicates
@@ -581,6 +584,7 @@ public class ExtractMethod : RefactoringBase
 internal class DataFlowInfo
 {
     public List<ParameterInfo> Parameters { get; set; } = new();
+    public List<ILocalSymbol> OutputVariableSymbols { get; set; } = new();
     public List<string> OutputVariables { get; set; } = new();
     public List<ParameterInfo> AssignedOutsideVariables { get; set; } = new();
     public ReturnTypeInfo? ReturnInfo { get; set; }

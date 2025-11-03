@@ -1243,11 +1243,10 @@ public class Test
         // Act - Extract lines 6-7 which declare y and modify x
         var result = extractor.Execute(sourceCode, 6, 7, "Calculate", "net47");
 
-        // Assert - Should succeed with tuple return type
-        // Note: Currently returns (int x, object y) due to type inference bug - see Issue #70
+        // Assert - Should succeed with tuple return type with correct types (fixed in Issue #70)
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("Calculate");
-        result.RefactoredCode.Should().Contain("(int"); // Verify tuple syntax is used
+        result.RefactoredCode.Should().Contain("(int x, int y) Calculate");
+        result.RefactoredCode.Should().NotContain("object y");
     }
 
     [Fact]
@@ -1270,11 +1269,10 @@ public class Test
         // Act
         var result = extractor.Execute(sourceCode, 6, 7, "Calculate", "net48");
 
-        // Assert - Should succeed with tuple return type
-        // Note: Currently returns (int x, object y) due to type inference bug - see Issue #70
+        // Assert - Should succeed with tuple return type with correct types (fixed in Issue #70)
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("Calculate");
-        result.RefactoredCode.Should().Contain("(int"); // Verify tuple syntax is used
+        result.RefactoredCode.Should().Contain("(int x, int y) Calculate");
+        result.RefactoredCode.Should().NotContain("object y");
     }
 
     [Fact]
@@ -1298,11 +1296,10 @@ public class Test
         // Act
         var result = extractor.Execute(sourceCode, 6, 7, "Calculate", "net8.0");
 
-        // Assert - Should succeed with tuple return type
-        // Note: Currently returns (int x, object y) due to type inference bug - see Issue #70
+        // Assert - Should succeed with tuple return type with correct types (fixed in Issue #70)
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("Calculate");
-        result.RefactoredCode.Should().Contain("(int"); // Verify tuple syntax is used
+        result.RefactoredCode.Should().Contain("(int x, int y) Calculate");
+        result.RefactoredCode.Should().NotContain("object y");
     }
 
     #endregion
@@ -1567,6 +1564,116 @@ public class TestClass
         // Both return statements have the same type (List<string>)
         result.IsSuccess.Should().BeTrue();
         result.RefactoredCode.Should().Contain("List<string> GetStrings");
+    }
+
+    #endregion
+
+    #region Issue #70: Tuple Type Inference for Locally-Declared Output Variables
+
+    [Fact]
+    public void Execute_WithLocallyDeclaredPrimitiveOutput_ShouldInferCorrectType()
+    {
+        // Arrange - Test locally-declared variable with primitive type in tuple return
+        var sourceCode = @"public class TestClass
+{
+    public void Method()
+    {
+        int x = 5;
+        int y = 10;
+        x = x * 2;
+        y = y * 3;
+        Console.WriteLine(x + y);
+    }
+}";
+        var extractor = new ExtractMethod();
+
+        // Act - Extract lines that modify both x and y (y is locally declared)
+        var result = extractor.Execute(sourceCode, 6, 7, "Calculate", "net8.0");
+
+        // Assert - Should correctly type y as int, not object
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("(int x, int y) Calculate");
+        result.RefactoredCode.Should().NotContain("object y");
+    }
+
+    [Fact]
+    public void Execute_WithLocallyDeclaredComplexTypeOutput_ShouldInferCorrectType()
+    {
+        // Arrange - Test locally-declared variable with complex type
+        var sourceCode = @"using System.Collections.Generic;
+public class TestClass
+{
+    public void Method(string name)
+    {
+        List<int> items = new List<int>();
+        items.Add(1);
+        items.Add(2);
+        name = name.ToUpper();
+        Console.WriteLine(name + items.Count);
+    }
+}";
+        var extractor = new ExtractMethod();
+
+        // Act - Extract lines that modify both name and items (items is locally declared)
+        var result = extractor.Execute(sourceCode, 7, 9, "ProcessData", "net8.0");
+
+        // Assert - Should correctly type items as List<int>, not object
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("(string name, System.Collections.Generic.List<int> items) ProcessData");
+        result.RefactoredCode.Should().NotContain("object items");
+    }
+
+    [Fact]
+    public void Execute_WithMixedParameterAndLocalOutputs_ShouldInferBothTypesCorrectly()
+    {
+        // Arrange - Mix of parameter (flows in and out) and local variable (declared inside)
+        var sourceCode = @"public class TestClass
+{
+    public void Method(int x)
+    {
+        string message = \"test\";
+        x = x * 2;
+        message = message.ToUpper();
+        Console.WriteLine(x + message);
+    }
+}";
+        var extractor = new ExtractMethod();
+
+        // Act - Extract lines that modify both x (parameter) and message (local)
+        var result = extractor.Execute(sourceCode, 6, 7, "ProcessValues", "net8.0");
+
+        // Assert - Should correctly type both x (from parameter) and message (from local symbol)
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("(int x, string message) ProcessValues");
+        result.RefactoredCode.Should().NotContain("object");
+    }
+
+    [Fact]
+    public void Execute_WithMultipleLocallyDeclaredOutputs_ShouldInferAllTypesCorrectly()
+    {
+        // Arrange - Multiple locally-declared variables with different types
+        var sourceCode = @"public class TestClass
+{
+    public void Method()
+    {
+        int count = 0;
+        string name = \"test\";
+        bool isValid = false;
+        count++;
+        name = name.ToUpper();
+        isValid = count > 0;
+        Console.WriteLine($\"{count} {name} {isValid}\");
+    }
+}";
+        var extractor = new ExtractMethod();
+
+        // Act - Extract lines that modify all three locally-declared variables
+        var result = extractor.Execute(sourceCode, 8, 10, "UpdateValues", "net8.0");
+
+        // Assert - Should correctly type all three variables
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("(int count, string name, bool isValid) UpdateValues");
+        result.RefactoredCode.Should().NotContain("object");
     }
 
     #endregion

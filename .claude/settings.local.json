@@ -6,7 +6,8 @@
       "mcp__MCP_DOCKER__get_me",
       "mcp__MCP_DOCKER__get_issue",
       "Bash(gh issue view:*)",
-      "Bash(dotnet test:*)"
+      "Bash(dotnet test:*)",
+      "mcp__MCP_DOCKER__issue_read"
     ],
     "deny": [],
     "ask": []
