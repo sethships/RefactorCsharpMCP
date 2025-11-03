@@ -1244,7 +1244,7 @@ public class Test
         var result = extractor.Execute(sourceCode, 6, 7, "Calculate", "net47");
 
         // Assert - Should succeed with tuple return type
-        // Note: Currently returns (int x, object y) due to type inference bug - see Issue #TBD
+        // Note: Currently returns (int x, object y) due to type inference bug - see Issue #70
         result.IsSuccess.Should().BeTrue();
         result.RefactoredCode.Should().Contain("Calculate");
         result.RefactoredCode.Should().Contain("(int"); // Verify tuple syntax is used
@@ -1271,7 +1271,7 @@ public class Test
         var result = extractor.Execute(sourceCode, 6, 7, "Calculate", "net48");
 
         // Assert - Should succeed with tuple return type
-        // Note: Currently returns (int x, object y) due to type inference bug - see Issue #TBD
+        // Note: Currently returns (int x, object y) due to type inference bug - see Issue #70
         result.IsSuccess.Should().BeTrue();
         result.RefactoredCode.Should().Contain("Calculate");
         result.RefactoredCode.Should().Contain("(int"); // Verify tuple syntax is used
@@ -1299,7 +1299,7 @@ public class Test
         var result = extractor.Execute(sourceCode, 6, 7, "Calculate", "net8.0");
 
         // Assert - Should succeed with tuple return type
-        // Note: Currently returns (int x, object y) due to type inference bug - see Issue #TBD
+        // Note: Currently returns (int x, object y) due to type inference bug - see Issue #70
         result.IsSuccess.Should().BeTrue();
         result.RefactoredCode.Should().Contain("Calculate");
         result.RefactoredCode.Should().Contain("(int"); // Verify tuple syntax is used
@@ -1514,7 +1514,7 @@ public class TestClass
     }
 
     [Fact]
-    public void Execute_WithImplicitlyConvertibleTypes_ShouldSucceed()
+    public void Execute_WithImplicitlyConvertibleTypes_ShouldReturnError()
     {
         // Arrange - int and double where int can implicitly convert to double
         // However, Roslyn's type inference will consider these as different types
