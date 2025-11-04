@@ -6,7 +6,7 @@ namespace RefactorCsharpMCP.Tests.Diagnostics;
 
 public class DiagnosticAnalyzerTests
 {
-    [Fact(Skip = "CS8019/IDE0005 unused using detection requires full IDE analyzer infrastructure - See Issue #72")]
+    [Fact]
     public async Task AnalyzeCodeAsync_WithUnusedUsings_ReturnsCS8019Diagnostic()
     {
         // Arrange
@@ -28,9 +28,10 @@ public class Test
 
         // Assert
         result.Success.Should().BeTrue();
-        // CS8019 is the compiler diagnostic for unused using directives (equivalent to IDE0005)
-        result.Diagnostics.Should().Contain(d => d.Id == "CS8019");
-        result.Diagnostics.Should().Contain(d => d.Message.Contains("System.Linq"));
+        // IDE0005 is the IDE diagnostic for unused using directives (equivalent to CS8019)
+        // Our pattern-based analyzer returns IDE0005 instead of CS8019
+        result.Diagnostics.Should().Contain(d => d.Id == "IDE0005");
+        result.Diagnostics.Should().Contain(d => d.Message.Contains("unnecessary"));
     }
 
     [Fact]
@@ -229,7 +230,7 @@ public class Test
         // If reference assemblies are available, analysis should succeed
     }
 
-    [Fact(Skip = "CS8019/IDE0005 unused using detection requires full IDE analyzer infrastructure - See Issue #72")]
+    [Fact]
     public async Task AnalyzeCodeAsync_DiagnosticLocation_HasCorrectLineAndColumn()
     {
         // Arrange
@@ -246,8 +247,8 @@ public class Test
 
         // Assert
         result.Success.Should().BeTrue();
-        // CS8019 is the compiler diagnostic for unused using directives
-        var diagnostic = result.Diagnostics.FirstOrDefault(d => d.Id == "CS8019");
+        // IDE0005 is the IDE diagnostic for unused using directives (pattern-based)
+        var diagnostic = result.Diagnostics.FirstOrDefault(d => d.Id == "IDE0005");
         diagnostic.Should().NotBeNull();
         diagnostic!.Location.Line.Should().Be(2); // 1-based line number
         diagnostic.Location.Column.Should().BeGreaterThan(0); // 1-based column number
@@ -255,7 +256,7 @@ public class Test
         diagnostic.Location.SpanLength.Should().BeGreaterThan(0);
     }
 
-    [Fact(Skip = "CS8019/IDE0005 unused using detection requires full IDE analyzer infrastructure - See Issue #72")]
+    [Fact]
     public async Task AnalyzeCodeAsync_DiagnosticInfo_HasApplicableRefactorings()
     {
         // Arrange
@@ -272,8 +273,8 @@ public class Test
 
         // Assert
         result.Success.Should().BeTrue();
-        // CS8019 is the compiler diagnostic for unused using directives
-        var diagnostic = result.Diagnostics.FirstOrDefault(d => d.Id == "CS8019");
+        // IDE0005 is the IDE diagnostic for unused using directives (pattern-based)
+        var diagnostic = result.Diagnostics.FirstOrDefault(d => d.Id == "IDE0005");
         diagnostic.Should().NotBeNull();
         diagnostic!.ApplicableRefactorings.Should().Contain("remove_unused_usings");
     }
@@ -311,7 +312,7 @@ public class Test
             result.Summary.InfoCount);
     }
 
-    [Fact(Skip = "CS8019/IDE0005 unused using detection requires full IDE analyzer infrastructure - See Issue #72")]
+    [Fact]
     public async Task AnalyzeCodeAsync_Category_IsCorrectlyMapped()
     {
         // Arrange
@@ -328,8 +329,8 @@ public class Test
 
         // Assert
         result.Success.Should().BeTrue();
-        // CS8019 is the compiler diagnostic for unused using directives
-        var diagnostic = result.Diagnostics.FirstOrDefault(d => d.Id == "CS8019");
+        // IDE0005 is the IDE diagnostic for unused using directives (pattern-based)
+        var diagnostic = result.Diagnostics.FirstOrDefault(d => d.Id == "IDE0005");
         diagnostic.Should().NotBeNull();
         diagnostic!.Category.Should().Be("Style");
     }

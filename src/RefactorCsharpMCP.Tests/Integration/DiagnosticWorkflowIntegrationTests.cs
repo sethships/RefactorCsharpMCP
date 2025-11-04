@@ -13,7 +13,7 @@ namespace RefactorCsharpMCP.Tests.Integration;
 /// </summary>
 public class DiagnosticWorkflowIntegrationTests
 {
-    [Fact(Skip = "CS8019/IDE0005 unused using detection requires full IDE analyzer infrastructure - See Issue #72")]
+    [Fact]
     [Trait("Category", "Integration")]
     public async Task AnalyzeAndFixUnusedUsings_CompleteWorkflow_Net8()
     {
@@ -52,7 +52,7 @@ public class Calculator
         fixResult.RefactoredCode.Should().Contain("using System;");  // Keep used using
     }
 
-    [Fact(Skip = "IDE0044 readonly field detection requires improved diagnostic infrastructure - See Issue #72")]
+    [Fact]
     [Trait("Category", "Integration")]
     public async Task AnalyzeAndFixReadonlyField_CompleteWorkflow_Net48()
     {
@@ -171,7 +171,7 @@ public class BrokenClass
         result.Summary.ErrorCount.Should().BeGreaterThan(0);
     }
 
-    [Fact(Skip = "CS8019/IDE0005 unused using detection requires full IDE analyzer infrastructure - See Issue #72")]
+    [Fact]
     [Trait("Category", "Integration")]
     public async Task DiagnosticWorkflow_AcrossFrameworks_WorksCorrectly()
     {
