@@ -33,7 +33,7 @@ public class Test
 }";
 
         // Act
-        _output.WriteLine("Analyzing code with workspace analyzers (default)...");
+        _output.WriteLine("Analyzing code with pattern-based analyzer...");
         var result = await analyzer.AnalyzeCodeAsync(sourceCode, "net8.0", DiagnosticSeverity.Hidden);
 
         // Debug output
@@ -58,20 +58,6 @@ public class Test
         else
         {
             _output.WriteLine("\nNO DIAGNOSTICS FOUND!");
-            _output.WriteLine("Testing with legacy analyzer (useWorkspaceAnalyzers=false)...");
-
-            var legacyResult = await analyzer.AnalyzeCodeAsync(sourceCode, "net8.0", DiagnosticSeverity.Hidden, useWorkspaceAnalyzers: false);
-            _output.WriteLine($"Legacy Analysis Success: {legacyResult.Success}");
-            _output.WriteLine($"Legacy Total Diagnostics: {legacyResult.Diagnostics.Count}");
-
-            if (legacyResult.Diagnostics.Any())
-            {
-                _output.WriteLine("\nLegacy diagnostics found:");
-                foreach (var diagnostic in legacyResult.Diagnostics)
-                {
-                    _output.WriteLine($"  [{diagnostic.Id}] {diagnostic.Severity} - {diagnostic.Message}");
-                }
-            }
         }
 
         // Assert

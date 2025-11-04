@@ -2,6 +2,7 @@ using FluentAssertions;
 using RefactorCsharpMCP.Core.Diagnostics;
 using RefactorCsharpMCP.Core.Refactorings;
 using Microsoft.CodeAnalysis;
+using System.Collections.Generic;
 using Xunit;
 
 namespace RefactorCsharpMCP.Tests.Integration;

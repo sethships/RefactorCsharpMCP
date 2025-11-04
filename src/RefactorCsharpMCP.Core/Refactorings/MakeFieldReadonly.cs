@@ -26,6 +26,7 @@ public class MakeFieldReadonly : RefactoringBase
     {
         // Skip framework validation - Execute method does its own syntax validation
         // and doesn't require full framework reference assemblies
+        // TODO(Issue #75): Replace with ICompilationProvider abstraction
         return await Task.Run(() => Execute(sourceCode, className, fieldName));
     }
 

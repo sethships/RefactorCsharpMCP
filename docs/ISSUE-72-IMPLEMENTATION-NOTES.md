@@ -50,9 +50,9 @@ All diagnostic detection tests passing after namespace comparison bug fix.
 ## Files Modified
 
 ### Core Changes
-- `src/RefactorCsharpMCP.Core/Diagnostics/DiagnosticAnalyzer.cs` - Integrated pattern analyzer, changed default
+- `src/RefactorCsharpMCP.Core/Diagnostics/DiagnosticAnalyzer.cs` - Integrated pattern analyzer, removed workspace analyzer parameter
 - `src/RefactorCsharpMCP.Core/Diagnostics/UnusedUsingPatternAnalyzer.cs` - NEW - Pattern-based IDE0005 detection
-- `src/RefactorCsharpMCP.Core/Diagnostics/WorkspaceBasedDiagnosticAnalyzer.cs` - Marked experimental
+- `src/RefactorCsharpMCP.Core/Diagnostics/WorkspaceBasedDiagnosticAnalyzer.cs` - REMOVED - Dead code (experimental, non-functional)
 - `src/RefactorCsharpMCP.Core/Diagnostics/AnalyzerDiscovery.cs` - Fixed assembly loading with LoadFrom
 
 ### Test Changes

@@ -24,6 +24,7 @@ public class RemoveUnusedUsings : RefactoringBase
         // Skip framework validation for pattern-based refactoring
         // The Execute method does its own syntax validation and uses pattern analyzer
         // which doesn't require full framework reference assemblies
+        // TODO(Issue #75): Replace with ICompilationProvider abstraction
         return await Task.Run(() => Execute(sourceCode, targetFramework));
     }
 

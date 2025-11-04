@@ -34,31 +34,18 @@ public class DiagnosticAnalyzer
 
     /// <summary>
     /// Analyzes C# source code and returns diagnostics found by Roslyn.
+    /// Uses pattern-based analysis with compiler diagnostics for IDE0005 (unused usings)
+    /// and IDE0044 (readonly fields) detection with 90%+ accuracy.
     /// </summary>
     /// <param name="sourceCode">The C# source code to analyze.</param>
     /// <param name="targetFramework">The target framework moniker (e.g., "net8.0", "net48").</param>
     /// <param name="minSeverity">The minimum severity level to report (default: Warning).</param>
-    /// <param name="useWorkspaceAnalyzers">
-    /// When true, attempts workspace-based analysis with full IDE analyzer support (experimental).
-    /// When false (default), uses reliable pattern-based analysis with compiler diagnostics.
-    /// Pattern-based analysis provides IDE0005 (unused usings) and IDE0044 (readonly fields) detection
-    /// with 90%+ accuracy and better performance than workspace analyzers.
-    /// </param>
     /// <returns>A DiagnosticResult containing the list of diagnostics or an error message.</returns>
     public async Task<DiagnosticResult> AnalyzeCodeAsync(
         string sourceCode,
         string targetFramework,
-        DiagnosticSeverity minSeverity = DiagnosticSeverity.Warning,
-        bool useWorkspaceAnalyzers = false)
+        DiagnosticSeverity minSeverity = DiagnosticSeverity.Warning)
     {
-        // Delegate to workspace-based analyzer if explicitly requested (experimental)
-        if (useWorkspaceAnalyzers)
-        {
-            _logger?.LogDebug("Using experimental workspace-based analysis with IDE analyzers");
-            var workspaceAnalyzer = new WorkspaceBasedDiagnosticAnalyzer(_referenceResolver, _logger);
-            return await workspaceAnalyzer.AnalyzeCodeAsync(sourceCode, targetFramework, minSeverity);
-        }
-
         _logger?.LogDebug("Using pattern-based analysis with compiler diagnostics");
 
         try
