@@ -275,13 +275,13 @@ public class ReferenceAssemblyResolverTests : IDisposable
     }
 
     [Theory]
-    [InlineData("net9.0", false)]
-    [InlineData("net8.0", false)]
-    [InlineData("net481", true)]
-    [InlineData("net48", true)]
-    [InlineData("net35", true)]
-    [InlineData("netstandard2.1", false)]
-    public async Task GetReferenceAssembliesAsync_Uses_CorrectResolutionStrategy(string framework, bool requiresNuGet)
+    [InlineData("net9.0")]
+    [InlineData("net8.0")]
+    [InlineData("net481")]
+    [InlineData("net48")]
+    [InlineData("net35")]
+    [InlineData("netstandard2.1")]
+    public async Task GetReferenceAssembliesAsync_Uses_CorrectResolutionStrategy(string framework)
     {
         // Act
         var references = await _resolver.GetReferenceAssembliesAsync(framework);

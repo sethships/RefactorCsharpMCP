@@ -454,6 +454,203 @@ dotnet test --verbosity normal
 - **Cause**: startLine > endLine or startLine < 1
 - **Fix**: Ensure startLine <= endLine and both >= 1
 
+## Framework-Specific Error Codes
+
+### IDE Analyzer Limitations (Issue #72)
+
+**Error Pattern**: "IDE analyzer functionality not available" or missing CS8019/IDE0005 diagnostics
+
+**Diagnostic Codes Affected**:
+- **CS8019**: Unnecessary using directive
+- **IDE0005**: Using directive is unnecessary
+
+**Root Cause**: RefactorCsharpMCP uses Roslyn compiler APIs which have different capabilities than full IDE workspace APIs. IDE diagnostics like CS8019 and IDE0005 require workspace context (project files, solution structure, external references) which is not available when analyzing individual source code strings.
+
+**Symptoms**:
+- `remove_unused_usings` may not detect all unused directives
+- `analyze_code` may not return CS8019/IDE0005 diagnostics
+- `fix_diagnostic` cannot fix IDE0005 if not detected
+
+**Solutions**:
+
+1. **Use Modern IDE for Unused Using Detection**:
+   ```bash
+   # Use Visual Studio, VS Code with C# extension, or Rider
+   # These have full workspace context for accurate detection
+   ```
+
+2. **Manual Review**:
+   ```csharp
+   // Check each using directive manually
+   // Remove directives not referenced in the code
+   ```
+
+3. **Alternative Validation**:
+   ```bash
+   # Use Roslyn analyzers in full build
+   dotnet build /p:TreatWarningsAsErrors=true
+   ```
+
+**Test Suite Status**: 12 tests skipped due to this limitation (documented with Skip attribute)
+
+**Workaround**: For unused using detection, use IDE-based refactoring tools that have full workspace context.
+
+### .NET Framework Reference Assembly Errors (Issue #75)
+
+**Error Pattern**: "Code references types or members not available in {framework}"
+
+**Example Errors**:
+```
+Code references types or members not available in net48
+Failed to load reference assemblies for net48
+The name 'result' does not exist in the current context (net48)
+```
+
+**Root Cause**: Cross-framework refactoring requires NuGet-distributed reference assemblies. For legacy .NET Framework versions (net48, net472, net471, etc.), reference assemblies may not be available in all environments or may have incomplete type information.
+
+**Framework Support Matrix**:
+
+| Framework | Support Level | Status |
+|-----------|--------------|--------|
+| net9.0 | Full | ✅ Fully supported |
+| net8.0 | Full | ✅ Fully supported |
+| netstandard2.1 | Full | ✅ Fully supported |
+| netstandard2.0 | Full | ✅ Fully supported |
+| net48 | Limited | ⚠️ May fail on some systems |
+| net481 | Limited | ⚠️ May fail on some systems |
+| net472 | Limited | ⚠️ May fail on some systems |
+| net471, net47, net462 | Limited | ⚠️ May fail on some systems |
+| net35 | Limited | ⚠️ May fail on some systems |
+
+**Solutions**:
+
+1. **Prefer Modern Frameworks**:
+   ```csharp
+   // Use net8.0 or net9.0 for best reliability
+   targetFramework: "net8.0"  // Recommended
+   ```
+
+2. **Manual Reference Assembly Installation**:
+   ```bash
+   # Install reference assemblies NuGet package
+   dotnet add package Microsoft.NETFramework.ReferenceAssemblies
+   ```
+
+3. **Cache Pre-warming Strategy**:
+   ```bash
+   # Run refactorings on modern frameworks first
+   # This populates the cache with working assemblies
+   # Then fallback to net48 if needed
+   ```
+
+4. **Check Cache Directory**:
+   ```bash
+   # Windows PowerShell
+   Get-ChildItem "$env:USERPROFILE\.refactor-csharp-mcp\reference-assemblies\net48"
+
+   # Linux/Mac
+   ls -la ~/.refactor-csharp-mcp/reference-assemblies/net48
+   ```
+
+5. **Clear and Retry**:
+   ```bash
+   # If reference assemblies are corrupted, clear and re-download
+   Remove-Item -Recurse "$env:USERPROFILE\.refactor-csharp-mcp\reference-assemblies\net48"
+
+   # Next refactoring will re-download from NuGet
+   ```
+
+**Test Suite Handling**: Framework matrix tests use conditional assertions to allow graceful net48 failures while validating modern frameworks.
+
+**Recommendation**: For production use, target net8.0 or net9.0. Use net48 only when absolutely required by your project constraints.
+
+### Language Version Mismatch Errors
+
+**Error Pattern**: "C# {version} syntax should not work on {framework}"
+
+**Example Errors**:
+```
+C# 12 syntax should not work on net48
+Collection expression syntax not supported in C# 7.3
+Primary constructor syntax requires C# 12
+```
+
+**Language Version Mapping**:
+- net9.0 → C# 13 (latest features)
+- net8.0 → C# 12 (collection expressions, primary constructors)
+- net48, netstandard2.0 → C# 7.3 (limited features)
+
+**Unsupported Syntax Examples**:
+
+```csharp
+// C# 12 Collection Expressions (net8.0+)
+int[] numbers = [1, 2, 3];  // ❌ Fails on net48
+
+// C# 7.3 Compatible (all frameworks)
+int[] numbers = new[] { 1, 2, 3 };  // ✅ Works on all frameworks
+
+// C# 12 Primary Constructors (net8.0+)
+public class Point(int x, int y);  // ❌ Fails on net48
+
+// C# 7.3 Compatible
+public class Point {  // ✅ Works on all frameworks
+    public Point(int x, int y) { X = x; Y = y; }
+    public int X { get; }
+    public int Y { get; }
+}
+```
+
+**Solutions**:
+
+1. **Use Framework-Compatible Syntax**:
+   - Check language version for your target framework
+   - Avoid modern syntax when targeting legacy frameworks
+
+2. **Framework Validation**:
+   ```csharp
+   // RefactorCsharpMCP automatically validates syntax compatibility
+   // Error messages will indicate language version mismatch
+   ```
+
+3. **Upgrade Target Framework**:
+   ```csharp
+   // If modern syntax is needed, upgrade target framework
+   targetFramework: "net8.0"  // Supports C# 12
+   ```
+
+### Unsupported Framework Errors
+
+**Error Pattern**: "Unsupported framework: {framework}"
+
+**EOL (End-of-Life) Frameworks**:
+- net6.0 (EOL November 2024)
+- net5.0 (EOL May 2022)
+- netcoreapp3.1 (EOL December 2022)
+
+**Solutions**:
+
+1. **Use Supported Frameworks**:
+   ```csharp
+   // Modern .NET
+   "net8.0"  // Supported until November 2026
+   "net9.0"  // Supported until May 2026
+
+   // Legacy .NET Framework
+   "net48"   // Still supported (limited)
+
+   // .NET Standard
+   "netstandard2.0"  // Cross-platform compatibility
+   ```
+
+2. **Upgrade Your Project**:
+   ```bash
+   # Upgrade project to supported framework
+   # Edit .csproj file:
+   <TargetFramework>net8.0</TargetFramework>
+   ```
+
+**Microsoft Support Timeline**: See [.NET Support Policy](https://dotnet.microsoft.com/platform/support/policy) for current framework support status.
+
 ## GitHub Actions Workflow Issues
 
 ### cache-stability.yml Workflow Failing Consistently

@@ -296,7 +296,7 @@ public class ReferenceAssemblyCache
             // Use FileStream with FileShare.Read to allow concurrent reads
             using var stream = new FileStream(_manifestPath, FileMode.Open, FileAccess.Read, FileShare.Read);
             return await JsonSerializer.DeserializeAsync<CacheManifest>(stream, cancellationToken: cancellationToken) ?? new CacheManifest();
-        }, defaultValue: new CacheManifest(), logger: _logger, cancellationToken: cancellationToken);
+        }, defaultValue: new CacheManifest(), logger: _logger, cancellationToken: cancellationToken) ?? new CacheManifest();
     }
 
     private void SaveManifest(CacheManifest manifest)

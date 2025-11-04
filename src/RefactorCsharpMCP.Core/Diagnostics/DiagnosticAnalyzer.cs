@@ -1,6 +1,9 @@
+using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
 using RefactorCsharpMCP.Core.Infrastructure.FrameworkSupport;
 
@@ -65,9 +68,19 @@ public class DiagnosticAnalyzer
             // Create framework-aware compilation
             var compilation = await CreateCompilationAsync(sourceCode, normalizedFramework);
 
-            // Get diagnostics from compilation
+            // Get compiler diagnostics
             var diagnostics = compilation.GetDiagnostics()
                 .Where(d => d.Severity >= minSeverity)
+                .ToList();
+
+            // Add custom IDE-style diagnostics for patterns we can detect
+            var syntaxTree = compilation.SyntaxTrees.First();
+            var semanticModel = compilation.GetSemanticModel(syntaxTree);
+            var ideAnalyzers = await GetCustomIdeDiagnosticsAsync(syntaxTree, semanticModel, normalizedFramework);
+            diagnostics.AddRange(ideAnalyzers.Where(d => d.Severity >= minSeverity));
+
+            // Sort by location
+            diagnostics = diagnostics
                 .OrderBy(d => d.Location.SourceSpan.Start)
                 .ToList();
 
@@ -135,6 +148,109 @@ public class DiagnosticAnalyzer
         _compilationCache.AddOrUpdate(syntaxTree, compilation);
 
         return compilation;
+    }
+
+    /// <summary>
+    /// Gets custom IDE-style diagnostics by analyzing the syntax tree for specific patterns.
+    /// This is a pragmatic approach for detecting common IDE diagnostics (IDE0044, etc.)
+    /// without requiring the full IDE analyzer infrastructure.
+    ///
+    /// Note: IDE0005 (unused usings) is not included here due to complexity in accurately
+    /// detecting unused namespace references. Use CS8019 compiler diagnostic instead.
+    /// See Issue #72 for full IDE analyzer support roadmap.
+    /// </summary>
+    private async Task<List<Diagnostic>> GetCustomIdeDiagnosticsAsync(
+        SyntaxTree syntaxTree,
+        SemanticModel semanticModel,
+        string targetFramework)
+    {
+        var diagnostics = new List<Diagnostic>();
+
+        await Task.Run(() =>
+        {
+            var root = syntaxTree.GetRoot();
+
+            // IDE0044: Add readonly modifier
+            var readonlyFields = FindFieldsThatCanBeReadonly(root, semanticModel);
+            diagnostics.AddRange(readonlyFields);
+        });
+
+        return diagnostics;
+    }
+
+    /// <summary>
+    /// Finds private fields that can be made readonly (IDE0044).
+    /// </summary>
+    private List<Diagnostic> FindFieldsThatCanBeReadonly(SyntaxNode root, SemanticModel semanticModel)
+    {
+        var diagnostics = new List<Diagnostic>();
+
+        var fieldDeclarations = root.DescendantNodes()
+            .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.FieldDeclarationSyntax>()
+            .Where(f => f.Modifiers.Any(m => m.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.PrivateKeyword)) &&
+                       !f.Modifiers.Any(m => m.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.ReadOnlyKeyword) ||
+                                            m.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.ConstKeyword)))
+            .ToList();
+
+        foreach (var fieldDecl in fieldDeclarations)
+        {
+            foreach (var variable in fieldDecl.Declaration.Variables)
+            {
+                var fieldSymbol = semanticModel.GetDeclaredSymbol(variable) as IFieldSymbol;
+                if (fieldSymbol == null) continue;
+
+                // Check if field is only assigned in constructor or initializer
+                var references = root.DescendantNodes()
+                    .Where(node =>
+                    {
+                        var symbol = semanticModel.GetSymbolInfo(node).Symbol;
+                        return SymbolEqualityComparer.Default.Equals(symbol, fieldSymbol);
+                    })
+                    .ToList();
+
+                var canBeReadonly = references.All(refNode =>
+                {
+                    // Check if assignment is in constructor or initializer
+                    var assignment = refNode.AncestorsAndSelf()
+                        .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.AssignmentExpressionSyntax>()
+                        .FirstOrDefault();
+
+                    if (assignment == null) return true; // Just a read
+
+                    // Check if we're on the left side of assignment
+                    if (assignment.Left != refNode && !assignment.Left.DescendantNodesAndSelf().Contains(refNode))
+                        return true;
+
+                    // Check if assignment is in constructor
+                    var constructor = assignment.Ancestors()
+                        .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.ConstructorDeclarationSyntax>()
+                        .FirstOrDefault();
+
+                    return constructor != null ||
+                           variable.Initializer != null; // Has initializer
+                });
+
+                if (canBeReadonly)
+                {
+                    var descriptor = new DiagnosticDescriptor(
+                        id: "IDE0044",
+                        title: "Add readonly modifier",
+                        messageFormat: "Field '{0}' can be made readonly",
+                        category: "Quality",
+                        defaultSeverity: DiagnosticSeverity.Warning,
+                        isEnabledByDefault: true);
+
+                    var diagnostic = Diagnostic.Create(
+                        descriptor,
+                        variable.GetLocation(),
+                        fieldSymbol.Name);
+
+                    diagnostics.Add(diagnostic);
+                }
+            }
+        }
+
+        return diagnostics;
     }
 
     /// <summary>
