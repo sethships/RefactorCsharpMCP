@@ -154,7 +154,10 @@ public abstract class RefactoringBase
                 .AddReferences(
                     MetadataReference.CreateFromFile(typeof(object).Assembly.Location), // mscorlib/System.Private.CoreLib
                     MetadataReference.CreateFromFile(typeof(System.Collections.Generic.List<>).Assembly.Location), // System.Collections
-                    MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location) // System.Linq
+                    MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location), // System.Linq
+                    MetadataReference.CreateFromFile(typeof(System.Console).Assembly.Location), // System.Console
+                    MetadataReference.CreateFromFile(typeof(System.Runtime.CompilerServices.RuntimeHelpers).Assembly.Location), // System.Runtime
+                    MetadataReference.CreateFromFile(typeof(System.Threading.Tasks.Task).Assembly.Location) // System.Threading.Tasks
                 )
                 .AddSyntaxTrees(tree);
         });
