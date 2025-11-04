@@ -541,8 +541,144 @@ RefactorCsharpMCP is being developed in 4 phases:
 ## Documentation
 
 - [Project Plan](docs/project-plan.md) - Comprehensive development and architecture plan
+- [Performance Benchmarks](docs/performance-benchmarks.md) - Baseline performance metrics and optimization guide
 - Examples (coming soon)
 - API Documentation (coming soon)
+
+## Performance
+
+RefactorCsharpMCP includes comprehensive performance benchmarks using BenchmarkDotNet to track and optimize refactoring operation speed.
+
+### Performance Targets
+
+| File Size | Target Mean Time | Typical Use Case |
+|-----------|------------------|------------------|
+| Small (~50 lines) | < 100ms | Quick refactorings in small classes |
+| Medium (~500 lines) | < 500ms | Real-world production code |
+| Large (~5000 lines) | < 2000ms | Legacy codebases and large files |
+
+### Running Benchmarks
+
+```bash
+cd src/RefactorCsharpMCP.Benchmarks
+
+# Run all benchmarks
+dotnet run -c Release
+
+# Run specific refactoring benchmarks
+dotnet run -c Release --filter *ExtractMethod*
+```
+
+Benchmark results are saved to `BenchmarkDotNet.Artifacts/results/` with HTML, Markdown, and CSV reports.
+
+For detailed performance analysis, baseline metrics, and optimization notes, see [Performance Benchmarks](docs/performance-benchmarks.md).
+
+## Known Limitations
+
+### IDE Analyzer Limitations (Issue #72)
+
+RefactorCsharpMCP uses Roslyn's compiler APIs for code analysis, which have different capabilities compared to full IDE workspace APIs:
+
+**Unused Using Detection:**
+- **Issue**: CS8019 and IDE0005 (unused using directives) require full IDE analyzer infrastructure
+- **Impact**: `remove_unused_usings` and `analyze_code` may not detect all unused usings in all scenarios
+- **Workaround**: Modern IDEs (Visual Studio, VS Code with C# extension) provide complete detection
+- **Status**: 12 tests skipped due to this limitation (documented in test suite)
+
+**Why This Occurs:**
+- IDE analyzers require workspace context (project files, references, solution structure)
+- RefactorCsharpMCP operates on individual source code strings without workspace context
+- This is an architectural limitation of the Roslyn compiler APIs vs. workspace APIs
+
+**Affected Refactorings:**
+- `remove_unused_usings` - May miss some unused directives
+- `analyze_code` - May not report IDE0005/CS8019 diagnostics
+- `fix_diagnostic` - Cannot fix IDE0005/CS8019 if not detected
+
+### .NET Framework Reference Assembly Limitations (Issue #75)
+
+Cross-framework refactoring relies on NuGet-distributed reference assemblies, which may not be available in all environments:
+
+**Framework Support Status:**
+- **Fully Supported**: net8.0, net9.0, netstandard2.0, netstandard2.1
+- **Limited Support**: net48, net481, net472, net471, net47, net462, net35
+
+**net48 Specific Issues:**
+- Reference assemblies may not be available on all systems
+- Refactorings may fail with "Code references types or members not available" errors
+- Modern frameworks (net8.0, net9.0) are recommended for best experience
+
+**Workarounds:**
+1. **Prefer Modern Frameworks**: Use net8.0 or net9.0 when possible
+2. **Manual Installation**: Install Microsoft.NETFramework.ReferenceAssemblies NuGet package
+3. **Cache Pre-warming**: Run refactorings on modern frameworks first to warm the cache
+
+**Test Suite Handling:**
+- Framework matrix tests use conditional assertions for net48
+- 42 framework compatibility tests verify behavior across all frameworks
+- Tests document expected failures for net48 environments
+
+### InlineMethod Part 1 Limitations
+
+The current `inline_method` implementation (Part 1) has several intentional limitations:
+
+**Supported:**
+- Void methods only
+- Single caller required
+- Simple parameters (primitives, string)
+- Comment preservation
+
+**Not Supported (Part 2 Planned):**
+- Methods with return values
+- Multiple call sites
+- Complex parameters (ref, out, params)
+- Virtual/abstract/override methods
+- Recursive methods
+- Lambda captures
+
+**Status**: Part 2 enhancements planned for future release
+
+### Framework-Specific Language Version Restrictions
+
+Refactorings respect target framework language version constraints:
+
+**Language Version Mappings:**
+- net9.0 → C# 13
+- net8.0 → C# 12
+- net48, netstandard2.0 → C# 7.3
+
+**Impact:**
+- Modern C# syntax (e.g., collection expressions `[1, 2, 3]`) will fail on net48
+- Framework validation prevents incompatible syntax from being used
+- Error messages indicate language version mismatch
+
+**Example:**
+```csharp
+// This works on net8.0
+int[] numbers = [1, 2, 3];
+
+// But fails on net48 with:
+// "C# 12 syntax should not work on net48"
+```
+
+### General Limitations
+
+**Cross-File Refactoring:**
+- RefactorCsharpMCP operates on single source code strings
+- Cannot refactor across multiple files or projects
+- Use IDE refactoring tools for multi-file scenarios
+
+**Workspace Context:**
+- No access to project files, solution structure, or external references
+- Limited to analysis within provided source code
+- Cannot resolve external type references
+
+**Performance:**
+- First framework load requires NuGet download (~2000ms, ~50MB per framework)
+- Subsequent loads use disk cache (~100-500ms)
+- Memory cache provides sub-millisecond access for active frameworks
+
+For detailed troubleshooting guidance, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 ## Contributing
 

@@ -887,6 +887,228 @@ var result = extractMethod.Execute(code, 1, 5, "NewMethod");
 4. **Read Error Messages**: ValidationResult includes detailed error messages and suggested actions
 5. **Multi-Target Projects**: Run refactorings separately for each target framework
 
+## Framework Limitations and Workarounds
+
+RefactorCsharpMCP has known limitations when working with certain frameworks. This section provides practical examples and workarounds.
+
+### IDE Analyzer Limitations (Issue #72)
+
+The `remove_unused_usings` refactoring may not detect all unused using directives because it relies on Roslyn compiler APIs rather than full IDE workspace APIs.
+
+**Example - Unused Using Not Detected:**
+```csharp
+using System;
+using System.Linq;  // May not be detected as unused
+using System.Collections.Generic;  // May not be detected as unused
+
+public class Example
+{
+    public void Method()
+    {
+        Console.WriteLine("Hello");  // Only System is used
+    }
+}
+
+// Running remove_unused_usings
+var refactoring = new RemoveUnusedUsings();
+var result = await refactoring.ExecuteAsync(sourceCode, "net8.0");
+
+// result.IsSuccess may be true, but some unused usings remain
+// or result.IsSuccess may be false with error:
+//   "No unused using directives detected (IDE analyzer limitation)"
+```
+
+**Workarounds:**
+
+1. **Use IDE-Based Tools**:
+```csharp
+// Use Visual Studio, VS Code with C# extension, or Rider
+// Tools → Remove and Sort Usings
+// These have full workspace context
+```
+
+2. **Manual Review**:
+```csharp
+// Manually check each using directive
+// Remove directives whose types aren't referenced in the file
+```
+
+3. **Build-Time Validation**:
+```bash
+# Enable TreatWarningsAsErrors in .csproj
+<PropertyGroup>
+  <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+</PropertyGroup>
+
+# Build will fail on CS8019 (unused using) if detected
+dotnet build
+```
+
+### .NET Framework Reference Assembly Limitations (Issue #75)
+
+Refactorings targeting .NET Framework 4.8 and earlier may fail due to unavailable reference assemblies.
+
+**Example - net48 Reference Assembly Error:**
+```csharp
+public class Calculator
+{
+    public int Add(int a, int b)
+    {
+        int result = a + b;
+        return result;
+    }
+}
+
+// Attempting refactoring with net48
+var refactoring = new InlineVariable();
+var result = await refactoring.ExecuteAsync(
+    sourceCode,
+    lineNumber: 5,
+    columnNumber: 13,
+    targetFramework: "net48"
+);
+
+// May fail with:
+// result.IsSuccess == false
+// result.ErrorMessage:
+//   "Code references types or members not available in net48"
+//   "Failed to load reference assemblies for net48"
+```
+
+**Workarounds:**
+
+1. **Use Modern Frameworks (Recommended)**:
+```csharp
+// Use net8.0 or net9.0 for best reliability
+var result = await refactoring.ExecuteAsync(
+    sourceCode,
+    lineNumber: 5,
+    columnNumber: 13,
+    targetFramework: "net8.0"  // Fully supported
+);
+
+// If code must target net48, refactor with net8.0 first
+// Then manually verify compatibility with net48 project
+```
+
+2. **Pre-warm Cache Strategy**:
+```csharp
+// Run refactorings on modern frameworks first
+// This populates the reference assembly cache
+var modernResult = await refactoring.ExecuteAsync(code, 1, 1, "net8.0");
+
+// Then try net48 (may work if assemblies are cached)
+var legacyResult = await refactoring.ExecuteAsync(code, 1, 1, "net48");
+```
+
+3. **Check and Clear Cache**:
+```powershell
+# Windows PowerShell - Check cache
+Get-ChildItem "$env:USERPROFILE\.refactor-csharp-mcp\reference-assemblies\net48"
+
+# If corrupted, clear and retry
+Remove-Item -Recurse "$env:USERPROFILE\.refactor-csharp-mcp\reference-assemblies\net48"
+
+# Linux/Mac
+ls ~/.refactor-csharp-mcp/reference-assemblies/net48
+rm -rf ~/.refactor-csharp-mcp/reference-assemblies/net48
+```
+
+4. **Install Reference Assemblies Manually**:
+```bash
+# Add NuGet package to your project
+dotnet add package Microsoft.NETFramework.ReferenceAssemblies
+```
+
+### Framework Support Matrix with Examples
+
+**Fully Supported Frameworks (Recommended)**:
+```csharp
+// net8.0 - Best support, C# 12 features
+var result = await refactoring.ExecuteAsync(code, "net8.0");
+// Expected: High reliability, fast execution
+
+// net9.0 - Latest features, C# 13
+var result = await refactoring.ExecuteAsync(code, "net9.0");
+// Expected: High reliability, latest language support
+
+// netstandard2.0 - Cross-platform compatibility
+var result = await refactoring.ExecuteAsync(code, "netstandard2.0");
+// Expected: Good reliability, C# 7.3 features
+```
+
+**Limited Support Frameworks (Use with Caution)**:
+```csharp
+// net48 - May fail due to reference assembly issues
+var result = await refactoring.ExecuteAsync(code, "net48");
+// Expected: May succeed or fail depending on environment
+// Recommendation: Use net8.0 instead if possible
+
+// net35 - Legacy framework, limited features
+var result = await refactoring.ExecuteAsync(code, "net35");
+// Expected: C# 3.0 features only, may have assembly issues
+// Recommendation: Upgrade to modern .NET if possible
+```
+
+### Handling Framework Errors Gracefully
+
+**Example - Robust Error Handling**:
+```csharp
+public async Task<string> RefactorWithFallback(
+    string sourceCode,
+    int lineNumber,
+    int columnNumber)
+{
+    // Try modern framework first
+    var refactoring = new InlineVariable();
+    var result = await refactoring.ExecuteAsync(
+        sourceCode, lineNumber, columnNumber, "net8.0");
+
+    if (result.IsSuccess)
+    {
+        return result.RefactoredCode!;
+    }
+
+    // Log the error but don't fail
+    Console.WriteLine($"Warning: Refactoring failed: {result.ErrorMessage}");
+    Console.WriteLine("Returning original code");
+
+    // Return original code if refactoring fails
+    return sourceCode;
+}
+```
+
+**Example - Framework Detection and Selection**:
+```csharp
+public string SelectBestFramework(string projectFramework)
+{
+    // Map project frameworks to best refactoring framework
+    return projectFramework switch
+    {
+        "net9.0" => "net9.0",           // Use exact match
+        "net8.0" => "net8.0",           // Use exact match
+        "net48" or "net481" => "net8.0",  // Use modern framework
+        "net472" or "net471" => "net8.0", // Use modern framework
+        "netstandard2.0" => "netstandard2.0", // Use exact match
+        "netstandard2.1" => "netstandard2.1", // Use exact match
+        _ => "net8.0"                   // Default to net8.0
+    };
+}
+
+// Usage
+var targetFramework = SelectBestFramework("net48");
+// Returns "net8.0" - refactor with modern framework
+```
+
+### Best Practices for Framework Compatibility
+
+1. **Prefer Modern Frameworks**: Use net8.0 or net9.0 for most reliable refactorings
+2. **Test Framework Support**: Before batch operations, test one refactoring with target framework
+3. **Have Fallback Strategy**: Be prepared to return original code if refactoring fails
+4. **Cache Management**: Keep modern framework caches (net8.0, net9.0) always populated
+5. **Log Failures**: Track framework-specific failures to identify patterns
+6. **Document Limitations**: Inform users about framework-specific limitations in your application
+
 ## Inline Method (Part 1)
 
 The Inline Method refactoring replaces a method's single invocation with its body, then removes the method declaration. Part 1 supports void methods with simple parameters (primitives, string) and single caller only.
