@@ -194,26 +194,34 @@ public class UnusedUsingPatternAnalyzer
     /// </summary>
     private bool IsSymbolFromNamespace(ISymbol symbol, INamespaceSymbol targetNamespace)
     {
-        // Check the symbol's namespace chain
-        var current = symbol;
-
-        while (current != null)
+        // If the symbol itself is the target namespace, check by name AND by comparer
+        // Use name comparison as fallback since symbols from different compilations may not be equal by comparer
+        if (symbol is INamespaceSymbol ns &&
+            (SymbolEqualityComparer.Default.Equals(ns, targetNamespace) ||
+             ns.ToDisplayString() == targetNamespace.ToDisplayString()))
         {
-            if (current is INamespaceSymbol ns)
-            {
-                if (SymbolEqualityComparer.Default.Equals(ns, targetNamespace))
-                {
-                    return true;
-                }
+            return true;
+        }
 
-                // Check if it's a child namespace (e.g., System.Linq is child of System)
-                if (IsChildNamespace(ns, targetNamespace))
-                {
-                    return true;
-                }
+        // For types, methods, properties, etc., check their containing namespace directly
+        var containingNamespace = symbol.ContainingNamespace;
+
+        while (containingNamespace != null && !containingNamespace.IsGlobalNamespace)
+        {
+            if (SymbolEqualityComparer.Default.Equals(containingNamespace, targetNamespace) ||
+                containingNamespace.ToDisplayString() == targetNamespace.ToDisplayString())
+            {
+                return true;
             }
 
-            current = current.ContainingSymbol;
+            // Check if it's a child namespace (e.g., System.Linq is child of System)
+            if (IsChildNamespace(containingNamespace, targetNamespace))
+            {
+                return true;
+            }
+
+            // Move up to parent namespace
+            containingNamespace = containingNamespace.ContainingNamespace;
         }
 
         return false;
