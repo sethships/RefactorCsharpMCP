@@ -24,13 +24,14 @@ public class AnalyzeCodeTool
 
     /// <summary>
     /// Analyzes C# source code for compiler warnings, style violations, and code quality issues.
+    /// Uses full IDE analyzer support (IDE0001-IDE9999) including IDE0005 (unused usings), IDE0044 (readonly fields), and more.
     /// </summary>
     /// <param name="sourceCode">The complete C# source code to analyze.</param>
     /// <param name="targetFramework">The target .NET framework (e.g., "net8.0", "net48", "netstandard2.0").</param>
     /// <param name="minSeverity">Minimum severity level to report: "Error", "Warning", "Info", "Hidden" (default: "Warning").</param>
     /// <returns>A JSON object containing the list of diagnostics found or error information.</returns>
     [McpServerTool]
-    [Description("Analyzes C# code for compiler warnings, style violations, and code quality issues using Roslyn diagnostics. Returns a list of issues with their locations, severity levels, and applicable refactorings. Framework-aware: analyzes code according to target framework capabilities (e.g., C# language version, available APIs).")]
+    [Description("Analyzes C# code for compiler warnings, style violations, and code quality issues using Roslyn diagnostics with full IDE analyzer support (IDE0001-IDE9999). Detects unused usings (IDE0005), readonly fields (IDE0044), code style issues, and more. Returns a list of issues with their locations, severity levels, and applicable refactorings. Framework-aware: analyzes code according to target framework capabilities (e.g., C# language version, available APIs).")]
     public async Task<object> AnalyzeCode(
         [Description("The complete C# source code to analyze")] string sourceCode,
         [Description("The target .NET framework (e.g., 'net8.0', 'net48', 'netstandard2.0')")] string targetFramework,

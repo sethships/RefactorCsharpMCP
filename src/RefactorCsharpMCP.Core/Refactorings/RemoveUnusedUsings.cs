@@ -21,10 +21,11 @@ public class RemoveUnusedUsings : RefactoringBase
     /// <returns>A result containing the refactored code or error information.</returns>
     public async Task<RefactoringResult> ExecuteAsync(string sourceCode, string targetFramework)
     {
-        return await ExecuteWithValidationAsync(
-            sourceCode,
-            targetFramework,
-            async () => await Task.Run(() => Execute(sourceCode, targetFramework)));
+        // Skip framework validation for pattern-based refactoring
+        // The Execute method does its own syntax validation and uses pattern analyzer
+        // which doesn't require full framework reference assemblies
+        // TODO(Issue #75): Replace with ICompilationProvider abstraction
+        return await Task.Run(() => Execute(sourceCode, targetFramework));
     }
 
     /// <summary>
@@ -90,14 +91,11 @@ public class RemoveUnusedUsings : RefactoringBase
             // Create compilation for semantic analysis
             var compilation = CreateCompilation(syntaxTree);
 
-            // Get all diagnostics from compilation
-            var diagnostics = compilation.GetDiagnostics();
-
-            // Find unused using directive diagnostics (IDE0005 and CS8019)
-            var unusedUsingDiagnostics = diagnostics
-                .Where(d => d.Id == "IDE0005" || d.Id == "CS8019")
-                .Where(d => d.Location.IsInSource)
-                .ToList();
+            // Use pattern-based analyzer for unused using detection
+            // This provides IDE0005 diagnostic detection without requiring IDE analyzer infrastructure
+            var analyzer = new Core.Diagnostics.UnusedUsingPatternAnalyzer();
+            var semanticModel = compilation.GetSemanticModel(syntaxTree);
+            var unusedUsingDiagnostics = analyzer.Analyze(syntaxTree, semanticModel).ToList();
 
             // If no unused usings found, return success with original code
             if (!unusedUsingDiagnostics.Any())

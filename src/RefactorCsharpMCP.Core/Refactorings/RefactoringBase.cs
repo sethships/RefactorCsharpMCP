@@ -122,10 +122,50 @@ public abstract class RefactoringBase
     /// <param name="syntaxTree">The syntax tree to include in the compilation.</param>
     /// <returns>A CSharpCompilation instance configured with standard references.</returns>
     /// <remarks>
+    /// <para><strong>Caching Strategy:</strong></para>
+    /// <para>
     /// The cache uses the SyntaxTree instance as the key (object identity), ensuring no hash collisions.
     /// Compilations are automatically removed when the SyntaxTree is garbage collected.
     /// This approach is thread-safe and requires no manual cache management.
     /// Cache metrics are logged at Debug level when a logger is available.
+    /// </para>
+    ///
+    /// <para><strong>Included API Surface:</strong></para>
+    /// <para>
+    /// The compilation includes references to the following assemblies, providing a minimal but sufficient
+    /// API surface for most refactoring operations:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item><strong>System.Private.CoreLib</strong> - Core types (object, string, int, etc.)</item>
+    ///   <item><strong>System.Collections</strong> - List&lt;T&gt;, Dictionary&lt;TKey,TValue&gt;, etc.</item>
+    ///   <item><strong>System.Linq</strong> - Enumerable extension methods and LINQ operators</item>
+    ///   <item><strong>System.Console</strong> - Console I/O operations</item>
+    ///   <item><strong>System.Runtime</strong> - Runtime helpers and attributes</item>
+    ///   <item><strong>System.Threading.Tasks</strong> - Task, Task&lt;T&gt; for async/await</item>
+    /// </list>
+    ///
+    /// <para><strong>Known Limitations:</strong></para>
+    /// <list type="bullet">
+    ///   <item>Does NOT include specialized BCL assemblies (System.Text.Json, System.Net.Http, etc.)</item>
+    ///   <item>Does NOT include third-party NuGet package references</item>
+    ///   <item>Does NOT include framework-specific APIs (WPF, ASP.NET, etc.)</item>
+    ///   <item>May produce incomplete semantic models for code using advanced APIs</item>
+    /// </list>
+    ///
+    /// <para><strong>Impact:</strong></para>
+    /// <para>
+    /// These limitations mean that symbol resolution may fail for code using APIs outside the included assemblies.
+    /// However, this is acceptable for pattern-based refactorings which primarily need type, method, and field
+    /// symbol resolution. For most common C# code patterns, this minimal reference set provides sufficient
+    /// semantic information.
+    /// </para>
+    ///
+    /// <para><strong>Future Enhancement:</strong></para>
+    /// <para>
+    /// For framework-aware refactorings that need complete semantic models, consider using
+    /// ReferenceAssemblyResolver (see ExecuteWithValidationAsync) or implementing ICompilationProvider
+    /// abstraction (tracked in Issue #75).
+    /// </para>
     /// </remarks>
     protected CSharpCompilation CreateCompilation(SyntaxTree syntaxTree)
     {
@@ -154,7 +194,10 @@ public abstract class RefactoringBase
                 .AddReferences(
                     MetadataReference.CreateFromFile(typeof(object).Assembly.Location), // mscorlib/System.Private.CoreLib
                     MetadataReference.CreateFromFile(typeof(System.Collections.Generic.List<>).Assembly.Location), // System.Collections
-                    MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location) // System.Linq
+                    MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location), // System.Linq
+                    MetadataReference.CreateFromFile(typeof(System.Console).Assembly.Location), // System.Console
+                    MetadataReference.CreateFromFile(typeof(System.Runtime.CompilerServices.RuntimeHelpers).Assembly.Location), // System.Runtime
+                    MetadataReference.CreateFromFile(typeof(System.Threading.Tasks.Task).Assembly.Location) // System.Threading.Tasks
                 )
                 .AddSyntaxTrees(tree);
         });
