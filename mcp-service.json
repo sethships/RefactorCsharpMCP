@@ -1,0 +1,183 @@
+{
+  "version": "1.0.0",
+  "protocol": "mcp",
+  "transport": "stdio",
+  "executable": {
+    "type": "docker",
+    "image": "refactor-csharp-mcp:latest",
+    "args": ["run", "-i", "--rm", "refactor-csharp-mcp:latest"]
+  },
+  "capabilities": {
+    "tools": true,
+    "resources": false,
+    "prompts": false
+  },
+  "tools": [
+    {
+      "name": "extract_method",
+      "description": "Extract selected code into a new private method",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sourceCode": {
+            "type": "string",
+            "description": "The complete C# source code containing the code to extract"
+          },
+          "startLine": {
+            "type": "integer",
+            "description": "The starting line number of the code block to extract (1-based)"
+          },
+          "endLine": {
+            "type": "integer",
+            "description": "The ending line number of the code block to extract (inclusive, 1-based)"
+          },
+          "newMethodName": {
+            "type": "string",
+            "description": "The name for the new extracted method"
+          }
+        },
+        "required": ["sourceCode", "startLine", "endLine", "newMethodName"]
+      }
+    },
+    {
+      "name": "constructor_injection",
+      "description": "Convert method parameters to constructor-injected fields or properties",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sourceCode": {
+            "type": "string",
+            "description": "The complete C# source code"
+          },
+          "className": {
+            "type": "string",
+            "description": "The name of the class to modify"
+          },
+          "methodName": {
+            "type": "string",
+            "description": "The name of the method containing parameters to inject"
+          },
+          "parameterNames": {
+            "type": "string",
+            "description": "Comma or semicolon-separated list of parameter names to inject"
+          },
+          "useProperties": {
+            "type": "boolean",
+            "description": "If true, create properties instead of fields (optional, default: false)"
+          }
+        },
+        "required": ["sourceCode", "className", "methodName", "parameterNames"]
+      }
+    },
+    {
+      "name": "make_field_readonly",
+      "description": "Make fields readonly where safe (only assigned in constructors)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sourceCode": {
+            "type": "string",
+            "description": "The complete C# source code"
+          },
+          "className": {
+            "type": "string",
+            "description": "The name of the class containing fields"
+          },
+          "fieldName": {
+            "type": "string",
+            "description": "Optional specific field name, or omit to analyze all fields"
+          }
+        },
+        "required": ["sourceCode", "className"]
+      }
+    },
+    {
+      "name": "safe_delete_method",
+      "description": "Delete methods with reference checking to ensure safe deletion",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sourceCode": {
+            "type": "string",
+            "description": "The complete C# source code"
+          },
+          "className": {
+            "type": "string",
+            "description": "The name of the class containing the method"
+          },
+          "methodName": {
+            "type": "string",
+            "description": "The name of the method to delete"
+          }
+        },
+        "required": ["sourceCode", "className", "methodName"]
+      }
+    },
+    {
+      "name": "extract_class",
+      "description": "Extract fields and methods into a new class with composition pattern",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sourceCode": {
+            "type": "string",
+            "description": "The complete C# source code"
+          },
+          "className": {
+            "type": "string",
+            "description": "The name of the class to extract from"
+          },
+          "newClassName": {
+            "type": "string",
+            "description": "The name for the new extracted class"
+          },
+          "memberNames": {
+            "type": "string",
+            "description": "Comma or semicolon-separated list of member names (fields/methods) to extract"
+          }
+        },
+        "required": ["sourceCode", "className", "newClassName", "memberNames"]
+      }
+    },
+    {
+      "name": "remove_unused_usings",
+      "description": "Remove unused using directives with framework-aware global using preservation",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sourceCode": {
+            "type": "string",
+            "description": "The complete C# source code"
+          },
+          "targetFramework": {
+            "type": "string",
+            "description": "Optional target framework (e.g., 'net8.0', 'net48', 'netstandard2.0')"
+          }
+        },
+        "required": ["sourceCode"]
+      }
+    },
+    {
+      "name": "inline_method",
+      "description": "Inline a method by replacing its single invocation with the method body (Part 1: void methods, simple parameters, single caller)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sourceCode": {
+            "type": "string",
+            "description": "The complete C# source code"
+          },
+          "className": {
+            "type": "string",
+            "description": "The name of the class containing the method"
+          },
+          "methodName": {
+            "type": "string",
+            "description": "The name of the method to inline"
+          }
+        },
+        "required": ["sourceCode", "className", "methodName"]
+      }
+    }
+  ]
+}

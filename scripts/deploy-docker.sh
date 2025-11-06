@@ -7,19 +7,23 @@
 #   ./deploy-docker.sh [OPTIONS]
 #
 # Options:
-#   -v, --version VERSION    Version tag for the Docker image (default: latest)
-#   -s, --security          Run security vulnerability scans
-#   -t, --test              Run post-deployment validation tests
-#   --skip-tests            Skip pre-deployment test suite
-#   --skip-security         Skip security scanning (not recommended)
-#   -p, --push              Push image to registry after build
-#   -r, --registry REGISTRY Docker registry to push to
-#   -h, --help              Show this help message
+#   -v, --version VERSION       Version tag for the Docker image (default: latest)
+#   -s, --security              Run security vulnerability scans
+#   -t, --test                  Run post-deployment validation tests
+#   --skip-tests                Skip pre-deployment test suite
+#   --skip-security             Skip security scanning (not recommended)
+#   -p, --push                  Push image to registry after build
+#   -r, --registry REGISTRY     Docker registry to push to
+#   --register-gateway          Register with Docker MCP Gateway after deployment
+#   --catalog CATALOG           Catalog name for gateway registration (default: local-dev)
+#   -h, --help                  Show this help message
 #
 # Examples:
 #   ./deploy-docker.sh -v 0.4.0 -s -t
 #   ./deploy-docker.sh --skip-security
 #   ./deploy-docker.sh -v 0.4.0 -p -r myregistry.io/myuser
+#   ./deploy-docker.sh -v 1.0.0 --register-gateway
+#   ./deploy-docker.sh --register-gateway --catalog production
 #
 
 # Require Bash 4.0+ for associative arrays and other features
@@ -39,6 +43,8 @@ SKIP_TESTS=false
 SKIP_SECURITY=false
 PUSH_IMAGE=false
 REGISTRY=""
+REGISTER_GATEWAY=false
+CATALOG="local-dev"
 
 # Colors
 RED='\033[0;31m'
@@ -116,8 +122,16 @@ while [[ $# -gt 0 ]]; do
             REGISTRY="$2"
             shift 2
             ;;
+        --register-gateway)
+            REGISTER_GATEWAY=true
+            shift
+            ;;
+        --catalog)
+            CATALOG="$2"
+            shift 2
+            ;;
         -h|--help)
-            head -n 25 "$0" | tail -n +3
+            head -n 30 "$0" | tail -n +3
             exit 0
             ;;
         *)
@@ -309,6 +323,28 @@ if [ "$PUSH_IMAGE" = true ]; then
         else
             error "Failed to push to registry"
             exit 1
+        fi
+    fi
+fi
+
+# Step 10: Register with Docker MCP Gateway (if requested)
+if [ "$REGISTER_GATEWAY" = true ]; then
+    header "Registering with Docker MCP Gateway"
+    REGISTER_SCRIPT="$SCRIPT_DIR/register-mcp-gateway.sh"
+
+    if [ ! -f "$REGISTER_SCRIPT" ]; then
+        warning "Registration script not found: $REGISTER_SCRIPT"
+        warning "Skipping gateway registration"
+    else
+        info "Running registration script..."
+        if bash "$REGISTER_SCRIPT" "$VERSION" "$CATALOG" "true" 2>&1 | tee -a "$LOG_FILE"; then
+            success "Server registered with Docker MCP Gateway"
+            info "Catalog: $CATALOG"
+            info "Use 'docker mcp server ls' to verify"
+        else
+            warning "Registration completed with warnings"
+            info "You can manually register later with:"
+            info "  bash $REGISTER_SCRIPT $VERSION"
         fi
     fi
 fi

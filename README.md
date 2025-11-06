@@ -146,40 +146,113 @@ docker compose run --rm refactor-csharp-mcp
 
 #### Docker Desktop MCP Toolkit Integration
 
-RefactorCsharpMCP is compatible with Docker Desktop 4.42.0+ MCP Toolkit for one-click deployment.
+RefactorCsharpMCP is fully integrated with Docker Desktop 4.25+ MCP Toolkit for centralized server management and discovery.
 
-**Configuration for Docker Desktop:**
+**Two Integration Options:**
 
-Add to your MCP client configuration (Claude Desktop, VS Code, etc.):
+##### Option 1: Docker MCP Gateway (Recommended)
+
+The Docker MCP Gateway provides centralized management of all your MCP servers through Docker Desktop.
+
+**Quick Setup:**
+
+```bash
+# 1. Build the image (if not already built)
+docker build -t refactor-csharp-mcp:latest .
+
+# 2. Register with Docker MCP Gateway
+# Windows
+pwsh ./scripts/register-mcp-gateway.ps1
+
+# Linux/macOS
+./scripts/register-mcp-gateway.sh
+
+# 3. Verify registration
+docker mcp catalog show local-dev
+docker mcp server ls
+```
+
+**Configure your AI client** (Claude Desktop, VS Code, etc.):
 
 ```json
 {
   "mcpServers": {
     "refactor-csharp-mcp": {
       "command": "docker",
-      "args": ["run", "--rm", "-i", "refactor-csharp-mcp:latest"],
-      "type": "stdio"
+      "args": ["mcp", "gateway", "run"]
     }
   }
 }
 ```
 
-**Note:** The Docker container uses stdio transport - no port mapping is required.
+**Gateway Management Commands:**
+
+```bash
+# Enable/disable the server
+docker mcp server enable refactor-csharp-mcp
+docker mcp server disable refactor-csharp-mcp
+
+# View server details
+docker mcp server inspect refactor-csharp-mcp
+
+# List all enabled servers
+docker mcp server ls
+
+# View catalog
+docker mcp catalog show local-dev
+```
+
+**Benefits:**
+- ✅ Centralized management in Docker Desktop
+- ✅ Discoverable in Docker Desktop UI
+- ✅ Automatic resource limits (1 CPU, 2GB RAM)
+- ✅ Version management via environment variables
+- ✅ Standardized configuration across MCP servers
+
+##### Option 2: Direct Docker Integration
+
+For direct control without the gateway, use the traditional Docker approach:
+
+```json
+{
+  "mcpServers": {
+    "refactor-csharp-mcp": {
+      "command": "docker",
+      "args": ["run", "--rm", "-i", "refactor-csharp-mcp:latest"]
+    }
+  }
+}
+```
+
+**Benefits:**
+- ✅ No gateway dependency
+- ✅ Direct container control
+- ✅ Simpler configuration
+- ✅ Lower overhead
+
+**Note:** Both options use stdio transport - no port mapping is required.
+
+For detailed Docker MCP Toolkit integration guide, see [docs/DOCKER-MCP-TOOLKIT.md](docs/DOCKER-MCP-TOOLKIT.md).
 
 #### Production Deployment Considerations
 
 For production use, consider these additional configurations for enhanced security and reliability:
 
 **Security Hardening:**
+
+The Docker image includes built-in security features:
+- ✅ **Non-root user**: Container runs as `mcpuser` (UID 1000)
+- ✅ **Security labels**: OCI image metadata and compliance labels
+- ✅ **SHA256 pinning**: Base images pinned for reproducible builds
+- ✅ **Health checks**: Automatic container health monitoring
+
+Additional runtime security options:
 ```bash
 # Run container with read-only filesystem
 docker run --rm -i --read-only refactor-csharp-mcp:latest
 
-# Limit container resources to prevent DoS
+# Limit container resources (Gateway enforces these by default)
 docker run --rm -i --memory=512m --cpus=1 refactor-csharp-mcp:latest
-
-# Run as non-root user (add USER directive to Dockerfile)
-docker run --rm -i --user 1000:1000 refactor-csharp-mcp:latest
 ```
 
 **Monitoring and Health:**
