@@ -78,56 +78,82 @@ These refactorings address architectural concerns by breaking down large files t
 
 Create new folder structure: `src/RefactorCsharpMCP.Core/Validation/`
 
+**Recommended Folder Structure** (flatter, purpose-based):
+```
+Validation/
+├── Handlers/          (diagnostic processing logic)
+├── Framework/         (framework version detection)
+└── Analysis/          (error analysis utilities)
+```
+
 **Strategy Pattern for Diagnostic Handlers**:
 ```csharp
-// New interface
+// Base interface for common diagnostic handling pattern
 public interface IDiagnosticHandler
 {
-    Task<DiagnosticResult> HandleAsync(
+    Task<ValidationResult> HandleAsync(
         IEnumerable<Diagnostic> diagnostics,
         FrameworkVersion targetFramework,
         CancellationToken cancellationToken = default);
 }
+
+// Specific interface for parse-time diagnostic handling
+public interface IParseDiagnosticHandler : IDiagnosticHandler
+{
+    // Marker interface for type safety - enables specific DI registration
+}
+
+// Specific interface for semantic-time diagnostic handling
+public interface ISemanticDiagnosticHandler : IDiagnosticHandler
+{
+    // Marker interface for type safety - enables specific DI registration
+}
 ```
+
+**Design Decision**: Use specific interfaces (`IParseDiagnosticHandler`, `ISemanticDiagnosticHandler`) to:
+- Adhere to Interface Segregation Principle (ISP)
+- Enable type-safe dependency injection without keyed services
+- Allow independent evolution of parse and semantic concerns
+- Improve code clarity and discoverability
 
 **New Classes**:
 
-1. **Diagnostics/ParseDiagnosticHandler.cs** (~200 lines)
+1. **Handlers/ParseDiagnosticHandler.cs** (~200 lines)
    - Extract lines 117-158 from ValidateCompilationAsync
    - Responsibility: Handle syntax errors, language version mismatches
    - Dependencies: IFrameworkVersionDetector
 
-2. **Diagnostics/SemanticDiagnosticHandler.cs** (~200 lines)
+2. **Handlers/SemanticDiagnosticHandler.cs** (~200 lines)
    - Extract lines 182-230 from ValidateCompilationAsync
    - Responsibility: Handle semantic errors, type errors
    - Dependencies: IApiClassifier, IBclValidator
 
-3. **Diagnostics/DiagnosticClassifier.cs** (~150 lines)
+3. **Handlers/DiagnosticClassifier.cs** (~150 lines)
    - Extract ExtractFeatureFromError (lines 268-286)
    - Responsibility: Classify diagnostic types
    - Pure function class
 
-4. **FrameworkCompatibility/FrameworkVersionDetector.cs** (~150 lines)
+4. **Framework/FrameworkVersionDetector.cs** (~150 lines)
    - Extract DetectRequiredVersion (lines 293-363)
    - Responsibility: Map diagnostic IDs to required framework versions
    - Contains comprehensive C# version mapping
 
-5. **FrameworkCompatibility/FrameworkFeatureMapper.cs** (~100 lines)
+5. **Framework/FrameworkFeatureMapper.cs** (~100 lines)
    - Extract feature-to-version mapping logic
    - Responsibility: Map C# language features to framework versions
    - Static data class
 
-6. **ErrorAnalysis/BclNamespaceValidator.cs** (~100 lines)
+6. **Analysis/BclNamespaceValidator.cs** (~100 lines)
    - Extract KnownBclPrefixes (lines 537-577) and IsBclNamespace
    - Responsibility: Validate BCL namespace usage
    - Static utility class
 
-7. **ErrorAnalysis/TypoDetector.cs** (~100 lines)
+7. **Analysis/TypoDetector.cs** (~100 lines)
    - Extract typo detection heuristics
    - Responsibility: Differentiate typos from missing APIs
    - Levenshtein distance algorithms
 
-8. **ErrorAnalysis/ApiAvailabilityChecker.cs** (~150 lines)
+8. **Analysis/ApiAvailabilityChecker.cs** (~150 lines)
    - Extract ClassifyApiErrors (lines 428-474)
    - Responsibility: Check API availability across frameworks
    - Dependencies: IBclValidator
@@ -168,6 +194,70 @@ public class SyntaxValidator
 - Can add new handlers without modifying existing code (Open/Closed)
 - Framework detection logic isolated for reuse
 - ~150-line entry point vs 659-line monolith
+
+#### Dependency Injection Strategy
+
+**Service Lifetime Decisions**
+
+All validation services use **Singleton** lifetime for optimal performance:
+
+| Service | Lifetime | Rationale |
+|---------|----------|-----------|
+| **IDiagnosticHandler implementations** | **Singleton** | Stateless handlers with no per-request state |
+| **IFrameworkVersionDetector** | **Singleton** | Pure mapping logic with static data |
+| **IApiClassifier** | **Singleton** | Classification logic with static heuristics |
+| **IBclValidator** | **Singleton** | Namespace validation with readonly data structures |
+| **SyntaxValidator (facade)** | **Singleton** | Orchestrator with immutable dependencies |
+| **ReferenceAssemblyResolver** | **Singleton** | **Must be shared** - caches reference assemblies for reuse |
+
+**Registration Code**
+
+Add to `src/RefactorCsharpMCP.Server/Program.cs` after `.WithToolsFromAssembly()`:
+
+```csharp
+// Register shared infrastructure
+builder.Services.AddSingleton<ReferenceAssemblyResolver>();
+
+// Register validation services (all stateless, safe as singletons)
+builder.Services.AddSingleton<IFrameworkVersionDetector, FrameworkVersionDetector>();
+builder.Services.AddSingleton<IApiClassifier, ApiClassifier>();
+builder.Services.AddSingleton<IBclValidator, BclNamespaceValidator>();
+builder.Services.AddSingleton<IParseDiagnosticHandler, ParseDiagnosticHandler>();
+builder.Services.AddSingleton<ISemanticDiagnosticHandler, SemanticDiagnosticHandler>();
+builder.Services.AddSingleton<SyntaxValidator>();
+```
+
+**MCP Tool Integration**
+
+Update all 11 MCP tool classes to inject `SyntaxValidator` via constructor:
+
+```csharp
+public class ExtractMethodTool : McpTool
+{
+    private readonly SyntaxValidator _validator;
+
+    public ExtractMethodTool(SyntaxValidator validator)
+    {
+        _validator = validator;
+    }
+
+    public async Task<object> ExtractMethod(string sourceCode, ...)
+    {
+        var result = await _validator.ValidateInputAsync(sourceCode, targetFramework);
+        // ...
+    }
+}
+```
+
+**Performance Benefits**
+
+Expected improvements from singleton services with shared caching:
+
+| Metric | Before | After | Improvement |
+|--------|--------|-------|-------------|
+| **Validator creation** | ~50ms | ~0.01ms | **5000x faster** |
+| **Memory per request** | ~2MB | ~0KB | **Minimal allocation** |
+| **Throughput** | ~20/sec | ~200/sec | **10x improvement** |
 
 ---
 
@@ -623,17 +713,60 @@ While test code can tolerate some repetition, there may be opportunities to extr
 **Goal**: Break down the 659-line SyntaxValidator into 9 focused classes
 
 **Tasks**:
-1. Create folder structure: `Validation/Diagnostics/`, `Validation/FrameworkCompatibility/`, `Validation/ErrorAnalysis/`
-2. Extract diagnostic handlers (ParseDiagnosticHandler, SemanticDiagnosticHandler)
+1. Create folder structure: `Validation/Handlers/`, `Validation/Framework/`, `Validation/Analysis/`
+2. Extract diagnostic handlers (ParseDiagnosticHandler, SemanticDiagnosticHandler, DiagnosticClassifier)
 3. Extract framework detection (FrameworkVersionDetector, FrameworkFeatureMapper)
 4. Extract error analysis (BclNamespaceValidator, TypoDetector, ApiAvailabilityChecker)
 5. Refactor main SyntaxValidator to orchestrator (~150 lines)
-6. Update tests to use new class structure
-7. Verify all 491 tests pass
+6. Register services in Program.cs with DI container
+7. Update all 11 MCP tools to inject SyntaxValidator
+8. Update tests to use new class structure
+9. Verify all tests pass
 
 **Expected Time**: 8-12 hours
 **Test Impact**: Moderate (may need test helper updates)
 **Benefit**: Resolves largest file size issue, enables MCP dogfooding
+
+#### Test Migration Strategy
+
+**Philosophy**: Integration-first approach - maintain existing integration tests while adding focused unit tests for new classes.
+
+**Test File Structure**:
+```
+tests/RefactorCsharpMCP.Tests/Validation/
+├── SyntaxValidatorTests.cs                     (KEEP - ~400 lines, integration only)
+├── Handlers/
+│   ├── ParseDiagnosticHandlerTests.cs          (NEW - ~150 lines)
+│   ├── SemanticDiagnosticHandlerTests.cs       (NEW - ~150 lines)
+│   └── DiagnosticClassifierTests.cs            (NEW - ~100 lines)
+├── Framework/
+│   ├── FrameworkVersionDetectorTests.cs        (NEW - ~200 lines)
+│   └── FrameworkFeatureMapperTests.cs          (NEW - ~100 lines)
+└── Analysis/
+    ├── BclNamespaceValidatorTests.cs           (NEW - ~100 lines)
+    ├── TypoDetectorTests.cs                    (NEW - ~150 lines)
+    └── ApiAvailabilityCheckerTests.cs          (NEW - ~150 lines)
+```
+
+**Migration Steps**:
+
+1. **Phase 1**: Create test helpers (`ValidationTestHelpers.cs`) with shared utilities
+2. **Phase 2**: Extract handler class and create corresponding unit test file
+3. **Phase 3**: Migrate specific tests from SyntaxValidatorTests to new files
+4. **Phase 4**: Trim SyntaxValidatorTests.cs to ~400 lines (integration only)
+5. **Phase 5**: Verify all tests pass, coverage maintained at 87%+
+
+**Test Coverage Tracking**:
+
+| Phase | Total Tests | Coverage |
+|-------|-------------|----------|
+| **Baseline** | 491 | 87% |
+| **After SyntaxValidator** | ~550 | 88% |
+
+**Naming Conventions**:
+- Test classes: `{ClassUnderTest}Tests.cs`
+- Test methods: `{MethodUnderTest}_{Scenario}_{ExpectedOutcome}`
+- Always use Arrange-Act-Assert pattern
 
 ### Sprint 2: High Complexity - InlineMethod Decomposition
 
@@ -646,9 +779,10 @@ While test code can tolerate some repetition, there may be opportunities to extr
 4. Update InlineMethodTests
 5. Verify all tests pass
 
-**Expected Time**: 10-14 hours
-**Test Impact**: High (complex refactoring with many edge cases)
+**Expected Time**: 20-30 hours (revised upward - most complex file, extensive test migration)
+**Test Impact**: High (complex refactoring with many edge cases, 39 InlineMethod tests to update)
 **Benefit**: Most complex file resolved, reusable components for other refactorings
+**Recommendation**: Consider splitting into two sub-sprints (core decomposition + test migration)
 
 ### Sprint 3: Utility Decomposition - SymbolResolutionHelper
 
@@ -707,7 +841,13 @@ While test code can tolerate some repetition, there may be opportunities to extr
 
 ---
 
-### Total Estimated Time: 44-62 hours (~6-8 working days)
+### Total Estimated Time: 70-90 hours (~9-12 working days)
+
+**Note**: Estimates revised upward based on architectural code review to account for:
+- Test migration complexity (1196-line test file decomposition)
+- DI registration and integration across 11 MCP tools
+- Performance baseline establishment and validation
+- More realistic assessment of InlineMethod complexity (978 lines)
 
 ### Parallel Work Opportunities
 
