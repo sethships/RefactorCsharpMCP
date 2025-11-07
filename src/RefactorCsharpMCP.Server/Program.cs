@@ -7,9 +7,11 @@ using ModelContextProtocol.Server;
 var builder = Host.CreateApplicationBuilder(args);
 
 // Configure logging
+// NOTE: Console logging is disabled for stdio transport to prevent corrupting JSON-RPC messages
+// MCP stdio transport requires stdout exclusively for JSON-RPC; logs would corrupt the message stream
 builder.Logging.ClearProviders();
-builder.Logging.AddConsole();
-builder.Logging.SetMinimumLevel(LogLevel.Information);
+// Set minimum level to Warning to capture errors while avoiding verbose Info/Debug noise
+builder.Logging.SetMinimumLevel(LogLevel.Warning);
 
 // Get server version from assembly for metadata
 var version = Assembly.GetExecutingAssembly()
