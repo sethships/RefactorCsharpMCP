@@ -30,6 +30,10 @@ RED='\033[0;31m'
 WHITE='\033[0;37m'
 NC='\033[0m' # No Color
 
+# Get script directory and project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
 echo -e "${CYAN}RefactorCsharpMCP - Docker MCP Gateway Registration${NC}"
 echo -e "${CYAN}====================================================${NC}"
 echo ""
@@ -46,9 +50,12 @@ if [ "$VALIDATE" = "true" ]; then
     docker --version
     echo -e "${GREEN}[OK] Docker installed${NC}"
 
-    if ! docker mcp --help &> /dev/null; then
+    if ! docker mcp version &> /dev/null 2>&1; then
+        DOCKER_VERSION=$(docker version --format '{{.Server.Version}}' 2>/dev/null || echo "unknown")
         echo -e "${RED}[ERROR] Docker MCP Gateway not available${NC}"
-        echo -e "${YELLOW}Please update Docker Desktop to a version with MCP Gateway support${NC}"
+        echo -e "${YELLOW}Current Docker version: $DOCKER_VERSION${NC}"
+        echo -e "${YELLOW}MCP Gateway requires Docker Desktop 28.5.1+ or equivalent${NC}"
+        echo -e "${YELLOW}Please update Docker Desktop from: https://www.docker.com/products/docker-desktop${NC}"
         exit 1
     fi
     echo -e "${GREEN}[OK] Docker MCP Gateway detected${NC}"
@@ -57,7 +64,8 @@ fi
 # Step 2: Verify image exists
 echo ""
 echo -e "${YELLOW}Verifying Docker image...${NC}"
-if ! docker images -q "refactor-csharp-mcp:$VERSION" &> /dev/null || [ -z "$(docker images -q refactor-csharp-mcp:$VERSION)" ]; then
+IMAGE_ID=$(docker images -q "refactor-csharp-mcp:$VERSION" 2>/dev/null)
+if [ -z "$IMAGE_ID" ]; then
     echo -e "${RED}[ERROR] Image refactor-csharp-mcp:$VERSION not found${NC}"
     echo -e "${YELLOW}Build the image first:${NC}"
     echo -e "${WHITE}  docker build -t refactor-csharp-mcp:$VERSION .${NC}"
@@ -70,10 +78,11 @@ echo -e "${GREEN}[OK] Image found: refactor-csharp-mcp:$VERSION${NC}"
 # Step 3: Check if docker-mcp.yaml exists
 echo ""
 echo -e "${YELLOW}Checking catalog definition...${NC}"
-CATALOG_FILE="docker-mcp.yaml"
+CATALOG_FILE="$PROJECT_ROOT/docker-mcp.yaml"
 if [ ! -f "$CATALOG_FILE" ]; then
-    echo -e "${RED}[ERROR] $CATALOG_FILE not found in current directory${NC}"
-    echo -e "${YELLOW}Expected location: $(pwd)/$CATALOG_FILE${NC}"
+    echo -e "${RED}[ERROR] $CATALOG_FILE not found${NC}"
+    echo -e "${YELLOW}Expected location: $CATALOG_FILE${NC}"
+    echo -e "${YELLOW}Please ensure docker-mcp.yaml exists in the project root${NC}"
     exit 1
 fi
 echo -e "${GREEN}[OK] Catalog definition found${NC}"
@@ -91,31 +100,34 @@ fi
 # Step 5: Add server to catalog
 echo ""
 echo -e "${YELLOW}Registering server in catalog '$CATALOG'...${NC}"
-if docker mcp catalog add "$CATALOG" refactor-csharp-mcp "$CATALOG_FILE" --force 2>&1; then
+if OUTPUT=$(docker mcp catalog add "$CATALOG" refactor-csharp-mcp "$CATALOG_FILE" --force 2>&1); then
     echo -e "${GREEN}[OK] Server added to catalog${NC}"
 else
     echo -e "${RED}[ERROR] Failed to register server in catalog${NC}"
+    echo -e "${RED}Error details: $OUTPUT${NC}"
     exit 1
 fi
 
 # Step 6: Enable the server
 echo ""
 echo -e "${YELLOW}Enabling MCP server...${NC}"
-if docker mcp server enable refactor-csharp-mcp 2>&1; then
+if OUTPUT=$(docker mcp server enable refactor-csharp-mcp 2>&1); then
     echo -e "${GREEN}[OK] Server enabled${NC}"
 else
     echo -e "${RED}[ERROR] Failed to enable server${NC}"
+    echo -e "${RED}Error details: $OUTPUT${NC}"
     exit 1
 fi
 
 # Step 7: Verify registration
 echo ""
 echo -e "${YELLOW}Verifying registration...${NC}"
-if docker mcp server inspect refactor-csharp-mcp 2>&1; then
+if OUTPUT=$(docker mcp server inspect refactor-csharp-mcp 2>&1); then
     echo ""
     echo -e "${GREEN}[OK] Registration verified${NC}"
 else
     echo -e "${YELLOW}[WARN] Could not verify server registration${NC}"
+    echo -e "${YELLOW}Warning details: $OUTPUT${NC}"
 fi
 
 # Summary

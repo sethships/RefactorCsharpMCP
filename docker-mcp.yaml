@@ -51,3 +51,11 @@ spec:
       description: Remove unused using directives with framework-aware global using preservation
     - name: inline_method
       description: Inline a method by replacing its single invocation with the method body
+    - name: rename_symbol
+      description: Rename symbols (variables, parameters, private fields/methods) at a specific position
+    - name: fix_diagnostic
+      description: Automatically fix Roslyn diagnostics (unused usings, readonly fields, etc.)
+    - name: inline_variable
+      description: Inline a variable by replacing all uses with its initialization expression
+    - name: analyze_code
+      description: Analyze C# code for diagnostics using Roslyn with full IDE analyzer support

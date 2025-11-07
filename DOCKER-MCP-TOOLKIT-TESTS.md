@@ -54,7 +54,7 @@ refactor-csharp-mcp:latest - 238MB
 - ✅ spec.resources: CPU (1000m), Memory (2Gi) with requests (250m/512Mi)
 - ✅ spec.capabilities: tools=true, resources=false, prompts=false
 - ✅ spec.environment: DOTNET variables configured
-- ✅ spec.tools: All 7 refactoring tools defined
+- ✅ spec.tools: All 11 refactoring tools defined
 
 **Schema validation:** PASSED
 
@@ -66,7 +66,7 @@ refactor-csharp-mcp:latest - 238MB
 - ✅ transport: stdio
 - ✅ executable: Docker configuration
 - ✅ capabilities: Documented
-- ✅ tools: All 7 tools with complete inputSchema definitions
+- ✅ tools: All 11 tools with complete inputSchema definitions
 
 **JSON validation:** PASSED
 
@@ -223,7 +223,7 @@ info: ModelContextProtocol.Server.McpServer[1867955179]
       method 'tools/list' request handler completed.
 
 ✅ PASS: Tools list method processes correctly
-✅ PASS: All 7 refactoring tools available
+✅ PASS: All 11 refactoring tools available
 ```
 
 ### MCP Protocol: tools/call
@@ -307,7 +307,7 @@ The existing direct Docker integration continues to work without gateway:
 
 ## Available Refactoring Tools
 
-The following 7 tools are discoverable and functional:
+The following 11 tools are discoverable and functional:
 
 1. ✅ **extract_method** - Extract code into a new private method
 2. ✅ **constructor_injection** - Convert parameters to constructor-injected fields/properties
@@ -316,6 +316,10 @@ The following 7 tools are discoverable and functional:
 5. ✅ **extract_class** - Extract fields/methods into a new class
 6. ✅ **remove_unused_usings** - Remove unused using directives (framework-aware)
 7. ✅ **inline_method** - Inline a method by replacing invocation with body
+8. ✅ **rename_symbol** - Rename symbols (variables, parameters, private fields/methods) at a specific position
+9. ✅ **fix_diagnostic** - Automatically fix Roslyn diagnostics (unused usings, readonly fields, etc.)
+10. ✅ **inline_variable** - Inline a variable by replacing all uses with its initialization expression
+11. ✅ **analyze_code** - Analyze C# code for diagnostics using Roslyn with full IDE analyzer support
 
 ---
 

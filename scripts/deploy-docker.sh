@@ -329,22 +329,29 @@ fi
 
 # Step 10: Register with Docker MCP Gateway (if requested)
 if [ "$REGISTER_GATEWAY" = true ]; then
-    header "Registering with Docker MCP Gateway"
-    REGISTER_SCRIPT="$SCRIPT_DIR/register-mcp-gateway.sh"
-
-    if [ ! -f "$REGISTER_SCRIPT" ]; then
-        warning "Registration script not found: $REGISTER_SCRIPT"
+    # Validate version format before registration
+    if ! [[ "$VERSION" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+        warning "Invalid version format: $VERSION"
+        warning "Version must contain only alphanumeric characters, dots, underscores, and hyphens"
         warning "Skipping gateway registration"
     else
-        info "Running registration script..."
-        if bash "$REGISTER_SCRIPT" "$VERSION" "$CATALOG" "true" 2>&1 | tee -a "$LOG_FILE"; then
-            success "Server registered with Docker MCP Gateway"
-            info "Catalog: $CATALOG"
-            info "Use 'docker mcp server ls' to verify"
+        header "Registering with Docker MCP Gateway"
+        REGISTER_SCRIPT="$SCRIPT_DIR/register-mcp-gateway.sh"
+
+        if [ ! -f "$REGISTER_SCRIPT" ]; then
+            warning "Registration script not found: $REGISTER_SCRIPT"
+            warning "Skipping gateway registration"
         else
-            warning "Registration completed with warnings"
-            info "You can manually register later with:"
-            info "  bash $REGISTER_SCRIPT $VERSION"
+            info "Running registration script..."
+            if bash "$REGISTER_SCRIPT" "$VERSION" "$CATALOG" "true" 2>&1 | tee -a "$LOG_FILE"; then
+                success "Server registered with Docker MCP Gateway"
+                info "Catalog: $CATALOG"
+                info "Use 'docker mcp server ls' to verify"
+            else
+                warning "Registration completed with warnings"
+                info "You can manually register later with:"
+                info "  bash $REGISTER_SCRIPT $VERSION"
+            fi
         fi
     fi
 fi

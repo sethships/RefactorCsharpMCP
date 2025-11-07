@@ -55,7 +55,7 @@ ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
 
 # Basic health check - verifies process is running
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD ps aux | grep -v grep | grep -q RefactorCsharpMCP.Server.dll || exit 1
+  CMD test -d /proc/1 || exit 1
 
 # Run as non-root user
 USER mcpuser

@@ -486,7 +486,7 @@ await host.RunAsync();
 
 1. **Create docker-mcp.yaml**
    - Use validated schema (apiVersion: mcp/v1)
-   - Define all 7 tools with descriptions
+   - Define all 11 tools with descriptions
    - Set resource limits (1 CPU, 2GB RAM)
    - **Acceptance:** Valid YAML, passes schema validation
 
@@ -525,7 +525,7 @@ await host.RunAsync();
 
 2. **End-to-end testing**
    - Configure Claude Desktop with gateway
-   - Test all 7 refactoring tools
+   - Test all 11 refactoring tools
    - Verify stdio transport performance
    - **Acceptance:** All tools work via gateway
 
@@ -592,7 +592,7 @@ await host.RunAsync();
 | Gateway Discovery | List servers via catalog | Server appears in `docker mcp catalog ls` |
 | Stdio Transport | Verify stdio through gateway | Tool invocation succeeds |
 | Resource Limits | Test CPU/memory enforcement | Limits enforced correctly |
-| Tool Discovery | List available tools | All 7 tools discoverable |
+| Tool Discovery | List available tools | All 11 tools discoverable |
 | Direct Docker | Test without gateway | Existing functionality works |
 | Health Checks | Container health monitoring | Health checks pass |
 
@@ -709,7 +709,7 @@ docker mcp server enable refactor-csharp-mcp
 ### 10.1 Technical Metrics
 
 - ✅ Gateway registration succeeds on all platforms
-- ✅ All 7 tools work through gateway
+- ✅ All 11 tools work through gateway
 - ✅ Performance overhead < 10%
 - ✅ Zero regression in direct Docker path
 - ✅ Resource limits enforced correctly

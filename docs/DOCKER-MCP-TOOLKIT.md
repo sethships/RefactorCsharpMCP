@@ -60,7 +60,7 @@ RefactorCsharpMCP is fully integrated with Docker Desktop's MCP (Model Context P
 ┌────────────────────────────────────────────────────────┐
 │  AI Clients (Claude Desktop, VS Code, Cursor)          │
 │  - Connects via stdio over Docker MCP Gateway          │
-│  - Access to all 7 refactoring tools                   │
+│  - Access to all 11 refactoring tools                  │
 └────────────────────────────────────────────────────────┘
 ```
 
@@ -98,6 +98,28 @@ docker mcp --help
 # Check .NET SDK (if building)
 dotnet --version
 # Expected: 8.0.x or later
+```
+
+### Script Permissions (Linux/macOS)
+
+The deployment and registration scripts require execute permissions on Unix-based systems:
+
+```bash
+# Grant execute permissions to all shell scripts
+chmod +x scripts/*.sh
+
+# Or individually:
+chmod +x scripts/deploy-docker.sh
+chmod +x scripts/register-mcp-gateway.sh
+```
+
+On Windows, PowerShell scripts may require execution policy changes:
+```powershell
+# Check current policy
+Get-ExecutionPolicy
+
+# Allow local scripts (if needed)
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
 ---
@@ -293,7 +315,7 @@ Restart your AI client and verify the connection:
 ```
 User: "Can you list the available refactoring tools?"
 
-Expected: Claude should list all 7 refactoring tools:
+Expected: Claude should list all 11 refactoring tools:
 - extract_method
 - constructor_injection
 - make_field_readonly
@@ -301,6 +323,10 @@ Expected: Claude should list all 7 refactoring tools:
 - extract_class
 - remove_unused_usings
 - inline_method
+- rename_symbol
+- fix_diagnostic
+- inline_variable
+- analyze_code
 ```
 
 ### Option 2: Direct Docker Setup
@@ -407,6 +433,77 @@ docker mcp config read
 docker mcp config write '<yaml-config>'
 ```
 
+### Rollback and Unregistration
+
+**Unregister server from gateway:**
+
+```bash
+# Disable server (keeps in catalog)
+docker mcp server disable refactor-csharp-mcp
+
+# Remove from catalog entirely
+docker mcp catalog rm local-dev refactor-csharp-mcp
+
+# Verify removal
+docker mcp server ls
+```
+
+**Rollback to previous version:**
+
+```bash
+# 1. Tag desired version
+docker tag refactor-csharp-mcp:1.0.0 refactor-csharp-mcp:rollback
+
+# 2. Update catalog to use rollback tag
+# Edit docker-mcp.yaml to use :rollback or :1.0.0
+# Or set MCP_VERSION environment variable:
+export MCP_VERSION=1.0.0
+
+# 3. Re-register with updated version
+docker mcp catalog add local-dev refactor-csharp-mcp docker-mcp.yaml --force
+
+# 4. Restart gateway
+docker mcp gateway stop
+docker mcp gateway run
+```
+
+**Complete cleanup:**
+
+```bash
+# Stop all running containers
+docker stop $(docker ps -q --filter ancestor=refactor-csharp-mcp)
+
+# Remove from gateway
+docker mcp server disable refactor-csharp-mcp
+docker mcp catalog rm local-dev refactor-csharp-mcp
+
+# Remove Docker images
+docker rmi refactor-csharp-mcp:latest
+docker rmi refactor-csharp-mcp:1.0.0
+
+# Remove dangling images
+docker image prune -f
+```
+
+**Emergency rollback procedure:**
+
+If the server is causing issues, perform quick rollback:
+
+```bash
+# 1. Disable immediately
+docker mcp server disable refactor-csharp-mcp
+
+# 2. Restart gateway without the server
+docker mcp gateway stop
+docker mcp gateway run
+
+# 3. Investigate issues in logs
+docker logs $(docker ps -q --filter ancestor=refactor-csharp-mcp)
+
+# 4. Once fixed, re-enable
+docker mcp server enable refactor-csharp-mcp
+```
+
 ---
 
 ## Configuration
@@ -459,7 +556,46 @@ spec:
       description: Extract selected code into a new private method
     - name: constructor_injection
       description: Convert method parameters to constructor-injected fields or properties
-    # ... (7 tools total)
+    # ... (11 tools total)
+```
+
+### Environment Variables
+
+The following environment variables configure the MCP server and Docker behavior:
+
+| Variable | Purpose | Default | Required |
+|----------|---------|---------|----------|
+| `MCP_VERSION` | Docker image version tag used in docker-mcp.yaml | `latest` | No |
+| `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT` | Disables culture-specific formatting (container optimization) | `1` | Yes (in container) |
+| `DOTNET_RUNNING_IN_CONTAINER` | Indicates .NET is running in a container | `true` | Yes (in container) |
+| `DOTNET_EnableDiagnostics` | Enables .NET diagnostics | `0` | No |
+| `ASPNETCORE_ENVIRONMENT` | ASP.NET Core environment name | Not set | No |
+
+**Setting MCP_VERSION:**
+
+The `MCP_VERSION` variable controls which image version the gateway uses:
+
+```bash
+# Use specific version
+export MCP_VERSION=1.0.0
+docker mcp catalog add local-dev refactor-csharp-mcp docker-mcp.yaml
+
+# Use latest (default)
+unset MCP_VERSION
+docker mcp catalog add local-dev refactor-csharp-mcp docker-mcp.yaml
+```
+
+**Container Environment Variables:**
+
+The `DOTNET_*` variables are set automatically in the Dockerfile and docker-mcp.yaml. Only modify these if customizing container behavior:
+
+```yaml
+# In docker-mcp.yaml
+environment:
+  - name: DOTNET_SYSTEM_GLOBALIZATION_INVARIANT
+    value: "1"  # Reduces container size, disables culture-specific formatting
+  - name: DOTNET_RUNNING_IN_CONTAINER
+    value: "true"  # Optimizes .NET for container environment
 ```
 
 ### Version Management
@@ -685,6 +821,39 @@ docker mcp catalog export team-refactoring > team-refactoring.yaml
 
 # Team members import
 docker mcp catalog import team-refactoring.yaml
+```
+
+**Catalog Naming Conventions:**
+
+Use descriptive, environment-specific catalog names for better organization:
+
+| Catalog Name | Purpose | Example Servers |
+|--------------|---------|-----------------|
+| `local-dev` | Local development and testing | Latest builds, experimental features |
+| `staging` | Pre-production testing | Release candidates, integration testing |
+| `production` | Production deployments | Stable versions only |
+| `team-<name>` | Team-specific servers | Custom team tools and services |
+| `project-<name>` | Project-specific servers | Project-scoped refactoring tools |
+
+**Best Practices:**
+- Use lowercase with hyphens (kebab-case)
+- Include environment indicator (dev, staging, prod)
+- Keep names under 50 characters
+- Avoid special characters except hyphens and underscores
+
+**Examples:**
+```bash
+# Development catalog
+docker mcp catalog create local-dev
+
+# Team-specific catalog
+docker mcp catalog create team-backend
+
+# Project-specific catalog
+docker mcp catalog create project-microservices
+
+# Production catalog
+docker mcp catalog create production
 ```
 
 ### Resource Tuning

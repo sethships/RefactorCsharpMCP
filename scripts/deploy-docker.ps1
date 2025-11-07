@@ -338,13 +338,19 @@ try {
 
     # Step 10: Register with Docker MCP Gateway (if requested)
     if ($RegisterGateway) {
-        Write-Header "Registering with Docker MCP Gateway"
-        $registerScript = Join-Path $PSScriptRoot "register-mcp-gateway.ps1"
-
-        if (-not (Test-Path $registerScript)) {
-            Write-Warning-Custom "Registration script not found: $registerScript"
+        # Validate version format before registration
+        if ($Version -notmatch '^[a-zA-Z0-9._-]+$') {
+            Write-Warning-Custom "Invalid version format: $Version"
+            Write-Warning-Custom "Version must contain only alphanumeric characters, dots, underscores, and hyphens"
             Write-Warning-Custom "Skipping gateway registration"
         } else {
+            Write-Header "Registering with Docker MCP Gateway"
+            $registerScript = Join-Path $PSScriptRoot "register-mcp-gateway.ps1"
+
+            if (-not (Test-Path $registerScript)) {
+                Write-Warning-Custom "Registration script not found: $registerScript"
+                Write-Warning-Custom "Skipping gateway registration"
+            } else {
             Write-Info "Running registration script..."
             try {
                 & $registerScript -Version $Version -Catalog $Catalog -Validate
@@ -359,6 +365,7 @@ try {
                 Write-Warning-Custom "Failed to register with gateway: $($_.Exception.Message)"
                 Write-Info "You can manually register later with:"
                 Write-Info "  pwsh $registerScript -Version $Version"
+            }
             }
         }
     }

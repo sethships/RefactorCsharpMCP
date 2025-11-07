@@ -26,6 +26,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Get script directory and project root
+$ScriptDir = Split-Path -Parent $PSCommandPath
+$ProjectRoot = Split-Path -Parent $ScriptDir
+
 Write-Host "RefactorCsharpMCP - Docker MCP Gateway Registration" -ForegroundColor Cyan
 Write-Host "====================================================" -ForegroundColor Cyan
 Write-Host ""
@@ -39,14 +43,20 @@ if ($Validate) {
 
     # Check for MCP Gateway support
     try {
-        $mcpSupport = docker mcp --help 2>&1
+        $mcpSupport = docker mcp version 2>&1
         if ($LASTEXITCODE -ne 0) {
             throw "Docker MCP Gateway not available"
         }
         Write-Host "[OK] Docker MCP Gateway detected" -ForegroundColor Green
     } catch {
+        $dockerServerVersion = docker version --format '{{.Server.Version}}' 2>$null
+        if (-not $dockerServerVersion) {
+            $dockerServerVersion = "unknown"
+        }
         Write-Host "[ERROR] Docker MCP Gateway not available" -ForegroundColor Red
-        Write-Host "Please update Docker Desktop to a version with MCP Gateway support" -ForegroundColor Yellow
+        Write-Host "Current Docker version: $dockerServerVersion" -ForegroundColor Yellow
+        Write-Host "MCP Gateway requires Docker Desktop 28.5.1+ or equivalent" -ForegroundColor Yellow
+        Write-Host "Please update Docker Desktop from: https://www.docker.com/products/docker-desktop" -ForegroundColor Yellow
         exit 1
     }
 }
@@ -67,10 +77,11 @@ Write-Host "[OK] Image found: refactor-csharp-mcp:$Version" -ForegroundColor Gre
 # Step 3: Check if docker-mcp.yaml exists
 Write-Host ""
 Write-Host "Checking catalog definition..." -ForegroundColor Yellow
-$catalogFile = "docker-mcp.yaml"
+$catalogFile = Join-Path $ProjectRoot "docker-mcp.yaml"
 if (-not (Test-Path $catalogFile)) {
-    Write-Host "[ERROR] $catalogFile not found in current directory" -ForegroundColor Red
-    Write-Host "Expected location: $(Get-Location)\$catalogFile" -ForegroundColor Yellow
+    Write-Host "[ERROR] $catalogFile not found" -ForegroundColor Red
+    Write-Host "Expected location: $catalogFile" -ForegroundColor Yellow
+    Write-Host "Please ensure docker-mcp.yaml exists in the project root" -ForegroundColor Yellow
     exit 1
 }
 Write-Host "[OK] Catalog definition found" -ForegroundColor Green
@@ -79,19 +90,27 @@ Write-Host "[OK] Catalog definition found" -ForegroundColor Green
 Write-Host ""
 Write-Host "Initializing catalog system..." -ForegroundColor Yellow
 try {
-    docker mcp catalog ls 2>&1 | Out-Null
+    $output = docker mcp catalog ls 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[WARN] Catalog system needs initialization" -ForegroundColor Yellow
+        $initOutput = docker mcp catalog init 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Init output: $initOutput" -ForegroundColor Yellow
+        }
+    }
     Write-Host "[OK] Catalog system initialized" -ForegroundColor Green
 } catch {
     Write-Host "[WARN] Catalog system may need initialization" -ForegroundColor Yellow
-    docker mcp catalog init 2>&1 | Out-Null
 }
 
 # Step 5: Add server to catalog
 Write-Host ""
 Write-Host "Registering server in catalog '$Catalog'..." -ForegroundColor Yellow
 try {
-    docker mcp catalog add $Catalog refactor-csharp-mcp $catalogFile --force 2>&1 | Out-Null
+    $output = docker mcp catalog add $Catalog refactor-csharp-mcp $catalogFile --force 2>&1
     if ($LASTEXITCODE -ne 0) {
+        Write-Host "Docker command output:" -ForegroundColor Red
+        Write-Host $output -ForegroundColor Red
         throw "Failed to add server to catalog"
     }
     Write-Host "[OK] Server added to catalog" -ForegroundColor Green
@@ -105,8 +124,10 @@ try {
 Write-Host ""
 Write-Host "Enabling MCP server..." -ForegroundColor Yellow
 try {
-    docker mcp server enable refactor-csharp-mcp 2>&1 | Out-Null
+    $output = docker mcp server enable refactor-csharp-mcp 2>&1
     if ($LASTEXITCODE -ne 0) {
+        Write-Host "Docker command output:" -ForegroundColor Red
+        Write-Host $output -ForegroundColor Red
         throw "Failed to enable server"
     }
     Write-Host "[OK] Server enabled" -ForegroundColor Green
