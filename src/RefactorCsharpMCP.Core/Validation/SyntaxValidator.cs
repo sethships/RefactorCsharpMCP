@@ -1,17 +1,21 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using RefactorCsharpMCP.Core.Infrastructure.FrameworkSupport;
+using RefactorCsharpMCP.Core.Validation.Handlers;
 
 namespace RefactorCsharpMCP.Core.Validation;
 
 /// <summary>
 /// Validates C# source code syntax compatibility with target .NET frameworks.
 /// Performs both pre-refactoring (input) and post-refactoring (output) validation.
+/// Implements Facade Pattern - delegates diagnostic handling to specialized handlers.
 /// Implements IDisposable to properly clean up reference assembly resolver resources.
 /// </summary>
 public class SyntaxValidator : IDisposable
 {
     private readonly ReferenceAssemblyResolver _referenceResolver;
+    private readonly IParseDiagnosticHandler _parseHandler;
+    private readonly ISemanticDiagnosticHandler _semanticHandler;
     private readonly bool _ownsResolver;
     private bool _disposed;
 
@@ -19,9 +23,16 @@ public class SyntaxValidator : IDisposable
     /// Initializes a new instance of the <see cref="SyntaxValidator"/> class.
     /// </summary>
     /// <param name="referenceResolver">Optional reference assembly resolver for testing.</param>
-    public SyntaxValidator(ReferenceAssemblyResolver? referenceResolver = null)
+    /// <param name="parseHandler">Optional parse diagnostic handler for testing.</param>
+    /// <param name="semanticHandler">Optional semantic diagnostic handler for testing.</param>
+    public SyntaxValidator(
+        ReferenceAssemblyResolver? referenceResolver = null,
+        IParseDiagnosticHandler? parseHandler = null,
+        ISemanticDiagnosticHandler? semanticHandler = null)
     {
         _referenceResolver = referenceResolver ?? new ReferenceAssemblyResolver();
+        _parseHandler = parseHandler ?? new ParseDiagnosticHandler();
+        _semanticHandler = semanticHandler ?? new SemanticDiagnosticHandler();
         _ownsResolver = referenceResolver == null;
     }
 
@@ -109,52 +120,20 @@ public class SyntaxValidator : IDisposable
             // Parse source code
             var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode, parseOptions);
 
-            // Check for parse errors (syntax errors at language level)
-            var parseDiagnostics = syntaxTree.GetDiagnostics()
-                .Where(d => d.Severity == DiagnosticSeverity.Error)
-                .ToList();
+            // Delegate parse diagnostic handling to specialized handler (Strategy Pattern)
+            var parseDiagnostics = syntaxTree.GetDiagnostics();
+            var parseResult = await _parseHandler.HandleAsync(parseDiagnostics, targetFramework, syntaxTree);
 
-            if (parseDiagnostics.Any())
+            if (!parseResult.IsValid)
             {
-                // Syntax errors found - determine if it's a language version issue or genuine syntax error
-                var errorMessages = parseDiagnostics.Select(d => d.GetMessage()).ToList();
-
-                // Check if this is a language version error by looking for Roslyn's standard message
-                var isLanguageVersionError = errorMessages.Any(msg =>
-                    msg.Contains("is not available in C#") ||
-                    msg.Contains("language version"));
-
-                if (isLanguageVersionError)
+                // Convert INPUT_SYNTAX_MISMATCH to FRAMEWORK_SYNTAX_MISMATCH for refactored output validation
+                if (parseResult.ErrorCode == ErrorCode.INPUT_SYNTAX_MISMATCH &&
+                    mismatchErrorCode == ErrorCode.FRAMEWORK_SYNTAX_MISMATCH)
                 {
-                    // This is a language version mismatch
-                    var firstDiagnostic = parseDiagnostics.First();
-                    var detectedFeature = ExtractFeatureFromError(firstDiagnostic);
-                    var requiredVersion = DetectRequiredVersion(firstDiagnostic);
-                    var supportedVersion = FormatLanguageVersion(languageVersion);
-
-                    return mismatchErrorCode == ErrorCode.INPUT_SYNTAX_MISMATCH
-                        ? ValidationResult.InputSyntaxMismatch(
-                            detectedFeature,
-                            requiredVersion,
-                            targetFramework,
-                            supportedVersion)
-                        : ValidationResult.FrameworkSyntaxMismatch(
-                            detectedFeature,
-                            requiredVersion,
-                            targetFramework,
-                            supportedVersion);
+                    return ValidationResult.Failure(ErrorCode.FRAMEWORK_SYNTAX_MISMATCH,
+                        parseResult.ErrorMessage ?? "Syntax validation failed", parseResult.SuggestedAction);
                 }
-                else
-                {
-                    // Genuine syntax errors
-                    var errorDetails = string.Join(", ", errorMessages.Take(3));
-                    if (errorMessages.Count > 3)
-                    {
-                        errorDetails += $" (and {errorMessages.Count - 3} more)";
-                    }
-
-                    return ValidationResult.SyntaxError(errorDetails);
-                }
+                return parseResult;
             }
 
             // Get framework-specific metadata references for semantic validation
@@ -174,63 +153,9 @@ public class SyntaxValidator : IDisposable
                 references: references,
                 options: compilationOptions);
 
-            // Get semantic diagnostics
-            var semanticDiagnostics = compilation.GetDiagnostics()
-                .Where(d => d.Severity == DiagnosticSeverity.Error)
-                .ToList();
-
-            if (semanticDiagnostics.Any())
-            {
-                // Check if these are API availability errors (type/member not found in framework)
-                var apiErrors = semanticDiagnostics.Where(d =>
-                    d.Id == "CS0246" || // Type not found
-                    d.Id == "CS0103" || // Name does not exist
-                    d.Id == "CS0234" || // Type/namespace not found
-                    d.Id == "CS1061").ToList(); // Member not found
-
-                if (apiErrors.Any())
-                {
-                    // Distinguish between typos and framework API unavailability using heuristics
-                    var (frameworkErrors, likelyTypos) = ClassifyApiErrors(apiErrors, syntaxTree);
-
-                    if (frameworkErrors.Any())
-                    {
-                        var apiErrorDetails = string.Join(", ", frameworkErrors.Select(d => d.GetMessage()).Take(3));
-                        if (frameworkErrors.Count > 3)
-                        {
-                            apiErrorDetails += $" (and {frameworkErrors.Count - 3} more)";
-                        }
-
-                        return ValidationResult.Failure(
-                            ErrorCode.FRAMEWORK_API_UNAVAILABLE,
-                            $"Code references types or members not available in {targetFramework}: {apiErrorDetails}",
-                            "Either target a newer framework version or replace with APIs available in the target framework. " +
-                            "Run validation against multiple frameworks to confirm compatibility.");
-                    }
-
-                    if (likelyTypos.Any())
-                    {
-                        var typoDetails = string.Join(", ", likelyTypos.Select(d => d.GetMessage()).Take(3));
-                        if (likelyTypos.Count > 3)
-                        {
-                            typoDetails += $" (and {likelyTypos.Count - 3} more)";
-                        }
-
-                        return ValidationResult.SyntaxError(typoDetails);
-                    }
-                }
-
-                // Other semantic errors (not API availability)
-                var semanticErrorDetails = string.Join(", ", semanticDiagnostics.Select(d => d.GetMessage()).Take(3));
-                if (semanticDiagnostics.Count > 3)
-                {
-                    semanticErrorDetails += $" (and {semanticDiagnostics.Count - 3} more)";
-                }
-                return ValidationResult.SyntaxError(semanticErrorDetails);
-            }
-
-            // Validation succeeded
-            return ValidationResult.Success();
+            // Delegate semantic diagnostic handling to specialized handler (Strategy Pattern)
+            var semanticDiagnostics = compilation.GetDiagnostics();
+            return await _semanticHandler.HandleAsync(semanticDiagnostics, targetFramework, syntaxTree);
         }
         catch (ArgumentException ex)
         {
