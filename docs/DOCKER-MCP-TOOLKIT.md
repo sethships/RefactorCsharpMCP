@@ -566,6 +566,10 @@ The following environment variables configure the MCP server and Docker behavior
 | Variable | Purpose | Default | Required |
 |----------|---------|---------|----------|
 | `MCP_VERSION` | Docker image version tag used in docker-mcp.yaml | `latest` | No |
+| `MCP_CPU_LIMIT` | Maximum CPU allocation for MCP server container | `1000m` (1 CPU) | No |
+| `MCP_MEMORY_LIMIT` | Maximum memory allocation for MCP server container | `2Gi` (2GB) | No |
+| `MCP_CPU_REQUEST` | Minimum CPU reservation for MCP server container | `250m` | No |
+| `MCP_MEMORY_REQUEST` | Minimum memory reservation for MCP server container | `512Mi` | No |
 | `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT` | Disables culture-specific formatting (container optimization) | `1` | Yes (in container) |
 | `DOTNET_RUNNING_IN_CONTAINER` | Indicates .NET is running in a container | `true` | Yes (in container) |
 | `DOTNET_EnableDiagnostics` | Enables .NET diagnostics | `0` | No |
@@ -584,6 +588,29 @@ docker mcp catalog add local-dev refactor-csharp-mcp docker-mcp.yaml
 unset MCP_VERSION
 docker mcp catalog add local-dev refactor-csharp-mcp docker-mcp.yaml
 ```
+
+**Setting Resource Limits:**
+
+The `MCP_CPU_*` and `MCP_MEMORY_*` variables allow you to override default resource limits without editing docker-mcp.yaml:
+
+```bash
+# Increase resources for large refactoring operations
+export MCP_CPU_LIMIT=2000m          # 2 CPUs
+export MCP_MEMORY_LIMIT=4Gi         # 4GB RAM
+export MCP_CPU_REQUEST=500m         # Reserve 500 millicores
+export MCP_MEMORY_REQUEST=1Gi       # Reserve 1GB RAM
+
+# Register with custom resource limits
+pwsh ./scripts/register-mcp-gateway.ps1
+
+# Use defaults (reset environment)
+unset MCP_CPU_LIMIT MCP_MEMORY_LIMIT MCP_CPU_REQUEST MCP_MEMORY_REQUEST
+```
+
+**Resource Limit Guidelines:**
+- **Light use** (small files, simple refactorings): Use defaults (1 CPU, 2GB)
+- **Medium use** (multiple files, complex refactorings): 1-2 CPUs, 2-4GB
+- **Heavy use** (large codebases, bulk operations): 2-4 CPUs, 4-8GB
 
 **Container Environment Variables:**
 
@@ -685,7 +712,51 @@ docker images | grep refactor-csharp-mcp
 docker pull <registry>/refactor-csharp-mcp:latest
 ```
 
-#### 4. Container Won't Start
+#### 4. Registration Failures
+
+**Symptoms:**
+- Registration script fails with unclear error messages
+- Server doesn't appear in catalog after registration
+
+**Diagnostics:**
+
+Check the registration log file for detailed error information:
+
+```bash
+# View registration log (Linux/macOS/WSL)
+cat registration.log
+
+# View registration log (Windows PowerShell)
+Get-Content registration.log
+
+# View last 50 lines
+tail -50 registration.log  # Linux/macOS
+Get-Content registration.log -Tail 50  # PowerShell
+```
+
+The `registration.log` file is created in the project root and contains timestamped entries for:
+- Image verification steps
+- Catalog initialization
+- Server registration attempts
+- Error messages with exit codes
+- Gateway validation results
+
+**Common fixes:**
+```bash
+# Re-run with validation to get detailed diagnostics
+pwsh ./scripts/register-mcp-gateway.ps1 -Validate
+
+# Check Docker Desktop is running
+docker info
+
+# Verify MCP Gateway is available
+docker mcp version
+
+# Force re-registration
+docker mcp catalog add local-dev refactor-csharp-mcp ./docker-mcp.yaml --force
+```
+
+#### 5. Container Won't Start
 
 **Symptoms:**
 - Gateway starts but server doesn't respond

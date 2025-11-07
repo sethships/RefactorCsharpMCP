@@ -19,11 +19,11 @@ spec:
 
   resources:
     limits:
-      cpu: "1000m"      # 1 CPU in millicores
-      memory: "2Gi"     # 2GB RAM
+      cpu: "${MCP_CPU_LIMIT:-1000m}"        # Override with MCP_CPU_LIMIT env var (default: 1 CPU)
+      memory: "${MCP_MEMORY_LIMIT:-2Gi}"    # Override with MCP_MEMORY_LIMIT env var (default: 2GB)
     requests:
-      cpu: "250m"       # Minimum 250 millicores
-      memory: "512Mi"   # Minimum 512MB RAM
+      cpu: "${MCP_CPU_REQUEST:-250m}"       # Override with MCP_CPU_REQUEST env var (default: 250 millicores)
+      memory: "${MCP_MEMORY_REQUEST:-512Mi}" # Override with MCP_MEMORY_REQUEST env var (default: 512MB)
 
   capabilities:
     tools: true         # Provides refactoring tools
