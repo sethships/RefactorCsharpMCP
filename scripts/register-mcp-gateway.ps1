@@ -45,6 +45,20 @@ if ($executionPolicy -in @('Restricted', 'AllSigned')) {
     Write-Warning "Script may not run. Consider: Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser"
 }
 
+# Validate VERSION format
+if ($Version -notmatch '^[a-zA-Z0-9._-]+$') {
+    Write-Host "[ERROR] Invalid version format: $Version" -ForegroundColor Red
+    Write-Host "Version must contain only alphanumeric characters, dots, underscores, and hyphens" -ForegroundColor Yellow
+    exit 1
+}
+
+# Validate CATALOG format
+if ($Catalog -notmatch '^[a-zA-Z0-9_-]+$') {
+    Write-Host "[ERROR] Invalid catalog name: $Catalog" -ForegroundColor Red
+    Write-Host "Catalog must contain only alphanumeric characters, underscores, and hyphens" -ForegroundColor Yellow
+    exit 1
+}
+
 Write-Host "RefactorCsharpMCP - Docker MCP Gateway Registration" -ForegroundColor Cyan
 Write-Host "====================================================" -ForegroundColor Cyan
 Write-Host ""

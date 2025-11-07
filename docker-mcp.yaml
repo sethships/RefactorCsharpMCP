@@ -17,6 +17,9 @@ spec:
 
   transport: stdio
 
+  # Resource limits with environment variable support
+  # NOTE: Environment variable substitution syntax ${VAR:-default} requires
+  # Docker MCP Gateway support. If not supported, edit values directly in this file.
   resources:
     limits:
       cpu: "${MCP_CPU_LIMIT:-1000m}"        # Override with MCP_CPU_LIMIT env var (default: 1 CPU)

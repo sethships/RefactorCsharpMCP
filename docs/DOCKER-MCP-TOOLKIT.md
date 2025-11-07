@@ -612,6 +612,15 @@ unset MCP_CPU_LIMIT MCP_MEMORY_LIMIT MCP_CPU_REQUEST MCP_MEMORY_REQUEST
 - **Medium use** (multiple files, complex refactorings): 1-2 CPUs, 2-4GB
 - **Heavy use** (large codebases, bulk operations): 2-4 CPUs, 4-8GB
 
+**Important Note on Environment Variable Support:**
+
+The `docker-mcp.yaml` file uses bash-style environment variable substitution syntax (`${VAR:-default}`). This syntax requires Docker MCP Gateway to support environment variable expansion. If your version of Docker MCP Gateway does not support this feature:
+- **Option 1**: Edit `docker-mcp.yaml` directly with your desired values
+- **Option 2**: Use a script to generate the yaml file from a template
+- **Option 3**: Update to a version of Docker MCP Gateway that supports environment variables
+
+To test if your Docker MCP Gateway supports environment variable substitution, try setting `MCP_CPU_LIMIT=2000m` and check if it's applied after registration.
+
 **Container Environment Variables:**
 
 The `DOTNET_*` variables are set automatically in the Dockerfile and docker-mcp.yaml. Only modify these if customizing container behavior:

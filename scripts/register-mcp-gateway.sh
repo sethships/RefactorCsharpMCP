@@ -22,6 +22,20 @@ VERSION="${1:-latest}"
 CATALOG="${2:-local-dev}"
 VALIDATE="${3:-false}"
 
+# Validate VERSION format
+if ! [[ "$VERSION" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+    echo -e "\033[0;31m[ERROR] Invalid version format: $VERSION\033[0m"
+    echo -e "\033[1;33mVersion must contain only alphanumeric characters, dots, underscores, and hyphens\033[0m"
+    exit 1
+fi
+
+# Validate CATALOG format
+if ! [[ "$CATALOG" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+    echo -e "\033[0;31m[ERROR] Invalid catalog name: $CATALOG\033[0m"
+    echo -e "\033[1;33mCatalog must contain only alphanumeric characters, underscores, and hyphens\033[0m"
+    exit 1
+fi
+
 # Colors
 CYAN='\033[0;36m'
 GREEN='\033[0;32m'
