@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using System.Reflection;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
@@ -10,8 +11,18 @@ builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.SetMinimumLevel(LogLevel.Information);
 
+// Get server version from assembly for metadata
+var version = Assembly.GetExecutingAssembly()
+    .GetName()
+    .Version?
+    .ToString() ?? "1.0.0";
+
 // Configure MCP server with stdio transport
-// Server metadata (name, version) is automatically handled by the MCP SDK
+// Server name: refactor-csharp-mcp
+// Server version: extracted from assembly
+// Capabilities: Tools (11 refactoring tools available via WithToolsFromAssembly)
+//               Resources: Not supported
+//               Prompts: Not supported
 builder.Services
     .AddMcpServer()
     .WithStdioServerTransport()

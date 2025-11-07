@@ -32,6 +32,12 @@
 .PARAMETER Registry
     Docker registry to push to (e.g., "docker.io/username").
 
+.PARAMETER RegisterGateway
+    Register the server with Docker MCP Gateway after successful deployment.
+
+.PARAMETER Catalog
+    Catalog name to register the server in (default: "local-dev"). Only used with -RegisterGateway.
+
 .EXAMPLE
     .\deploy-docker.ps1 -Version "0.4.0" -SecurityScan -Test
     Full deployment with security scanning and validation
@@ -43,6 +49,14 @@
 .EXAMPLE
     .\deploy-docker.ps1 -Version "0.4.0" -Push -Registry "myregistry.io/myuser"
     Deploy and push to registry
+
+.EXAMPLE
+    .\deploy-docker.ps1 -Version "1.0.0" -RegisterGateway
+    Deploy and register with Docker MCP Gateway (local-dev catalog)
+
+.EXAMPLE
+    .\deploy-docker.ps1 -RegisterGateway -Catalog "production"
+    Deploy and register in custom catalog
 
 .NOTES
     Author: DevTools Team
@@ -71,7 +85,13 @@ param(
     [switch]$Push,
 
     [Parameter()]
-    [string]$Registry = ""
+    [string]$Registry = "",
+
+    [Parameter()]
+    [switch]$RegisterGateway,
+
+    [Parameter()]
+    [string]$Catalog = "local-dev"
 )
 
 # Check execution policy
@@ -312,6 +332,40 @@ try {
                 Write-Success "Pushed to registry: $remoteTag"
             } else {
                 throw "Failed to push to registry"
+            }
+        }
+    }
+
+    # Step 10: Register with Docker MCP Gateway (if requested)
+    if ($RegisterGateway) {
+        # Validate version format before registration
+        if ($Version -notmatch '^[a-zA-Z0-9._-]+$') {
+            Write-Warning-Custom "Invalid version format: $Version"
+            Write-Warning-Custom "Version must contain only alphanumeric characters, dots, underscores, and hyphens"
+            Write-Warning-Custom "Skipping gateway registration"
+        } else {
+            Write-Header "Registering with Docker MCP Gateway"
+            $registerScript = Join-Path $PSScriptRoot "register-mcp-gateway.ps1"
+
+            if (-not (Test-Path $registerScript)) {
+                Write-Warning-Custom "Registration script not found: $registerScript"
+                Write-Warning-Custom "Skipping gateway registration"
+            } else {
+            Write-Info "Running registration script..."
+            try {
+                & $registerScript -Version $Version -Catalog $Catalog -Validate
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Success "Server registered with Docker MCP Gateway"
+                    Write-Info "Catalog: $Catalog"
+                    Write-Info "Use 'docker mcp server ls' to verify"
+                } else {
+                    Write-Warning-Custom "Registration completed with warnings"
+                }
+            } catch {
+                Write-Warning-Custom "Failed to register with gateway: $($_.Exception.Message)"
+                Write-Info "You can manually register later with:"
+                Write-Info "  pwsh $registerScript -Version $Version"
+            }
             }
         }
     }

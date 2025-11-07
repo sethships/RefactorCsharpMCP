@@ -725,6 +725,161 @@ Claude Code will invoke:
               parameterNames="logger,config", useProperties=false
 ```
 
+## Docker MCP Toolkit Integration Examples
+
+### Setup with Docker MCP Gateway
+
+**Step 1: Build and Register**
+```bash
+# Build the Docker image
+docker build -t refactor-csharp-mcp:latest .
+
+# Register with Docker MCP Gateway (Windows)
+pwsh ./scripts/register-mcp-gateway.ps1
+
+# Or for Linux/macOS
+./scripts/register-mcp-gateway.sh
+```
+
+**Step 2: Verify Registration**
+```bash
+# Check server is in catalog
+docker mcp catalog show local-dev
+
+# Verify server is enabled
+docker mcp server ls
+# Output should include: refactor-csharp-mcp
+```
+
+**Step 3: Configure Claude Desktop**
+
+Create or update `%APPDATA%\Claude\claude_desktop_config.json` (Windows) or `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
+
+```json
+{
+  "mcpServers": {
+    "refactor-csharp-mcp": {
+      "command": "docker",
+      "args": ["mcp", "gateway", "run"]
+    }
+  }
+}
+```
+
+**Step 4: Use in Claude Desktop**
+```
+User: "I have a C# class with several fields. Can you help me identify which fields can be made readonly?"
+
+Claude will use the make_field_readonly tool through the Docker MCP Gateway to analyze and refactor your code.
+```
+
+### Management Examples
+
+**Enable/Disable Server**
+```bash
+# Disable the server temporarily
+docker mcp server disable refactor-csharp-mcp
+
+# Re-enable when needed
+docker mcp server enable refactor-csharp-mcp
+```
+
+**Inspect Server Configuration**
+```bash
+# View detailed server information
+docker mcp server inspect refactor-csharp-mcp
+
+# Shows:
+# - Available tools
+# - Resource limits
+# - Transport type (stdio)
+# - Container image
+```
+
+**Update to New Version**
+```bash
+# Build new version
+docker build -t refactor-csharp-mcp:1.1.0 .
+
+# Update catalog registration
+pwsh ./scripts/register-mcp-gateway.ps1 -Version 1.1.0
+
+# Gateway will use the new version on next invocation
+```
+
+### Direct Docker Integration (Without Gateway)
+
+**Configure Claude Desktop for Direct Docker:**
+```json
+{
+  "mcpServers": {
+    "refactor-csharp-mcp": {
+      "command": "docker",
+      "args": ["run", "--rm", "-i", "refactor-csharp-mcp:latest"]
+    }
+  }
+}
+```
+
+**Benefits:**
+- No gateway dependency
+- Direct container control
+- Simpler debugging
+
+**Use Case:** Development and testing environments where centralized management isn't required.
+
+### VS Code Integration with Docker Gateway
+
+**Configure VS Code settings.json:**
+```json
+{
+  "mcp.servers": {
+    "refactor-csharp-mcp": {
+      "command": "docker",
+      "args": ["mcp", "gateway", "run"],
+      "type": "stdio"
+    }
+  }
+}
+```
+
+### Troubleshooting Docker Integration
+
+**Server Not Found**
+```bash
+# Verify image exists
+docker images | grep refactor-csharp-mcp
+
+# If missing, rebuild
+docker build -t refactor-csharp-mcp:latest .
+```
+
+**Gateway Not Starting**
+```bash
+# Check Docker Desktop is running
+docker version
+
+# Verify MCP Gateway is available
+docker mcp --help
+
+# Re-register the server
+pwsh ./scripts/register-mcp-gateway.ps1 -Validate
+```
+
+**Container Won't Start**
+```bash
+# Test container manually
+docker run --rm -i refactor-csharp-mcp:latest
+
+# Check container logs
+docker logs <container-id>
+
+# Verify health
+docker inspect --format='{{.State.Health.Status}}' <container-id>
+```
+
+For more detailed troubleshooting, see [docs/DOCKER-MCP-TOOLKIT.md](docs/DOCKER-MCP-TOOLKIT.md).
+
 ## Best Practices
 
 1. **Extract Method**:
@@ -741,6 +896,12 @@ Claude Code will invoke:
    - Run tests after each refactoring
    - Maintain consistent naming conventions
    - Keep methods focused and concise
+
+4. **Docker Deployment**:
+   - Use Docker MCP Gateway for centralized management
+   - Enable resource limits for production deployments
+   - Monitor container health and resource usage
+   - Keep Docker images updated with security patches
 
 ## Framework-Aware Validation
 

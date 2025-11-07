@@ -1,0 +1,287 @@
+{
+  "version": "1.0.0",
+  "protocol": "mcp",
+  "transport": "stdio",
+  "executable": {
+    "type": "docker",
+    "image": "refactor-csharp-mcp:latest",
+    "args": ["run", "-i", "--rm", "refactor-csharp-mcp:latest"]
+  },
+  "capabilities": {
+    "tools": true,
+    "resources": false,
+    "prompts": false
+  },
+  "tools": [
+    {
+      "name": "extract_method",
+      "description": "Extract selected code into a new private method",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sourceCode": {
+            "type": "string",
+            "description": "The complete C# source code containing the code to extract"
+          },
+          "startLine": {
+            "type": "integer",
+            "description": "The starting line number of the code block to extract (1-based)"
+          },
+          "endLine": {
+            "type": "integer",
+            "description": "The ending line number of the code block to extract (inclusive, 1-based)"
+          },
+          "newMethodName": {
+            "type": "string",
+            "description": "The name for the new extracted method"
+          }
+        },
+        "required": ["sourceCode", "startLine", "endLine", "newMethodName"]
+      }
+    },
+    {
+      "name": "constructor_injection",
+      "description": "Convert method parameters to constructor-injected fields or properties",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sourceCode": {
+            "type": "string",
+            "description": "The complete C# source code"
+          },
+          "className": {
+            "type": "string",
+            "description": "The name of the class to modify"
+          },
+          "methodName": {
+            "type": "string",
+            "description": "The name of the method containing parameters to inject"
+          },
+          "parameterNames": {
+            "type": "string",
+            "description": "Comma or semicolon-separated list of parameter names to inject"
+          },
+          "useProperties": {
+            "type": "boolean",
+            "description": "If true, create properties instead of fields (optional, default: false)"
+          }
+        },
+        "required": ["sourceCode", "className", "methodName", "parameterNames"]
+      }
+    },
+    {
+      "name": "make_field_readonly",
+      "description": "Make fields readonly where safe (only assigned in constructors)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sourceCode": {
+            "type": "string",
+            "description": "The complete C# source code"
+          },
+          "className": {
+            "type": "string",
+            "description": "The name of the class containing fields"
+          },
+          "fieldName": {
+            "type": "string",
+            "description": "Optional specific field name, or omit to analyze all fields"
+          }
+        },
+        "required": ["sourceCode", "className"]
+      }
+    },
+    {
+      "name": "safe_delete_method",
+      "description": "Delete methods with reference checking to ensure safe deletion",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sourceCode": {
+            "type": "string",
+            "description": "The complete C# source code"
+          },
+          "className": {
+            "type": "string",
+            "description": "The name of the class containing the method"
+          },
+          "methodName": {
+            "type": "string",
+            "description": "The name of the method to delete"
+          }
+        },
+        "required": ["sourceCode", "className", "methodName"]
+      }
+    },
+    {
+      "name": "extract_class",
+      "description": "Extract fields and methods into a new class with composition pattern",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sourceCode": {
+            "type": "string",
+            "description": "The complete C# source code"
+          },
+          "className": {
+            "type": "string",
+            "description": "The name of the class to extract from"
+          },
+          "newClassName": {
+            "type": "string",
+            "description": "The name for the new extracted class"
+          },
+          "memberNames": {
+            "type": "string",
+            "description": "Comma or semicolon-separated list of member names (fields/methods) to extract"
+          }
+        },
+        "required": ["sourceCode", "className", "newClassName", "memberNames"]
+      }
+    },
+    {
+      "name": "remove_unused_usings",
+      "description": "Remove unused using directives with framework-aware global using preservation",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sourceCode": {
+            "type": "string",
+            "description": "The complete C# source code"
+          },
+          "targetFramework": {
+            "type": "string",
+            "description": "Optional target framework (e.g., 'net8.0', 'net48', 'netstandard2.0')"
+          }
+        },
+        "required": ["sourceCode"]
+      }
+    },
+    {
+      "name": "inline_method",
+      "description": "Inline a method by replacing its single invocation with the method body (Part 1: void methods, simple parameters, single caller)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sourceCode": {
+            "type": "string",
+            "description": "The complete C# source code"
+          },
+          "className": {
+            "type": "string",
+            "description": "The name of the class containing the method"
+          },
+          "methodName": {
+            "type": "string",
+            "description": "The name of the method to inline"
+          }
+        },
+        "required": ["sourceCode", "className", "methodName"]
+      }
+    },
+    {
+      "name": "rename_symbol",
+      "description": "Renames a symbol (local variable, parameter, private field, or private method) at a specific position. Uses position-based resolution for precise symbol identification. Updates all references within the same file. ⚠️ LIMITATION: Single-file scope only. Cannot rename public/protected members or symbols used across multiple files.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sourceCode": {
+            "type": "string",
+            "description": "The complete C# source code"
+          },
+          "lineNumber": {
+            "type": "integer",
+            "description": "The 1-based line number of the symbol to rename"
+          },
+          "columnNumber": {
+            "type": "integer",
+            "description": "The 1-based column number of the symbol to rename"
+          },
+          "newName": {
+            "type": "string",
+            "description": "The new identifier name (must be a valid C# identifier)"
+          }
+        },
+        "required": ["sourceCode", "lineNumber", "columnNumber", "newName"]
+      }
+    },
+    {
+      "name": "fix_diagnostic",
+      "description": "Automatically fixes a specific Roslyn diagnostic by applying the appropriate refactoring. Supports: IDE0005/CS8019 (unused usings), IDE0044 (readonly fields). Framework-aware: applies fixes according to target framework capabilities.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sourceCode": {
+            "type": "string",
+            "description": "The complete C# source code containing the diagnostic"
+          },
+          "diagnosticId": {
+            "type": "string",
+            "description": "The Roslyn diagnostic ID to fix (e.g., 'IDE0005', 'IDE0044', 'CS8019')"
+          },
+          "line": {
+            "type": "integer",
+            "description": "The line number where the diagnostic occurs (1-based)"
+          },
+          "column": {
+            "type": "integer",
+            "description": "The column number where the diagnostic occurs (1-based)"
+          },
+          "targetFramework": {
+            "type": "string",
+            "description": "The target .NET framework (e.g., 'net8.0', 'net48', 'netstandard2.0')"
+          }
+        },
+        "required": ["sourceCode", "diagnosticId", "line", "column", "targetFramework"]
+      }
+    },
+    {
+      "name": "inline_variable",
+      "description": "Inlines a variable by replacing all its uses with its initialization expression, then removes the variable declaration. Maps to Roslyn diagnostics IDE0059 and IDE0058. Provide the source code, line and column position (1-based) of the variable declaration, and optionally target framework (defaults to net8.0).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sourceCode": {
+            "type": "string",
+            "description": "The complete C# source code"
+          },
+          "lineNumber": {
+            "type": "integer",
+            "description": "The line number (1-based) where the variable is declared"
+          },
+          "columnNumber": {
+            "type": "integer",
+            "description": "The column number (1-based) within the line"
+          },
+          "targetFramework": {
+            "type": "string",
+            "description": "The target .NET framework (e.g., 'net8.0', 'net48', 'netstandard2.0')"
+          }
+        },
+        "required": ["sourceCode", "lineNumber", "columnNumber"]
+      }
+    },
+    {
+      "name": "analyze_code",
+      "description": "Analyzes C# code for compiler warnings, style violations, and code quality issues using Roslyn diagnostics with full IDE analyzer support (IDE0001-IDE9999). Detects unused usings (IDE0005), readonly fields (IDE0044), code style issues, and more. Returns a list of issues with their locations, severity levels, and applicable refactorings. Framework-aware: analyzes code according to target framework capabilities.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sourceCode": {
+            "type": "string",
+            "description": "The complete C# source code to analyze"
+          },
+          "targetFramework": {
+            "type": "string",
+            "description": "The target .NET framework (e.g., 'net8.0', 'net48', 'netstandard2.0')"
+          },
+          "minSeverity": {
+            "type": "string",
+            "description": "Minimum severity level to report: 'Error', 'Warning', 'Info', 'Hidden' (default: 'Warning')"
+          }
+        },
+        "required": ["sourceCode", "targetFramework"]
+      }
+    }
+  ]
+}

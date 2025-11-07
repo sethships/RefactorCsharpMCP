@@ -1,0 +1,64 @@
+apiVersion: mcp/v1
+kind: Server
+metadata:
+  name: refactor-csharp-mcp
+  displayName: RefactorCsharp MCP Server
+  description: Roslyn-based C# refactoring capabilities for AI clients
+  vendor: RefactorCsharpMCP
+  version: 1.0.0
+  homepage: https://github.com/sethb75/RefactorCsharpMCP
+  documentation: https://github.com/sethb75/RefactorCsharpMCP#readme
+  license: Apache-2.0
+
+spec:
+  container:
+    image: refactor-csharp-mcp:${MCP_VERSION:-latest}
+    command: ["dotnet", "RefactorCsharpMCP.Server.dll"]
+
+  transport: stdio
+
+  # Resource limits with environment variable support
+  # NOTE: Environment variable substitution syntax ${VAR:-default} requires
+  # Docker MCP Gateway support. If not supported, edit values directly in this file.
+  resources:
+    limits:
+      cpu: "${MCP_CPU_LIMIT:-1000m}"        # Override with MCP_CPU_LIMIT env var (default: 1 CPU)
+      memory: "${MCP_MEMORY_LIMIT:-2Gi}"    # Override with MCP_MEMORY_LIMIT env var (default: 2GB)
+    requests:
+      cpu: "${MCP_CPU_REQUEST:-250m}"       # Override with MCP_CPU_REQUEST env var (default: 250 millicores)
+      memory: "${MCP_MEMORY_REQUEST:-512Mi}" # Override with MCP_MEMORY_REQUEST env var (default: 512MB)
+
+  capabilities:
+    tools: true         # Provides refactoring tools
+    resources: false    # No file system resources
+    prompts: false      # No custom prompts
+
+  environment:
+    - name: DOTNET_SYSTEM_GLOBALIZATION_INVARIANT
+      value: "1"
+    - name: DOTNET_RUNNING_IN_CONTAINER
+      value: "true"
+
+  tools:
+    - name: extract_method
+      description: Extract selected code into a new private method
+    - name: constructor_injection
+      description: Convert method parameters to constructor-injected fields or properties
+    - name: make_field_readonly
+      description: Make fields readonly where safe
+    - name: safe_delete_method
+      description: Delete methods with reference checking
+    - name: extract_class
+      description: Extract fields/methods into a new class
+    - name: remove_unused_usings
+      description: Remove unused using directives with framework-aware global using preservation
+    - name: inline_method
+      description: Inline a method by replacing its single invocation with the method body
+    - name: rename_symbol
+      description: Rename symbols (variables, parameters, private fields/methods) at a specific position
+    - name: fix_diagnostic
+      description: Automatically fix Roslyn diagnostics (unused usings, readonly fields, etc.)
+    - name: inline_variable
+      description: Inline a variable by replacing all uses with its initialization expression
+    - name: analyze_code
+      description: Analyze C# code for diagnostics using Roslyn with full IDE analyzer support
