@@ -214,8 +214,9 @@ public class SyntaxValidatorFacadeTests
         result.ErrorCode.Should().Be(ErrorCode.SYNTAX_ERROR);
     }
 
-    [Fact(Skip = "Error code conversion is tested with mocks in ValidateInputAsync_ErrorCodeConversion_InputToFrameworkMismatch. " +
-                 "Real handlers generate SYNTAX_ERROR for collection expressions due to parsing with framework-appropriate language version.")]
+    [Fact(Skip = "Error code conversion logic is already tested with mocks (ValidateInputAsync_ErrorCodeConversion_InputToFrameworkMismatch). " +
+                 "Real handler test would require framework-aware language version selection (see docs/SDD-Framework-Version-Awareness.md) " +
+                 "to generate diagnostics for collection expressions when targeting net48.")]
     public async Task ValidateOutputAsync_RealHandlers_ConvertsErrorCode()
     {
         // Arrange - Code with language version mismatch

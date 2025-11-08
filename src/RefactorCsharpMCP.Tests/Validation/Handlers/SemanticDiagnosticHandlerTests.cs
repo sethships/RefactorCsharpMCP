@@ -60,17 +60,19 @@ public class SemanticDiagnosticHandlerTests
 
     [Theory]
     [InlineData("System.Net.Http.HttpClient")]
-    [InlineData("System.Linq.Enumerable")]
-    [InlineData("System.Text.Json.JsonSerializer")]
     [InlineData("System.Xml.Linq.XDocument")]
+    [InlineData("System.Text.Json.JsonSerializer")]
     [InlineData("Microsoft.Extensions.Logging.ILogger")]
     [InlineData("Windows.Foundation.IAsyncAction")]
     public void Handle_BclNamespace_ClassifiesAsFrameworkError(string typeName)
     {
-        // Arrange - Code referencing BCL type that doesn't exist in framework
+        // Arrange - Code referencing external assembly BCL type without assembly reference
+        // Note: Tests BCL namespace prefix detection using minimal compilation (mscorlib only).
+        // True framework compatibility testing would require reference assemblies per target framework.
+        // See PR #97 code review Issue #4 for discussion of test limitations.
         var code = $"class Test {{ {typeName} x; }}";
         var syntaxTree = CSharpSyntaxTree.ParseText(code);
-        var compilation = CreateMinimalCompilation(syntaxTree); // Minimal refs, BCL types won't resolve
+        var compilation = CreateMinimalCompilation(syntaxTree); // Minimal refs, external assemblies won't resolve
         var diagnostics = compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error);
 
         // Act
@@ -369,8 +371,8 @@ class Test
     [Fact]
     public async Task Handle_ConcurrentCalls_AreThreadSafe()
     {
-        // Arrange
-        var code = "class Test { System.Text.Json.JsonSerializer x; }";
+        // Arrange - Use undefined custom type (thread safety orthogonal to BCL detection)
+        var code = "class Test { UndefinedCustomType x; }";
         var syntaxTree = CSharpSyntaxTree.ParseText(code);
         var compilation = CreateMinimalCompilation(syntaxTree);
         var diagnostics = compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error);
