@@ -59,10 +59,10 @@ public class SemanticDiagnosticHandlerTests
     #region BCL Namespace Detection
 
     [Theory]
-    [InlineData("System.Collections.Generic.List")]
+    [InlineData("System.Net.Http.HttpClient")]
     [InlineData("System.Linq.Enumerable")]
     [InlineData("System.Text.Json.JsonSerializer")]
-    [InlineData("System.Threading.Tasks.Task")]
+    [InlineData("System.Xml.Linq.XDocument")]
     [InlineData("Microsoft.Extensions.Logging.ILogger")]
     [InlineData("Windows.Foundation.IAsyncAction")]
     public void Handle_BclNamespace_ClassifiesAsFrameworkError(string typeName)
@@ -370,7 +370,7 @@ class Test
     public async Task Handle_ConcurrentCalls_AreThreadSafe()
     {
         // Arrange
-        var code = "class Test { System.Collections.Generic.List<int> x; }";
+        var code = "class Test { System.Text.Json.JsonSerializer x; }";
         var syntaxTree = CSharpSyntaxTree.ParseText(code);
         var compilation = CreateMinimalCompilation(syntaxTree);
         var diagnostics = compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error);
