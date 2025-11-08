@@ -21,6 +21,11 @@ namespace RefactorCsharpMCP.Core.Validation.Handlers;
 public class ParseDiagnosticHandler : IParseDiagnosticHandler
 {
     /// <summary>
+    /// Maximum number of error messages to display before truncating with "and N more".
+    /// </summary>
+    private const int MaxErrorsToDisplay = 3;
+
+    /// <summary>
     /// Handles parse diagnostics and returns appropriate validation result.
     /// </summary>
     /// <param name="diagnostics">Parse-time diagnostics from syntax tree.</param>
@@ -79,10 +84,10 @@ public class ParseDiagnosticHandler : IParseDiagnosticHandler
     /// </summary>
     private static string FormatErrorSummary(List<string> errorMessages)
     {
-        var errorDetails = string.Join(", ", errorMessages.Take(3));
-        if (errorMessages.Count > 3)
+        var errorDetails = string.Join(", ", errorMessages.Take(MaxErrorsToDisplay));
+        if (errorMessages.Count > MaxErrorsToDisplay)
         {
-            errorDetails += $" (and {errorMessages.Count - 3} more)";
+            errorDetails += $" (and {errorMessages.Count - MaxErrorsToDisplay} more)";
         }
         return errorDetails;
     }

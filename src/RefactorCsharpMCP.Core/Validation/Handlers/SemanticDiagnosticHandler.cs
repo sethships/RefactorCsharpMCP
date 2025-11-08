@@ -23,6 +23,12 @@ public class SemanticDiagnosticHandler : ISemanticDiagnosticHandler
     private const int MinimumIdentifierLengthForTypoCheck = 2;
     private const int LongIdentifierThreshold = 3;
     private const int TripleCharacterRepeatIndex = 2;
+
+    /// <summary>
+    /// Maximum number of error messages to display before truncating with "and N more".
+    /// </summary>
+    private const int MaxErrorsToDisplay = 3;
+
     /// <summary>
     /// Known BCL and Microsoft framework namespace prefixes.
     /// Static readonly for efficient reuse across calls.
@@ -131,10 +137,10 @@ public class SemanticDiagnosticHandler : ISemanticDiagnosticHandler
     /// </summary>
     private static string FormatErrorSummary(List<string> errorMessages)
     {
-        var errorDetails = string.Join(", ", errorMessages.Take(3));
-        if (errorMessages.Count > 3)
+        var errorDetails = string.Join(", ", errorMessages.Take(MaxErrorsToDisplay));
+        if (errorMessages.Count > MaxErrorsToDisplay)
         {
-            errorDetails += $" (and {errorMessages.Count - 3} more)";
+            errorDetails += $" (and {errorMessages.Count - MaxErrorsToDisplay} more)";
         }
         return errorDetails;
     }
