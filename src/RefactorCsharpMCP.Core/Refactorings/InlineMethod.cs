@@ -27,11 +27,13 @@ public class InlineMethod : RefactoringBase
     private readonly MethodResolver _methodResolver;
     private readonly ReferenceAnalyzer _referenceAnalyzer = new();
     private readonly ConflictResolver _conflictResolver;
+    private readonly ParameterMapper _parameterMapper;
 
     public InlineMethod()
     {
         _methodResolver = new MethodResolver(Logger);
         _conflictResolver = new ConflictResolver(Logger);
+        _parameterMapper = new ParameterMapper(Logger);
     }
 
     /// <summary>
@@ -287,7 +289,7 @@ public class InlineMethod : RefactoringBase
         // If method has parameters, substitute them with arguments
         if (methodInfo.Parameters.Any())
         {
-            expression = SubstituteParameters(expression, methodInfo, invocation, semanticModel);
+            expression = _parameterMapper.SubstituteParameters(expression, methodInfo, invocation, semanticModel);
         }
 
         // For void methods, the invocation is a statement, so wrap in expression statement
@@ -312,7 +314,7 @@ public class InlineMethod : RefactoringBase
             var substitutedStatements = new List<StatementSyntax>();
             foreach (var statement in statements)
             {
-                var substitutedStatement = SubstituteParametersInStatement(statement, methodInfo, invocation, semanticModel);
+                var substitutedStatement = _parameterMapper.SubstituteParametersInStatement(statement, methodInfo, invocation, semanticModel);
                 substitutedStatements.Add(substitutedStatement);
             }
             statements = SyntaxFactory.List(substitutedStatements);
@@ -327,230 +329,6 @@ public class InlineMethod : RefactoringBase
         // Multiple statements: wrap in a block statement
         // This creates a nested block which preserves scoping
         return SyntaxFactory.Block(statements);
-    }
-
-    /// <summary>
-    /// Substitutes parameters with arguments in an expression using semantic analysis.
-    /// Uses symbol information to avoid variable shadowing bugs.
-    /// </summary>
-    private ExpressionSyntax SubstituteParameters(
-        ExpressionSyntax expression,
-        MethodInfo methodInfo,
-        InvocationExpressionSyntax invocation,
-        SemanticModel semanticModel)
-    {
-        var arguments = invocation.ArgumentList.Arguments;
-        if (arguments.Count != methodInfo.Parameters.Count)
-        {
-            // This should never happen for valid C# code that passed compilation
-            // If it does, it indicates a serious semantic analysis bug - fail fast
-            Logger?.LogError(
-                "Argument count mismatch during parameter substitution: expected {Expected}, got {Actual}.",
-                methodInfo.Parameters.Count,
-                arguments.Count);
-
-            throw new InvalidOperationException(
-                $"Argument count mismatch during parameter substitution: " +
-                $"expected {methodInfo.Parameters.Count} parameters, got {arguments.Count} arguments. " +
-                "This indicates a compiler semantic analysis error.");
-        }
-
-        // Create a mapping from parameter symbol to argument expression
-        var parameterMap = new Dictionary<IParameterSymbol, ExpressionSyntax>(SymbolEqualityComparer.Default);
-        for (int i = 0; i < methodInfo.Parameters.Count; i++)
-        {
-            parameterMap[methodInfo.Parameters[i]] = arguments[i].Expression;
-        }
-
-        // Replace all parameter references with arguments using semantic analysis
-        var newExpression = expression.ReplaceNodes(
-            expression.DescendantNodesAndSelf().OfType<IdentifierNameSyntax>(),
-            (original, _) =>
-            {
-                // Use semantic model to determine what this identifier refers to
-                var symbolInfo = semanticModel.GetSymbolInfo(original);
-
-                // Check if this identifier refers to one of our method's parameters
-                if (symbolInfo.Symbol is IParameterSymbol paramSymbol)
-                {
-                    // Verify it's one of the parameters we're substituting
-                    if (parameterMap.TryGetValue(paramSymbol, out var argumentExpr))
-                    {
-                        // Wrap complex expressions in parentheses to preserve precedence
-                        return WrapWithParenthesesIfNeeded(argumentExpr, original.Parent);
-                    }
-                }
-
-                return original;
-            });
-
-        return newExpression;
-    }
-
-    /// <summary>
-    /// Substitutes parameters with arguments in a statement using semantic analysis.
-    /// Uses symbol information to avoid variable shadowing bugs.
-    /// </summary>
-    private StatementSyntax SubstituteParametersInStatement(
-        StatementSyntax statement,
-        MethodInfo methodInfo,
-        InvocationExpressionSyntax invocation,
-        SemanticModel semanticModel)
-    {
-        var arguments = invocation.ArgumentList.Arguments;
-        if (arguments.Count != methodInfo.Parameters.Count)
-        {
-            // This should never happen for valid C# code that passed compilation
-            // If it does, it indicates a serious semantic analysis bug - fail fast
-            Logger?.LogError(
-                "Argument count mismatch during parameter substitution: expected {Expected}, got {Actual}.",
-                methodInfo.Parameters.Count,
-                arguments.Count);
-
-            throw new InvalidOperationException(
-                $"Argument count mismatch during parameter substitution: " +
-                $"expected {methodInfo.Parameters.Count} parameters, got {arguments.Count} arguments. " +
-                "This indicates a compiler semantic analysis error.");
-        }
-
-        // Create a mapping from parameter symbol to argument expression
-        var parameterMap = new Dictionary<IParameterSymbol, ExpressionSyntax>(SymbolEqualityComparer.Default);
-        for (int i = 0; i < methodInfo.Parameters.Count; i++)
-        {
-            parameterMap[methodInfo.Parameters[i]] = arguments[i].Expression;
-        }
-
-        // Replace all parameter references with arguments using semantic analysis
-        var newStatement = statement.ReplaceNodes(
-            statement.DescendantNodes().OfType<IdentifierNameSyntax>(),
-            (original, _) =>
-            {
-                // Use semantic model to determine what this identifier refers to
-                var symbolInfo = semanticModel.GetSymbolInfo(original);
-
-                // Check if this identifier refers to one of our method's parameters
-                if (symbolInfo.Symbol is IParameterSymbol paramSymbol)
-                {
-                    // Verify it's one of the parameters we're substituting
-                    if (parameterMap.TryGetValue(paramSymbol, out var argumentExpr))
-                    {
-                        // Wrap complex expressions in parentheses to preserve precedence
-                        return WrapWithParenthesesIfNeeded(argumentExpr, original.Parent);
-                    }
-                }
-
-                return original;
-            });
-
-        return newStatement;
-    }
-
-    /// <summary>
-    /// Wraps an expression with parentheses if needed to preserve operator precedence.
-    /// </summary>
-    private ExpressionSyntax WrapWithParenthesesIfNeeded(ExpressionSyntax expression, SyntaxNode? parent)
-    {
-        // If expression is already parenthesized, return as-is
-        if (expression is ParenthesizedExpressionSyntax)
-        {
-            return expression;
-        }
-
-        // If expression is a simple literal, identifier, or invocation, no parentheses needed
-        if (expression is LiteralExpressionSyntax ||
-            expression is IdentifierNameSyntax ||
-            expression is InvocationExpressionSyntax ||
-            expression is ObjectCreationExpressionSyntax ||
-            expression is MemberAccessExpressionSyntax)
-        {
-            return expression;
-        }
-
-        // If parent is a binary expression, check precedence
-        if (parent is BinaryExpressionSyntax parentBinary)
-        {
-            // If the expression itself is a binary expression, check operator precedence
-            if (expression is BinaryExpressionSyntax exprBinary)
-            {
-                var parentPrecedence = GetOperatorPrecedence(parentBinary.OperatorToken.Kind());
-                var exprPrecedence = GetOperatorPrecedence(exprBinary.OperatorToken.Kind());
-
-                // If expression has lower precedence, wrap in parentheses
-                if (exprPrecedence < parentPrecedence)
-                {
-                    return SyntaxFactory.ParenthesizedExpression(expression);
-                }
-            }
-            else
-            {
-                // Non-binary expressions in binary context generally need parentheses
-                return SyntaxFactory.ParenthesizedExpression(expression);
-            }
-        }
-
-        // If parent is a prefix/postfix unary expression, wrap complex expressions
-        if (parent is PrefixUnaryExpressionSyntax || parent is PostfixUnaryExpressionSyntax)
-        {
-            if (expression is BinaryExpressionSyntax)
-            {
-                return SyntaxFactory.ParenthesizedExpression(expression);
-            }
-        }
-
-        // Default: return as-is
-        return expression;
-    }
-
-    /// <summary>
-    /// Gets the precedence level for a binary operator.
-    /// Higher number = higher precedence.
-    /// </summary>
-    private int GetOperatorPrecedence(SyntaxKind operatorKind)
-    {
-        return operatorKind switch
-        {
-            // Multiplicative: *, /, %
-            SyntaxKind.AsteriskToken or SyntaxKind.SlashToken or SyntaxKind.PercentToken => 13,
-
-            // Additive: +, -
-            SyntaxKind.PlusToken or SyntaxKind.MinusToken => 12,
-
-            // Shift: <<, >>
-            SyntaxKind.LessThanLessThanToken or SyntaxKind.GreaterThanGreaterThanToken => 11,
-
-            // Relational: <, >, <=, >=
-            SyntaxKind.LessThanToken or SyntaxKind.GreaterThanToken or
-            SyntaxKind.LessThanEqualsToken or SyntaxKind.GreaterThanEqualsToken => 10,
-
-            // Equality: ==, !=
-            SyntaxKind.EqualsEqualsToken or SyntaxKind.ExclamationEqualsToken => 9,
-
-            // Bitwise AND: &
-            SyntaxKind.AmpersandToken => 8,
-
-            // Bitwise XOR: ^
-            SyntaxKind.CaretToken => 7,
-
-            // Bitwise OR: |
-            SyntaxKind.BarToken => 6,
-
-            // Logical AND: &&
-            SyntaxKind.AmpersandAmpersandToken => 5,
-
-            // Logical OR: ||
-            SyntaxKind.BarBarToken => 4,
-
-            // Null coalescing: ??
-            SyntaxKind.QuestionQuestionToken => 3,
-
-            // Assignment and compound assignment
-            SyntaxKind.EqualsToken or
-            SyntaxKind.PlusEqualsToken or SyntaxKind.MinusEqualsToken or
-            SyntaxKind.AsteriskEqualsToken or SyntaxKind.SlashEqualsToken => 2,
-
-            // Default low precedence
-            _ => 1
-        };
     }
 
     /// <summary>
