@@ -28,12 +28,14 @@ public class InlineMethod : RefactoringBase
     private readonly ReferenceAnalyzer _referenceAnalyzer = new();
     private readonly ConflictResolver _conflictResolver;
     private readonly ParameterMapper _parameterMapper;
+    private readonly BodyTransformer _bodyTransformer;
 
     public InlineMethod()
     {
         _methodResolver = new MethodResolver(Logger);
         _conflictResolver = new ConflictResolver(Logger);
         _parameterMapper = new ParameterMapper(Logger);
+        _bodyTransformer = new BodyTransformer(_parameterMapper, Logger);
     }
 
     /// <summary>
@@ -178,7 +180,7 @@ public class InlineMethod : RefactoringBase
 
             // Inline all call sites with the method body
             CurrentPhase = "Inlining";
-            var newRoot = InlineAllReferences(
+            var newRoot = _bodyTransformer.InlineAllReferences(
                 trackedRoot,
                 trackedReferences,
                 methodInfo,
@@ -195,7 +197,7 @@ public class InlineMethod : RefactoringBase
 
             // Remove the method declaration
             CurrentPhase = "Method Removal";
-            newRoot = RemoveMethodDeclaration(newRoot, (MethodDeclarationSyntax)trackedDeclaration);
+            newRoot = _bodyTransformer.RemoveMethodDeclaration(newRoot, (MethodDeclarationSyntax)trackedDeclaration);
 
             // Normalize whitespace
             newRoot = NormalizeWhitespace(newRoot);
@@ -212,141 +214,4 @@ public class InlineMethod : RefactoringBase
         }
     }
 
-
-
-    /// <summary>
-    /// Replaces all method invocations with the method's body.
-    /// </summary>
-    private CompilationUnitSyntax InlineAllReferences(
-        CompilationUnitSyntax root,
-        List<InvocationExpressionSyntax> references,
-        MethodInfo methodInfo,
-        SemanticModel semanticModel)
-    {
-        // Create a dictionary for batch replacement
-        var replacements = new Dictionary<SyntaxNode, SyntaxNode>();
-
-        foreach (var invocation in references)
-        {
-            // Find the statement containing the invocation
-            // For void methods, the invocation should be inside an ExpressionStatement
-            var statementToReplace = invocation.FirstAncestorOrSelf<ExpressionStatementSyntax>();
-            if (statementToReplace == null)
-            {
-                Logger?.LogWarning("Invocation is not inside an expression statement - skipping");
-                continue;
-            }
-
-            // Extract the method body to inline
-            SyntaxNode replacement;
-
-            if (methodInfo.ExpressionBody != null)
-            {
-                // Expression-bodied method: => expression
-                replacement = InlineExpressionBody(invocation, methodInfo, semanticModel);
-            }
-            else if (methodInfo.BlockBody != null)
-            {
-                // Block-bodied method: { statements }
-                replacement = InlineBlockBody(invocation, methodInfo, semanticModel);
-            }
-            else
-            {
-                // Should never happen due to validation
-                Logger?.LogError("Method has neither block nor expression body");
-                continue;
-            }
-
-            // Preserve leading trivia (comments, whitespace) from both sources:
-            // 1. Original statement trivia (e.g., "// Call the helper")
-            // 2. Replacement statement trivia (e.g., "// Important comment")
-            if (replacement is StatementSyntax replacementStatement)
-            {
-                var combinedTrivia = statementToReplace.GetLeadingTrivia()
-                    .AddRange(replacementStatement.GetLeadingTrivia());
-                replacement = replacementStatement.WithLeadingTrivia(combinedTrivia);
-            }
-
-            replacements[statementToReplace] = replacement;
-        }
-
-        // Perform batch replacement
-        var newRoot = root.ReplaceNodes(replacements.Keys, (original, _) => replacements[original]);
-        return newRoot;
-    }
-
-    /// <summary>
-    /// Inlines an expression-bodied method.
-    /// </summary>
-    private SyntaxNode InlineExpressionBody(
-        InvocationExpressionSyntax invocation,
-        MethodInfo methodInfo,
-        SemanticModel semanticModel)
-    {
-        // Get the expression from the arrow expression clause
-        var expression = methodInfo.ExpressionBody!.Expression;
-
-        // If method has parameters, substitute them with arguments
-        if (methodInfo.Parameters.Any())
-        {
-            expression = _parameterMapper.SubstituteParameters(expression, methodInfo, invocation, semanticModel);
-        }
-
-        // For void methods, the invocation is a statement, so wrap in expression statement
-        // For now (Part 1), all methods are void
-        return SyntaxFactory.ExpressionStatement(expression);
-    }
-
-    /// <summary>
-    /// Inlines a block-bodied method.
-    /// </summary>
-    private SyntaxNode InlineBlockBody(
-        InvocationExpressionSyntax invocation,
-        MethodInfo methodInfo,
-        SemanticModel semanticModel)
-    {
-        var blockBody = methodInfo.BlockBody!;
-        var statements = blockBody.Statements;
-
-        // If method has parameters, substitute them in all statements
-        if (methodInfo.Parameters.Any())
-        {
-            var substitutedStatements = new List<StatementSyntax>();
-            foreach (var statement in statements)
-            {
-                var substitutedStatement = _parameterMapper.SubstituteParametersInStatement(statement, methodInfo, invocation, semanticModel);
-                substitutedStatements.Add(substitutedStatement);
-            }
-            statements = SyntaxFactory.List(substitutedStatements);
-        }
-
-        // If only one statement, return it directly
-        if (statements.Count == 1)
-        {
-            return statements[0];
-        }
-
-        // Multiple statements: wrap in a block statement
-        // This creates a nested block which preserves scoping
-        return SyntaxFactory.Block(statements);
-    }
-
-    /// <summary>
-    /// Removes the method declaration from the syntax tree.
-    /// </summary>
-    private CompilationUnitSyntax RemoveMethodDeclaration(
-        CompilationUnitSyntax root,
-        MethodDeclarationSyntax methodDeclaration)
-    {
-        // Remove the method declaration, preserving leading trivia (comments above method)
-        var newRoot = root.RemoveNode(methodDeclaration, SyntaxRemoveOptions.KeepLeadingTrivia);
-
-        if (newRoot == null)
-        {
-            Logger?.LogWarning("Failed to remove method declaration, returning original root");
-            return root;
-        }
-
-        return newRoot;
-    }
 }
