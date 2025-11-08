@@ -9,25 +9,33 @@ namespace RefactorCsharpMCP.Core.Validation.Handlers;
 /// Implements Strategy Pattern for diagnostic handling.
 /// </summary>
 /// <remarks>
-/// Processes Roslyn diagnostics from parsing phase and classifies them as:
-/// - Language version mismatches (C# features not supported by target framework)
-/// - Genuine syntax errors
+/// <para>Processes Roslyn diagnostics from parsing phase and classifies them as:</para>
+/// <list type="bullet">
+/// <item>Language version mismatches (C# features not supported by target framework)</item>
+/// <item>Genuine syntax errors</item>
+/// </list>
+/// <para><b>Thread-Safety:</b> This class is stateless and safe for concurrent calls.
+/// All methods are static or operate only on method parameters.
+/// Registered as singleton in DI container.</para>
 /// </remarks>
 public class ParseDiagnosticHandler : IParseDiagnosticHandler
 {
+    /// <summary>
+    /// Maximum number of error messages to display before truncating with "and N more".
+    /// </summary>
+    private const int MaxErrorsToDisplay = 3;
+
     /// <summary>
     /// Handles parse diagnostics and returns appropriate validation result.
     /// </summary>
     /// <param name="diagnostics">Parse-time diagnostics from syntax tree.</param>
     /// <param name="targetFramework">Target framework moniker for error context.</param>
     /// <param name="syntaxTree">Syntax tree (not used for parse diagnostics, but required by interface).</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>ValidationResult indicating success or describing the error.</returns>
-    public Task<ValidationResult> HandleAsync(
+    public ValidationResult Handle(
         IEnumerable<Diagnostic> diagnostics,
         string targetFramework,
-        SyntaxTree syntaxTree,
-        CancellationToken cancellationToken = default)
+        SyntaxTree syntaxTree)
     {
         var parseDiagnostics = diagnostics
             .Where(d => d.Severity == DiagnosticSeverity.Error)
@@ -35,7 +43,7 @@ public class ParseDiagnosticHandler : IParseDiagnosticHandler
 
         if (!parseDiagnostics.Any())
         {
-            return Task.FromResult(ValidationResult.Success());
+            return ValidationResult.Success();
         }
 
         // Syntax errors found - determine if it's a language version issue or genuine syntax error
@@ -57,23 +65,31 @@ public class ParseDiagnosticHandler : IParseDiagnosticHandler
             var languageVersion = FrameworkMoniker.GetLanguageVersion(targetFramework);
             var supportedVersion = FormatLanguageVersion(languageVersion);
 
-            return Task.FromResult(ValidationResult.InputSyntaxMismatch(
+            return ValidationResult.InputSyntaxMismatch(
                 detectedFeature,
                 requiredVersion,
                 targetFramework,
-                supportedVersion));
+                supportedVersion);
         }
         else
         {
             // Genuine syntax errors
-            var errorDetails = string.Join(", ", errorMessages.Take(3));
-            if (errorMessages.Count > 3)
-            {
-                errorDetails += $" (and {errorMessages.Count - 3} more)";
-            }
-
-            return Task.FromResult(ValidationResult.SyntaxError(errorDetails));
+            var errorDetails = FormatErrorSummary(errorMessages);
+            return ValidationResult.SyntaxError(errorDetails);
         }
+    }
+
+    /// <summary>
+    /// Formats a list of error messages into a concise summary (first 3 errors + count of remaining).
+    /// </summary>
+    private static string FormatErrorSummary(List<string> errorMessages)
+    {
+        var errorDetails = string.Join(", ", errorMessages.Take(MaxErrorsToDisplay));
+        if (errorMessages.Count > MaxErrorsToDisplay)
+        {
+            errorDetails += $" (and {errorMessages.Count - MaxErrorsToDisplay} more)";
+        }
+        return errorDetails;
     }
 
     /// <summary>

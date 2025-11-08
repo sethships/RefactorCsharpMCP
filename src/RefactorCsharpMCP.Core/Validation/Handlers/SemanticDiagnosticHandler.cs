@@ -7,15 +7,28 @@ namespace RefactorCsharpMCP.Core.Validation.Handlers;
 /// Implements Strategy Pattern for diagnostic handling.
 /// </summary>
 /// <remarks>
-/// Processes Roslyn diagnostics from semantic analysis and classifies them as:
-/// - Framework API unavailability (types/members not in target framework)
-/// - User typos (misspelled identifiers)
-/// - Other semantic errors
-///
-/// Uses heuristics to distinguish between framework compatibility issues and code errors.
+/// <para>Processes Roslyn diagnostics from semantic analysis and classifies them as:</para>
+/// <list type="bullet">
+/// <item>Framework API unavailability (types/members not in target framework)</item>
+/// <item>User typos (misspelled identifiers)</item>
+/// <item>Other semantic errors</item>
+/// </list>
+/// <para>Uses heuristics to distinguish between framework compatibility issues and code errors.</para>
+/// <para><b>Thread-Safety:</b> This class is stateless and safe for concurrent calls.
+/// All methods are static or operate only on method parameters. KnownBclPrefixes is readonly.
+/// Registered as singleton in DI container.</para>
 /// </remarks>
 public class SemanticDiagnosticHandler : ISemanticDiagnosticHandler
 {
+    private const int MinimumIdentifierLengthForTypoCheck = 2;
+    private const int LongIdentifierThreshold = 3;
+    private const int TripleCharacterRepeatIndex = 2;
+
+    /// <summary>
+    /// Maximum number of error messages to display before truncating with "and N more".
+    /// </summary>
+    private const int MaxErrorsToDisplay = 3;
+
     /// <summary>
     /// Known BCL and Microsoft framework namespace prefixes.
     /// Static readonly for efficient reuse across calls.
@@ -69,13 +82,11 @@ public class SemanticDiagnosticHandler : ISemanticDiagnosticHandler
     /// <param name="diagnostics">Semantic-time diagnostics from compilation.</param>
     /// <param name="targetFramework">Target framework moniker for error context.</param>
     /// <param name="syntaxTree">Syntax tree for identifier extraction.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>ValidationResult indicating success or describing the error.</returns>
-    public Task<ValidationResult> HandleAsync(
+    public ValidationResult Handle(
         IEnumerable<Diagnostic> diagnostics,
         string targetFramework,
-        SyntaxTree syntaxTree,
-        CancellationToken cancellationToken = default)
+        SyntaxTree syntaxTree)
     {
         var semanticDiagnostics = diagnostics
             .Where(d => d.Severity == DiagnosticSeverity.Error)
@@ -83,7 +94,7 @@ public class SemanticDiagnosticHandler : ISemanticDiagnosticHandler
 
         if (!semanticDiagnostics.Any())
         {
-            return Task.FromResult(ValidationResult.Success());
+            return ValidationResult.Success();
         }
 
         // Check if these are API availability errors (type/member not found in framework)
@@ -100,38 +111,38 @@ public class SemanticDiagnosticHandler : ISemanticDiagnosticHandler
 
             if (frameworkErrors.Any())
             {
-                var apiErrorDetails = string.Join(", ", frameworkErrors.Select(d => d.GetMessage()).Take(3));
-                if (frameworkErrors.Count > 3)
-                {
-                    apiErrorDetails += $" (and {frameworkErrors.Count - 3} more)";
-                }
+                var apiErrorDetails = FormatErrorSummary(frameworkErrors.Select(d => d.GetMessage()).ToList());
 
-                return Task.FromResult(ValidationResult.Failure(
+                return ValidationResult.Failure(
                     ErrorCode.FRAMEWORK_API_UNAVAILABLE,
                     $"Code references types or members not available in {targetFramework}: {apiErrorDetails}",
                     "Either target a newer framework version or replace with APIs available in the target framework. " +
-                    "Run validation against multiple frameworks to confirm compatibility."));
+                    "Run validation against multiple frameworks to confirm compatibility.");
             }
 
             if (likelyTypos.Any())
             {
-                var typoDetails = string.Join(", ", likelyTypos.Select(d => d.GetMessage()).Take(3));
-                if (likelyTypos.Count > 3)
-                {
-                    typoDetails += $" (and {likelyTypos.Count - 3} more)";
-                }
-
-                return Task.FromResult(ValidationResult.SyntaxError(typoDetails));
+                var typoDetails = FormatErrorSummary(likelyTypos.Select(d => d.GetMessage()).ToList());
+                return ValidationResult.SyntaxError(typoDetails);
             }
         }
 
         // Other semantic errors (not API availability)
-        var semanticErrorDetails = string.Join(", ", semanticDiagnostics.Select(d => d.GetMessage()).Take(3));
-        if (semanticDiagnostics.Count > 3)
+        var semanticErrorDetails = FormatErrorSummary(semanticDiagnostics.Select(d => d.GetMessage()).ToList());
+        return ValidationResult.SyntaxError(semanticErrorDetails);
+    }
+
+    /// <summary>
+    /// Formats a list of error messages into a concise summary (first 3 errors + count of remaining).
+    /// </summary>
+    private static string FormatErrorSummary(List<string> errorMessages)
+    {
+        var errorDetails = string.Join(", ", errorMessages.Take(MaxErrorsToDisplay));
+        if (errorMessages.Count > MaxErrorsToDisplay)
         {
-            semanticErrorDetails += $" (and {semanticDiagnostics.Count - 3} more)";
+            errorDetails += $" (and {errorMessages.Count - MaxErrorsToDisplay} more)";
         }
-        return Task.FromResult(ValidationResult.SyntaxError(semanticErrorDetails));
+        return errorDetails;
     }
 
     /// <summary>
@@ -206,7 +217,7 @@ public class SemanticDiagnosticHandler : ISemanticDiagnosticHandler
             }
 
             // Heuristic 3: Check for very short identifiers (often typos)
-            if (identifier.Length <= 2)
+            if (identifier.Length <= MinimumIdentifierLengthForTypoCheck)
             {
                 likelyTypos.Add(error);
                 continue;
@@ -295,9 +306,9 @@ public class SemanticDiagnosticHandler : ISemanticDiagnosticHandler
     private static bool HasObviousTypo(string identifier)
     {
         // Check for consecutive repeated characters (often typos, but allow common patterns)
-        for (int i = 0; i < identifier.Length - 2; i++)
+        for (int i = 0; i < identifier.Length - TripleCharacterRepeatIndex; i++)
         {
-            if (identifier[i] == identifier[i + 1] && identifier[i] == identifier[i + 2])
+            if (identifier[i] == identifier[i + 1] && identifier[i] == identifier[i + TripleCharacterRepeatIndex])
             {
                 var repeatedChar = identifier[i];
 
@@ -315,8 +326,8 @@ public class SemanticDiagnosticHandler : ISemanticDiagnosticHandler
         }
 
         // Check for all lowercase (uncommon for types in C#, but common for variables)
-        // Since we're classifying types/namespaces, flag identifiers > 3 chars that are all lowercase
-        if (identifier.Length > 3 && identifier.All(char.IsLower))
+        // Since we're classifying types/namespaces, flag identifiers > threshold that are all lowercase
+        if (identifier.Length > LongIdentifierThreshold && identifier.All(char.IsLower))
         {
             return true;
         }
