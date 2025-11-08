@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
+using RefactorCsharpMCP.Core.Validation.Handlers;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -18,6 +19,11 @@ var version = Assembly.GetExecutingAssembly()
     .GetName()
     .Version?
     .ToString() ?? "1.0.0";
+
+// Register diagnostic handlers for SyntaxValidator (Strategy Pattern)
+// Handlers are registered as singletons for performance (stateless, reusable)
+builder.Services.AddSingleton<IParseDiagnosticHandler, ParseDiagnosticHandler>();
+builder.Services.AddSingleton<ISemanticDiagnosticHandler, SemanticDiagnosticHandler>();
 
 // Configure MCP server with stdio transport
 // Server name: refactor-csharp-mcp
