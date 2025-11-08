@@ -1,0 +1,8 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  RefactorCsharpMCP.Core -> C:\src\RefactorCsharpMCP\src\RefactorCsharpMCP.Core\bin\Debug\net8.0\RefactorCsharpMCP.Core.dll
+  RefactorCsharpMCP.Server -> C:\src\RefactorCsharpMCP\src\RefactorCsharpMCP.Server\bin\Debug\net8.0\RefactorCsharpMCP.Server.dll
+C:\src\RefactorCsharpMCP\src\RefactorCsharpMCP.Tests\Integration\SyntaxValidatorFacadeIntegrationTests.cs(220,23): error CS0246: The type or namespace name 'SkipException' could not be found (are you missing a using directive or an assembly reference?) [C:\src\RefactorCsharpMCP\src\RefactorCsharpMCP.Tests\RefactorCsharpMCP.Tests.csproj]
+C:\src\RefactorCsharpMCP\src\RefactorCsharpMCP.Tests\Integration\SyntaxValidatorFacadeIntegrationTests.cs(262,23): error CS0246: The type or namespace name 'SkipException' could not be found (are you missing a using directive or an assembly reference?) [C:\src\RefactorCsharpMCP\src\RefactorCsharpMCP.Tests\RefactorCsharpMCP.Tests.csproj]
+
+Workload updates are available. Run `dotnet workload list` for more information.

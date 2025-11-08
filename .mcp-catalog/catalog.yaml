@@ -1,0 +1,28 @@
+catalog:
+  name: my-mcp-catalog
+  description: Custom MCP catalog with RefactorCsharpMCP and Docker official servers
+  version: 1.0.0
+
+servers:
+  refactor-csharp-mcp:
+    name: refactor-csharp-mcp
+    type: server
+    image: refactor-csharp-mcp:latest
+    meta:
+      category: developer-tools
+      tags:
+        - csharp
+        - refactoring
+        - roslyn
+        - code-quality
+        - dotnet
+    about:
+      title: "RefactorCsharp MCP"
+      description: "Roslyn-based C# refactoring capabilities for AI clients. Provides 7 refactoring operations including extract method, constructor injection, make field readonly, safe delete, extract class, remove unused usings, and inline method."
+      icon: "https://raw.githubusercontent.com/sethb75/RefactorCsharpMCP/master/docs/icon.png"
+    source:
+      project: "https://github.com/sethb75/RefactorCsharpMCP"
+      commit: "2f26c01"
+    config:
+      env: {}
+      parameters: {}

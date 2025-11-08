@@ -25,6 +25,7 @@ public class InlineMethod : RefactoringBase
 {
     private readonly SymbolResolutionHelper _symbolHelper = new();
     private readonly MethodResolver _methodResolver;
+    private readonly ReferenceAnalyzer _referenceAnalyzer = new();
 
     public InlineMethod()
     {
@@ -116,7 +117,7 @@ public class InlineMethod : RefactoringBase
 
             // Find all references to the method (call sites)
             CurrentPhase = "Reference Analysis";
-            var references = FindMethodReferences(root, methodInfo.Symbol, semanticModel);
+            var references = _referenceAnalyzer.FindMethodReferences(root, methodInfo.Symbol, semanticModel);
 
             Logger?.LogDebug(
                 "Found {Count} reference(s) to method '{Name}'",
@@ -445,26 +446,6 @@ public class InlineMethod : RefactoringBase
         return renamedNode;
     }
 
-
-    /// <summary>
-    /// Finds all references to a method (call sites) within the syntax tree.
-    /// </summary>
-    private List<InvocationExpressionSyntax> FindMethodReferences(
-        CompilationUnitSyntax root,
-        IMethodSymbol symbol,
-        SemanticModel semanticModel)
-    {
-        var references = root.DescendantNodes()
-            .OfType<InvocationExpressionSyntax>()
-            .Where(invocation =>
-            {
-                var invokedSymbol = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
-                return SymbolEqualityComparer.Default.Equals(invokedSymbol, symbol);
-            })
-            .ToList();
-
-        return references;
-    }
 
     /// <summary>
     /// Replaces all method invocations with the method's body.
