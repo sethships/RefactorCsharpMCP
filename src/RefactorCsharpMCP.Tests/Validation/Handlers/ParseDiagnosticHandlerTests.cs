@@ -342,7 +342,7 @@ class Test
     #region Thread Safety
 
     [Fact]
-    public void Handle_ConcurrentCalls_AreThreadSafe()
+    public async Task Handle_ConcurrentCalls_AreThreadSafe()
     {
         // Arrange
         var code = "class Test { void M() { int x = 42; } }";
@@ -354,10 +354,10 @@ class Test
             Task.Run(() => _handler.Handle(diagnostics, "net8.0", syntaxTree))
         ).ToArray();
 
-        Task.WaitAll(tasks);
+        var results = await Task.WhenAll(tasks);
 
         // Assert - All calls should succeed
-        tasks.Should().AllSatisfy(t => t.Result.IsValid.Should().BeTrue());
+        results.Should().AllSatisfy(r => r.IsValid.Should().BeTrue());
     }
 
     #endregion

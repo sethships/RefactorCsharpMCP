@@ -367,7 +367,7 @@ class Test
     #region Thread Safety
 
     [Fact]
-    public void Handle_ConcurrentCalls_AreThreadSafe()
+    public async Task Handle_ConcurrentCalls_AreThreadSafe()
     {
         // Arrange
         var code = "class Test { System.Collections.Generic.List<int> x; }";
@@ -380,13 +380,13 @@ class Test
             Task.Run(() => _handler.Handle(diagnostics, "net48", syntaxTree))
         ).ToArray();
 
-        Task.WaitAll(tasks);
+        var results = await Task.WhenAll(tasks);
 
         // Assert - All calls should return the same classification
-        tasks.Should().AllSatisfy(t =>
+        results.Should().AllSatisfy(r =>
         {
-            t.Result.IsValid.Should().BeFalse();
-            t.Result.ErrorCode.Should().Be(ErrorCode.FRAMEWORK_API_UNAVAILABLE);
+            r.IsValid.Should().BeFalse();
+            r.ErrorCode.Should().Be(ErrorCode.FRAMEWORK_API_UNAVAILABLE);
         });
     }
 
