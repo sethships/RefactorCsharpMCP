@@ -31,11 +31,19 @@ The Core project includes a shared infrastructure layer that eliminates boilerpl
   - **Optional metrics tracking** for performance monitoring (`RefactoringMetrics`, `MetricsTracker`)
   - **Optional ILogger integration** for telemetry and diagnostics
 
-- **SymbolResolutionHelper**: Utility class for Roslyn symbol operations
-  - Position-based symbol resolution (`GetSymbolAtPosition`)
-  - Symbol conflict detection with HashSet optimization (`FindSymbolConflicts`)
-  - Symbol scope analysis (`AnalyzeSymbolScope`)
-  - Reference finding across compilation (`GetAllReferences`)
+- **Symbol Resolution Utilities** (decomposed in Sprint 3, Issue #90): Specialized classes for Roslyn symbol operations
+  - **SymbolResolutionHelper** (facade, ~192 lines): Simplified API delegating to specialized classes
+  - **PositionBasedResolver** (~285 lines): Position-to-symbol resolution with SyntaxTree identity preservation
+    - `GetSymbolAtPosition(sourceCode, line, column)`: Standalone resolution
+    - `GetSymbolAtPosition(semanticModel, syntaxTree, line, column)`: Identity-preserving overload
+  - **ConflictDetector** (~283 lines): Comprehensive conflict detection using dual-strategy scanning
+    - `FindSymbolConflicts()`: HashSet-optimized detection of local variables, parameters, lambdas, methods, fields
+  - **ScopeAnalyzer** (~70 lines): Symbol scope and accessibility analysis
+    - `AnalyzeSymbolScope()`: Determines symbol kind, containing type, and accessibility modifiers
+  - **ReferenceLocator** (~68 lines): Reference finding across compilation
+    - `GetAllReferences()`: Finds all usages of a symbol within a compilation
+  - **Structure**: Located in `src/RefactorCsharpMCP.Core/Utilities/Symbols/`
+  - **Benefits**: 70% reduction in main file size, independent optimization, backward compatibility via facade
 
 - **RefactoringResult**: Standardized result type for all refactoring operations
   - Success/failure status with refactored code
@@ -194,7 +202,7 @@ Each tool accepts source code and refactoring parameters, returning either:
 - Add XML documentation comments for public APIs
 - Include unit tests for all new refactorings
 - Inherit from `RefactoringBase` when implementing new refactorings to leverage shared infrastructure
-- Use `SymbolResolutionHelper` for position-based symbol operations and conflict detection
+- Use `SymbolResolutionHelper` (facade) for simple symbol operations, or inject specialized classes (`PositionBasedResolver`, `ConflictDetector`, `ScopeAnalyzer`, `ReferenceLocator`) directly for fine-grained control or batch operations
 
 ### Roslyn Best Practices
 - Always work with SyntaxTree and SemanticModel for accuracy
