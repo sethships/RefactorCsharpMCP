@@ -1,0 +1,5 @@
+name: refactor-csharp-mcp
+image: refactor-csharp-mcp:latest
+transport: stdio
+command: []
+env: {}

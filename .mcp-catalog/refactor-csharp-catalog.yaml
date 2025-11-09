@@ -1,0 +1,36 @@
+version: 3
+name: refactor-csharp-catalog
+displayName: RefactorCsharp MCP Server Catalog
+registry:
+  refactor-csharp-mcp:
+    description: Roslyn-based C# refactoring capabilities for AI clients. Provides 7 refactoring operations including extract method, constructor injection, make field readonly, safe delete, extract class, remove unused usings, and inline method.
+    title: RefactorCsharp MCP
+    type: server
+    dateAdded: "2025-11-06T00:00:00Z"
+    image: refactor-csharp-mcp:latest
+    ref: ""
+    readme: https://raw.githubusercontent.com/sethb75/RefactorCsharpMCP/master/README.md
+    toolsUrl: ""
+    source: https://github.com/sethb75/RefactorCsharpMCP/tree/2f26c01
+    upstream: https://github.com/sethb75/RefactorCsharpMCP
+    icon: https://raw.githubusercontent.com/sethb75/RefactorCsharpMCP/master/docs/icon.png
+    tools:
+      - name: extract_method
+      - name: constructor_injection
+      - name: make_field_readonly
+      - name: safe_delete_method
+      - name: extract_class
+      - name: remove_unused_usings
+      - name: inline_method
+    prompts: 0
+    resources: {}
+    metadata:
+      category: developer-tools
+      tags:
+        - csharp
+        - refactoring
+        - roslyn
+        - code-quality
+        - dotnet
+      license: Apache License 2.0
+      owner: sethb75
