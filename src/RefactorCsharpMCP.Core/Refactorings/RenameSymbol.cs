@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.Extensions.Logging;
 using RefactorCsharpMCP.Core.Utilities;
+using RefactorCsharpMCP.Core.Utilities.Symbols;
 
 namespace RefactorCsharpMCP.Core.Refactorings;
 
