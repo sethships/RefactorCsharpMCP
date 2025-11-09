@@ -211,21 +211,32 @@ try {
     $builderCheck = docker buildx ls 2>&1 | Select-String "sbom-builder"
     if (-not $builderCheck) {
         Write-Info "Creating buildx builder for SBOM support..."
-        docker buildx create --name sbom-builder --driver docker-container --bootstrap 2>&1 | Out-Null
+        $builderOutput = docker buildx create --name sbom-builder --driver docker-container --bootstrap 2>&1
         if ($LASTEXITCODE -ne 0) {
-            Write-Warning-Custom "Failed to create buildx builder, using default"
+            Write-Warning-Custom "Failed to create buildx builder:"
+            $builderOutput | ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow }
+            Write-Warning-Custom "Attempting to use default builder, SBOM generation may not be available"
+
+            # Verify default builder supports SBOM (requires docker-container driver)
+            $defaultBuilderInfo = docker buildx inspect 2>&1
+            if ($defaultBuilderInfo -notmatch "Driver.*docker-container") {
+                throw "Default builder does not support SBOM generation. Please ensure Docker Buildx is properly configured with docker-container driver."
+            }
+            Write-Info "Default builder verified for SBOM support"
         } else {
             Write-Success "Created buildx builder: sbom-builder"
         }
     }
 
-    # Use sbom-builder if available, otherwise use default
-    $currentBuilder = docker buildx ls 2>&1 | Select-String "\*.*sbom-builder"
-    if (-not $currentBuilder) {
-        docker buildx use sbom-builder 2>&1 | Out-Null
-    }
-
     $buildStart = Get-Date
+
+    # NOTE: Dual-build strategy required because BuildKit cannot simultaneously export
+    # SBOM to filesystem AND load image to local Docker daemon in a single build.
+    # Expected performance impact:
+    #   - First-time builds: 5-10 minutes (buildkit-syft-scanner image download ~13.57 MB)
+    #   - Subsequent builds: +30-50% build time overhead
+    #   - BuildKit layer caching should minimize impact on cached builds
+    # To optimize: Use 'docker buildx build --sbom=true --load' if SBOM export to filesystem not needed.
 
     # Build strategy: First export SBOM to filesystem, then load image locally
     Write-Info "Building with SBOM export (step 1/2)..."
@@ -233,7 +244,14 @@ try {
     # Capture full output for debugging
     # Note: dest path must not have quotes around the entire parameter
     $sbomOutputPath = Join-Path $ProjectRoot "sbom-output"
+
+    # Validate path contains only safe characters (defense-in-depth security)
+    if ($sbomOutputPath -notmatch '^[a-zA-Z0-9\\/:._-]+$') {
+        throw "Invalid characters in SBOM output path: $sbomOutputPath"
+    }
+
     $buildOutput = docker buildx build `
+        --builder sbom-builder `
         --sbom=true `
         --output "type=local,dest=$sbomOutputPath" `
         . 2>&1
@@ -250,15 +268,37 @@ try {
     if ($LASTEXITCODE -ne 0 -or $hasError) {
         Write-Error-Custom "Docker buildx output:"
         $buildOutput | ForEach-Object { Write-Host $_ -ForegroundColor Red }
+
+        # Provide diagnostic hints based on error patterns
+        if ($buildOutput -match "sbom.*not available|sbom.*disabled|sbom.*not supported") {
+            Write-Error-Custom "SBOM generation not available in current BuildKit version"
+            Write-Info "Ensure Docker Desktop >= 4.24 or BuildKit >= 0.12"
+        } elseif ($buildOutput -match "no space left|disk full") {
+            Write-Error-Custom "Insufficient disk space for build output"
+        } elseif ($buildOutput -match "permission denied|access denied") {
+            Write-Error-Custom "Permission denied - check Docker daemon permissions"
+        }
+
         throw "Docker build with SBOM export failed (exit code: $LASTEXITCODE)"
     }
 
     # Move SBOM to project root and clean up
     if (Test-Path "${ProjectRoot}\sbom-output\sbom.spdx.json") {
         Move-Item -Path "${ProjectRoot}\sbom-output\sbom.spdx.json" -Destination "${ProjectRoot}\sbom.spdx.json" -Force
-        Write-Success "SBOM exported: sbom.spdx.json"
+
+        # Validate SBOM is not empty (minimum valid SBOM is ~500 bytes)
+        $sbomFileInfo = Get-Item "${ProjectRoot}\sbom.spdx.json"
+        if ($sbomFileInfo.Length -lt 500) {
+            throw "SBOM file generated but appears invalid (size: $($sbomFileInfo.Length) bytes)"
+        }
+        Write-Success "SBOM exported: sbom.spdx.json ($([math]::Round($sbomFileInfo.Length / 1KB, 2)) KB)"
     } else {
-        Write-Warning-Custom "SBOM file not found in output directory"
+        # SBOM generation is required for production builds
+        $isProductionBuild = $Version -match '^\d+\.\d+\.\d+$' -and $Version -ne "latest"
+        if ($isProductionBuild) {
+            throw "SBOM generation failed - required for production version $Version"
+        }
+        Write-Warning-Custom "SBOM file not found in output directory (skipping for non-production build)"
     }
 
     # Clean up sbom-output directory
@@ -266,43 +306,7 @@ try {
         Remove-Item -Path "${ProjectRoot}\sbom-output" -Recurse -Force
     }
 
-    # Build and load image locally (step 2/2)
-    Write-Info "Building and loading image locally (step 2/2)..."
-
-    # Capture full output
-    $buildOutput2 = docker buildx build `
-        --sbom=true `
-        --tag "${ImageName}:${Version}" `
-        --tag "${ImageName}:latest" `
-        --load `
-        . 2>&1
-
-    # Display build steps
-    $buildOutput2 | ForEach-Object {
-        if ($_ -match "^#") {
-            Write-Info $_
-        }
-    }
-
-    # Check for errors
-    $hasError2 = $buildOutput2 | Where-Object { $_ -match "error|failed" -and $_ -notmatch "^#" }
-    if ($LASTEXITCODE -ne 0 -or $hasError2) {
-        Write-Error-Custom "Docker buildx output:"
-        $buildOutput2 | ForEach-Object { Write-Host $_ -ForegroundColor Red }
-        throw "Docker build with load failed (exit code: $LASTEXITCODE)"
-    }
-
-    $buildDuration = (Get-Date) - $buildStart
-    Write-Success "Image built successfully with SBOM in $($buildDuration.TotalSeconds.ToString('F2')) seconds"
-
-    # Step 5: Inspect image
-    Write-Header "Image Inspection"
-    $imageInfo = docker inspect "${ImageName}:${Version}" | ConvertFrom-Json
-    $imageSize = [math]::Round($imageInfo[0].Size / 1MB, 2)
-    Write-Info "Image Size: ${imageSize} MB"
-    Write-Info "Created: $($imageInfo[0].Created)"
-
-    # Step 5.5: SBOM Validation
+    # Step 4.5: SBOM Validation (before loading image - fail fast)
     if (Test-Path "${ProjectRoot}\sbom.spdx.json") {
         Write-Header "SBOM Validation"
         Write-Info "Analyzing SBOM content..."
@@ -336,10 +340,12 @@ try {
                 Write-Warning-Custom "Some expected packages missing from SBOM ($foundCount/$($keyPackages.Count))"
             }
 
-            # Save package summary
+            # Save package summary with timestamp
+            $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+            $csvPath = "${ProjectRoot}\sbom-packages-${Version}-${timestamp}.csv"
             $sbom.packages | Select-Object name, versionInfo, licenseConcluded |
-                Export-Csv -Path "${ProjectRoot}\sbom-packages.csv" -NoTypeInformation
-            Write-Info "Package list exported to sbom-packages.csv"
+                Export-Csv -Path $csvPath -NoTypeInformation
+            Write-Info "Package list exported to $(Split-Path -Leaf $csvPath)"
 
         } catch {
             Write-Warning-Custom "Failed to validate SBOM: $($_.Exception.Message)"
@@ -347,6 +353,43 @@ try {
     } else {
         Write-Warning-Custom "SBOM file not found, skipping validation"
     }
+
+    # Build and load image locally (step 2/2)
+    Write-Info "Building and loading image locally (step 2/2)..."
+
+    # Capture full output
+    $buildOutput2 = docker buildx build `
+        --builder sbom-builder `
+        --sbom=true `
+        --tag "${ImageName}:${Version}" `
+        --tag "${ImageName}:latest" `
+        --load `
+        . 2>&1
+
+    # Display build steps
+    $buildOutput2 | ForEach-Object {
+        if ($_ -match "^#") {
+            Write-Info $_
+        }
+    }
+
+    # Check for errors
+    $hasError2 = $buildOutput2 | Where-Object { $_ -match "error|failed" -and $_ -notmatch "^#" }
+    if ($LASTEXITCODE -ne 0 -or $hasError2) {
+        Write-Error-Custom "Docker buildx output:"
+        $buildOutput2 | ForEach-Object { Write-Host $_ -ForegroundColor Red }
+        throw "Docker build with load failed (exit code: $LASTEXITCODE)"
+    }
+
+    $buildDuration = (Get-Date) - $buildStart
+    Write-Success "Image built successfully with SBOM in $($buildDuration.TotalSeconds.ToString('F2')) seconds"
+
+    # Step 5: Inspect image
+    Write-Header "Image Inspection"
+    $imageInfo = docker inspect "${ImageName}:${Version}" | ConvertFrom-Json
+    $imageSize = [math]::Round($imageInfo[0].Size / 1MB, 2)
+    Write-Info "Image Size: ${imageSize} MB"
+    Write-Info "Created: $($imageInfo[0].Created)"
 
     # Step 6: Health check
     Write-Header "Container Health Check"

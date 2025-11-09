@@ -49,7 +49,7 @@ param(
     [string]$Format = "auto",
 
     [Parameter()]
-    [int]$MinPackages = 50,
+    [int]$MinPackages = 80,  # .NET 8 runtime + typical MCP server dependencies (~80-150 packages)
 
     [Parameter()]
     [switch]$Verbose
@@ -83,6 +83,12 @@ try {
     Write-Host "`n=== SBOM Validation ===" -ForegroundColor Cyan
     Write-Host ""
 
+    # Step 0: Validate path contains only safe characters (defense-in-depth security)
+    if ($SbomPath -notmatch '^[a-zA-Z0-9\\/:._-]+$') {
+        Write-ValidationError "Invalid characters in SBOM path: $SbomPath"
+        exit 1
+    }
+
     # Step 1: File existence check
     Write-Host "1. Checking file existence..." -ForegroundColor White
     if (-not (Test-Path $SbomPath)) {
@@ -95,20 +101,8 @@ try {
     Write-ValidationInfo "File size: $([math]::Round($fileInfo.Length / 1KB, 2)) KB"
     Write-Host ""
 
-    # Step 2: Detect format
-    Write-Host "2. Detecting SBOM format..." -ForegroundColor White
-    if ($Format -eq "auto") {
-        if ($SbomPath -match "\.cyclonedx\.json$") {
-            $Format = "cyclonedx"
-        } else {
-            $Format = "spdx"
-        }
-    }
-    Write-ValidationSuccess "Format detected: $Format"
-    Write-Host ""
-
-    # Step 3: Parse JSON
-    Write-Host "3. Parsing JSON content..." -ForegroundColor White
+    # Step 2: Parse JSON
+    Write-Host "2. Parsing JSON content..." -ForegroundColor White
     try {
         $sbomContent = Get-Content $SbomPath -Raw | ConvertFrom-Json
         Write-ValidationSuccess "Valid JSON structure"
@@ -116,6 +110,30 @@ try {
         Write-ValidationError "Invalid JSON: $($_.Exception.Message)"
         exit 1
     }
+    Write-Host ""
+
+    # Step 3: Detect format (content-based, then filename fallback)
+    Write-Host "3. Detecting SBOM format..." -ForegroundColor White
+    if ($Format -eq "auto") {
+        # Try content-based detection first
+        if ($sbomContent.bomFormat -eq "CycloneDX") {
+            $Format = "cyclonedx"
+            Write-ValidationInfo "Detected from content: bomFormat field"
+        } elseif ($sbomContent.spdxVersion) {
+            $Format = "spdx"
+            Write-ValidationInfo "Detected from content: spdxVersion field"
+        } else {
+            # Fall back to filename heuristic
+            if ($SbomPath -match "\.cyclonedx\.json$") {
+                $Format = "cyclonedx"
+                Write-ValidationInfo "Detected from filename pattern"
+            } else {
+                $Format = "spdx"
+                Write-ValidationInfo "Default assumption (no clear indicators)"
+            }
+        }
+    }
+    Write-ValidationSuccess "Format detected: $Format"
     Write-Host ""
 
     # Step 4: Validate format-specific structure
@@ -209,7 +227,8 @@ try {
 
     if ($Format -eq "spdx") {
         $packagesWithLicense = $packages | Where-Object {
-            $_.licenseConcluded -or $_.licenseDeclared
+            ($_.licenseConcluded -and $_.licenseConcluded -ne "NOASSERTION" -and $_.licenseConcluded -ne "NONE") -or
+            ($_.licenseDeclared -and $_.licenseDeclared -ne "NOASSERTION" -and $_.licenseDeclared -ne "NONE")
         }
     } else {
         $packagesWithLicense = $packages | Where-Object {

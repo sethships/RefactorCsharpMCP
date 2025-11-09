@@ -276,6 +276,80 @@ docker scout cves refactor-csharp-mcp:latest
 trivy image refactor-csharp-mcp:latest
 ```
 
+#### Software Bill of Materials (SBOM)
+
+RefactorCsharpMCP automatically generates Software Bill of Materials (SBOM) during Docker builds for supply chain security and compliance.
+
+**SBOM Features:**
+- **Automatic Generation**: SBOM created during every Docker build using BuildKit
+- **Multi-Stage Scanning**: Captures both build-time (NuGet packages) and runtime dependencies
+- **Dual Format Support**: SPDX (native) and CycloneDX (optional with Syft/Trivy)
+- **Validation**: Automated checks for expected NuGet packages and license coverage
+
+**Requirements:**
+- Docker Desktop >= 4.24 or BuildKit >= 0.12
+- Docker Buildx with `docker-container` driver
+
+**Build with SBOM:**
+```bash
+# Using deployment script (recommended)
+.\scripts\deploy-docker.ps1
+
+# Manual build (exports SBOM to filesystem)
+docker buildx build --sbom=true --output type=local,dest=./sbom-output .
+
+# The deploy script performs dual-build:
+# 1. Export SBOM to sbom.spdx.json
+# 2. Load image to local Docker daemon
+```
+
+**SBOM Files Generated:**
+- `sbom.spdx.json` - SPDX format SBOM (always generated)
+- `sbom.cyclonedx.json` - CycloneDX format (if Syft installed)
+- `sbom-packages-{version}-{timestamp}.csv` - Package summary
+
+**Validate SBOM:**
+```powershell
+# Basic validation
+.\scripts\validate-sbom.ps1
+
+# Validate specific file
+.\scripts\validate-sbom.ps1 -SbomPath "sbom.cyclonedx.json" -Format cyclonedx
+
+# Verbose output with package details
+.\scripts\validate-sbom.ps1 -Verbose
+```
+
+**Validation Checks:**
+- ✅ Valid JSON structure
+- ✅ Format compliance (SPDX 2.3+ or CycloneDX 1.4+)
+- ✅ Minimum package count (default: 80 packages)
+- ✅ Expected NuGet packages present (Microsoft.CodeAnalysis.CSharp, ModelContextProtocol, etc.)
+- ✅ License coverage percentage
+- ✅ Base image dependencies included
+
+**Install Optional Tools (for CycloneDX):**
+```bash
+# Syft (Anchore SBOM generator)
+choco install syft
+
+# Trivy (Security scanner with SBOM generation)
+choco install trivy
+```
+
+**Performance Impact:**
+- First-time builds: 5-10 minutes (buildkit-syft-scanner download ~14 MB)
+- Subsequent builds: +30-50% build time overhead
+- Cached builds: Minimal impact due to BuildKit layer caching
+
+**NTIA Compliance:**
+The generated SBOM includes all components required for NTIA minimum elements:
+- Component names and versions
+- Dependency relationships
+- Author/supplier information (where available)
+- License information
+- Timestamps
+
 **Image Reproducibility:**
 - Base images are pinned to SHA256 digests for reproducible builds
 - Update digests quarterly or when security patches are released
