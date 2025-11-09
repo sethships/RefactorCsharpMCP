@@ -353,6 +353,7 @@ public class ExtractClass : RefactoringBase
     /// <summary>
     /// Finds a nested type declaration by name.
     /// Uses BaseTypeDeclarationSyntax for polymorphism (supports class, struct, record, enum, interface).
+    /// NOTE: Does not support nested delegate types as they inherit from BaseMethodDeclarationSyntax, not BaseTypeDeclarationSyntax.
     /// </summary>
     private BaseTypeDeclarationSyntax? FindNestedType(ClassDeclarationSyntax classDeclaration, string typeName)
     {
@@ -625,8 +626,13 @@ public class ExtractClass : RefactoringBase
                 return base.VisitIdentifierName(node);
             }
 
-            // Do NOT transform type symbols (nested types) - those are handled by VisitQualifiedName
-            // Type references (in new expressions, variable declarations, etc.) should remain as-is
+            // Do NOT transform type symbols (INamedTypeSymbol) in identifier contexts
+            // Rationale:
+            // - Type references in variable declarations (e.g., 'MyType myVar') should NOT become '_field.MyType'
+            // - Type references in object creation (e.g., 'new MyType()') should NOT become 'new _field.MyType()'
+            // - Type references in type parameters (e.g., 'List<MyType>') should NOT be transformed
+            // - Only qualified type names (OriginalClass.MyType) need transformation, handled by VisitQualifiedName
+            // This prevents InvalidCastException when Roslyn tries to use member access in type contexts
             if (symbolInfo.Symbol is INamedTypeSymbol)
             {
                 return base.VisitIdentifierName(node);
@@ -661,6 +667,11 @@ public class ExtractClass : RefactoringBase
         public override SyntaxNode? VisitQualifiedName(QualifiedNameSyntax node)
         {
             // Handle qualified type names like: OriginalClass.NestedType
+            // NOTE: Currently handles two-level qualified names only.
+            // Multi-level nesting (e.g., Outer.Middle.Inner) will be handled recursively
+            // by base visitor, but only the rightmost qualification is checked here.
+            // For complex nested scenarios, consider explicit multi-level support in future versions.
+
             // Get the symbol for the right side (the nested type name)
             var symbolInfo = _semanticModel.GetSymbolInfo(node.Right);
             if (symbolInfo.Symbol == null)

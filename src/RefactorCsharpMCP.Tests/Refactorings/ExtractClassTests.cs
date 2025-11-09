@@ -1287,5 +1287,72 @@ public class Service
         result.Message.Should().Contain("1 nested type(s)");
     }
 
+    [Fact]
+    public void ExtractClass_WithNestedInterface_ExtractsSuccessfully()
+    {
+        // Arrange
+        var sourceCode = @"public class Container
+{
+    private string _data;
+
+    public interface IProcessor
+    {
+        void Process();
+        string GetResult();
+    }
+
+    public void Execute(IProcessor processor)
+    {
+        processor.Process();
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "Container", "Interfaces", null, null, "IProcessor");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("public class Interfaces");
+        result.RefactoredCode.Should().Contain("public interface IProcessor");
+        result.RefactoredCode.Should().Contain("void Process();");
+        result.RefactoredCode.Should().Contain("string GetResult();");
+    }
+
+    [Fact]
+    public void ExtractClass_WithNestedTypeAsFieldType_PreservesFieldDeclaration()
+    {
+        // Arrange
+        var sourceCode = @"public class Container
+{
+    public class Config
+    {
+        public string Setting { get; set; }
+    }
+
+    private Config _config;
+
+    public void Initialize()
+    {
+        _config = new Config();
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "Container", "Configuration", null, null, "Config");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("public class Configuration");
+        result.RefactoredCode.Should().Contain("public class Config");
+        // Critical: Field type reference should remain as 'Config', not '_configuration.Config'
+        result.RefactoredCode.Should().Contain("private Config _config");
+        result.RefactoredCode.Should().NotContain("private _configuration.Config");
+        // Object creation should also use 'Config' directly
+        result.RefactoredCode.Should().Contain("new Config()");
+        result.RefactoredCode.Should().NotContain("new _configuration.Config()");
+    }
+
     #endregion
 }
