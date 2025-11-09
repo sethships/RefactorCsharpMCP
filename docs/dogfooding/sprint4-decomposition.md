@@ -68,9 +68,11 @@ For each extraction, we will document:
 
 ### CodeSelectionAnalyzer Extraction
 
-**Status**: ✅ Completed
+**Status**: ✅ Completed (Manual - Tool Not Available)
 **Date**: 2025-11-08
-**Approach**: Manual extraction following extract_class pattern
+**Approach**: Manual extraction - MCP server not available during active development
+
+⚠️ **Note**: The `extract_class` MCP tool was not available for this extraction because we are actively developing the MCP server itself. This extraction was performed manually to avoid circular dependency. The evaluation below documents what the tool would need to handle if it were available.
 
 #### What extract_class Would Need to Do
 
@@ -88,9 +90,9 @@ For each extraction, we will document:
    - Preserve LINQ query formatting
    - Maintain 1-based line number logic
 
-#### Generated Code Quality
+#### Manual Extraction Results
 
-**Success Rate**: 100% (2/2 methods extracted correctly)
+**Methods Extracted**: 2/2 (FindContainingMethod, FindStatementsInLineRange)
 
 **Code Generated**:
 - 62 lines total
@@ -98,26 +100,21 @@ For each extraction, we will document:
 - XML documentation added/updated
 - No dependencies or constructor needed (stateless analyzer)
 
-#### Manual Adjustments Required
+#### Manual Adjustments Made
 
 1. **Parameter Type Update**: Changed `SyntaxNode` to `CompilationUnitSyntax` for `FindContainingMethod` - the more specific type improves type safety
 2. **XML Documentation**: Enhanced parameter descriptions to clarify 1-based line numbering
 3. **Namespace**: Ensured correct namespace (not ExtractMethod subfolder due to conflict)
 
-#### Time Tracking
+#### Time Tracking (Manual Effort)
 
-- **Tool-Assisted (Estimated)**: 5 minutes
-  - Read source: 1 min
-  - Run extract_class tool: 1 min
-  - Review/adjust: 3 min
-
-- **Actual Manual**: 8 minutes
+**Total Time**: 8 minutes
   - Read source: 2 min
   - Copy methods: 2 min
   - Update signatures/docs: 3 min
   - Build/verify: 1 min
 
-**Time Savings**: ~38% if tool were available
+**Note**: No tool comparison available since extraction was manual.
 
 #### Quality Assessment
 
@@ -143,9 +140,15 @@ For each extraction, we will document:
 
 #### Overall Assessment
 
-**Difficulty**: Low
-**Success**: Complete
-**Tool Readiness**: This extraction would be trivial for extract_class tool - no edge cases, no dependencies, straightforward code movement.
+**Manual Difficulty**: Low
+**Completion Status**: Complete
+**Tool Requirements Analysis**: This extraction would be straightforward for extract_class tool:
+  - No edge cases encountered
+  - No dependencies to manage
+  - Straightforward code movement
+  - Main challenge: Type specificity analysis (choosing `CompilationUnitSyntax` over `SyntaxNode`)
+
+**Value of This Exercise**: Provides real-world requirements for what the tool must handle, even though the tool itself wasn't used.
 
 ### ParameterExtractor Extraction
 
