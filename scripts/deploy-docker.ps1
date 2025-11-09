@@ -202,23 +202,98 @@ try {
         Write-Success "Removed previous image: ${ImageName}:${Version}"
     }
 
-    # Step 4: Build Docker image
-    Write-Header "Building Docker Image"
+    # Step 4: Build Docker image with SBOM generation
+    Write-Header "Building Docker Image with SBOM"
     Write-Info "Building ${ImageName}:${Version}..."
 
+    # Ensure buildx builder exists for SBOM support
+    Write-Info "Checking buildx builder..."
+    $builderCheck = docker buildx ls 2>&1 | Select-String "sbom-builder"
+    if (-not $builderCheck) {
+        Write-Info "Creating buildx builder for SBOM support..."
+        docker buildx create --name sbom-builder --driver docker-container --bootstrap 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning-Custom "Failed to create buildx builder, using default"
+        } else {
+            Write-Success "Created buildx builder: sbom-builder"
+        }
+    }
+
+    # Use sbom-builder if available, otherwise use default
+    $currentBuilder = docker buildx ls 2>&1 | Select-String "\*.*sbom-builder"
+    if (-not $currentBuilder) {
+        docker buildx use sbom-builder 2>&1 | Out-Null
+    }
+
     $buildStart = Get-Date
-    docker build -t "${ImageName}:${Version}" -t "${ImageName}:latest" . 2>&1 | ForEach-Object {
+
+    # Build strategy: First export SBOM to filesystem, then load image locally
+    Write-Info "Building with SBOM export (step 1/2)..."
+
+    # Capture full output for debugging
+    # Note: dest path must not have quotes around the entire parameter
+    $sbomOutputPath = Join-Path $ProjectRoot "sbom-output"
+    $buildOutput = docker buildx build `
+        --sbom=true `
+        --output "type=local,dest=$sbomOutputPath" `
+        . 2>&1
+
+    # Display build steps
+    $buildOutput | ForEach-Object {
         if ($_ -match "^#") {
             Write-Info $_
         }
     }
 
-    if ($LASTEXITCODE -ne 0) {
-        throw "Docker build failed"
+    # Check for errors in output
+    $hasError = $buildOutput | Where-Object { $_ -match "error|failed" -and $_ -notmatch "^#" }
+    if ($LASTEXITCODE -ne 0 -or $hasError) {
+        Write-Error-Custom "Docker buildx output:"
+        $buildOutput | ForEach-Object { Write-Host $_ -ForegroundColor Red }
+        throw "Docker build with SBOM export failed (exit code: $LASTEXITCODE)"
+    }
+
+    # Move SBOM to project root and clean up
+    if (Test-Path "${ProjectRoot}\sbom-output\sbom.spdx.json") {
+        Move-Item -Path "${ProjectRoot}\sbom-output\sbom.spdx.json" -Destination "${ProjectRoot}\sbom.spdx.json" -Force
+        Write-Success "SBOM exported: sbom.spdx.json"
+    } else {
+        Write-Warning-Custom "SBOM file not found in output directory"
+    }
+
+    # Clean up sbom-output directory
+    if (Test-Path "${ProjectRoot}\sbom-output") {
+        Remove-Item -Path "${ProjectRoot}\sbom-output" -Recurse -Force
+    }
+
+    # Build and load image locally (step 2/2)
+    Write-Info "Building and loading image locally (step 2/2)..."
+
+    # Capture full output
+    $buildOutput2 = docker buildx build `
+        --sbom=true `
+        --tag "${ImageName}:${Version}" `
+        --tag "${ImageName}:latest" `
+        --load `
+        . 2>&1
+
+    # Display build steps
+    $buildOutput2 | ForEach-Object {
+        if ($_ -match "^#") {
+            Write-Info $_
+        }
+    }
+
+    # Check for errors
+    $hasError2 = $buildOutput2 | Where-Object { $_ -match "error|failed" -and $_ -notmatch "^#" }
+    if ($LASTEXITCODE -ne 0 -or $hasError2) {
+        Write-Error-Custom "Docker buildx output:"
+        $buildOutput2 | ForEach-Object { Write-Host $_ -ForegroundColor Red }
+        throw "Docker build with load failed (exit code: $LASTEXITCODE)"
     }
 
     $buildDuration = (Get-Date) - $buildStart
-    Write-Success "Image built successfully in $($buildDuration.TotalSeconds.ToString('F2')) seconds"
+    Write-Success "Image built successfully with SBOM in $($buildDuration.TotalSeconds.ToString('F2')) seconds"
 
     # Step 5: Inspect image
     Write-Header "Image Inspection"
@@ -226,6 +301,52 @@ try {
     $imageSize = [math]::Round($imageInfo[0].Size / 1MB, 2)
     Write-Info "Image Size: ${imageSize} MB"
     Write-Info "Created: $($imageInfo[0].Created)"
+
+    # Step 5.5: SBOM Validation
+    if (Test-Path "${ProjectRoot}\sbom.spdx.json") {
+        Write-Header "SBOM Validation"
+        Write-Info "Analyzing SBOM content..."
+
+        try {
+            $sbom = Get-Content "${ProjectRoot}\sbom.spdx.json" -Raw | ConvertFrom-Json
+            $packageCount = ($sbom.packages | Measure-Object).Count
+            Write-Info "Total packages in SBOM: $packageCount"
+
+            # Check for key NuGet packages
+            $keyPackages = @(
+                "Microsoft.CodeAnalysis.CSharp",
+                "ModelContextProtocol",
+                "Microsoft.Extensions.Hosting"
+            )
+
+            $foundCount = 0
+            foreach ($pkg in $keyPackages) {
+                $found = $sbom.packages | Where-Object { $_.name -like "*$pkg*" }
+                if ($found) {
+                    Write-Success "Found: $($found.name)"
+                    $foundCount++
+                } else {
+                    Write-Warning-Custom "Expected package not found: $pkg"
+                }
+            }
+
+            if ($foundCount -eq $keyPackages.Count) {
+                Write-Success "All key packages validated in SBOM"
+            } else {
+                Write-Warning-Custom "Some expected packages missing from SBOM ($foundCount/$($keyPackages.Count))"
+            }
+
+            # Save package summary
+            $sbom.packages | Select-Object name, versionInfo, licenseConcluded |
+                Export-Csv -Path "${ProjectRoot}\sbom-packages.csv" -NoTypeInformation
+            Write-Info "Package list exported to sbom-packages.csv"
+
+        } catch {
+            Write-Warning-Custom "Failed to validate SBOM: $($_.Exception.Message)"
+        }
+    } else {
+        Write-Warning-Custom "SBOM file not found, skipping validation"
+    }
 
     # Step 6: Health check
     Write-Header "Container Health Check"
@@ -258,6 +379,50 @@ try {
     docker stop $containerId 2>&1 | Out-Null
     docker rm $containerId 2>&1 | Out-Null
     Write-Info "Test container cleaned up"
+
+    # Step 6.5: CycloneDX SBOM Generation (Optional)
+    Write-Header "CycloneDX SBOM Generation"
+
+    # Check for Syft
+    $syftAvailable = Get-Command syft -ErrorAction SilentlyContinue
+    if ($syftAvailable) {
+        Write-Info "Generating CycloneDX SBOM with Syft..."
+        try {
+            syft "${ImageName}:${Version}" -o cyclonedx-json | Out-File -Encoding utf8 "${ProjectRoot}\sbom.cyclonedx.json"
+            if ($LASTEXITCODE -eq 0 -and (Test-Path "${ProjectRoot}\sbom.cyclonedx.json")) {
+                Write-Success "CycloneDX SBOM generated: sbom.cyclonedx.json"
+
+                # Validate CycloneDX SBOM size
+                $cycloneDxFile = Get-Item "${ProjectRoot}\sbom.cyclonedx.json"
+                if ($cycloneDxFile.Length -gt 1KB) {
+                    Write-Info "CycloneDX SBOM size: $([math]::Round($cycloneDxFile.Length / 1KB, 2)) KB"
+                } else {
+                    Write-Warning-Custom "CycloneDX SBOM file seems too small, may be incomplete"
+                }
+            } else {
+                Write-Warning-Custom "Syft CycloneDX generation failed"
+            }
+        } catch {
+            Write-Warning-Custom "Error generating CycloneDX SBOM: $($_.Exception.Message)"
+        }
+    } else {
+        Write-Warning-Custom "Syft not installed, skipping CycloneDX generation"
+        Write-Info "Install with: choco install syft"
+    }
+
+    # Check for Trivy as alternative/additional scanner
+    $trivyAvailable = Get-Command trivy -ErrorAction SilentlyContinue
+    if ($trivyAvailable) {
+        Write-Info "Generating additional CycloneDX SBOM with Trivy..."
+        try {
+            trivy image --format cyclonedx "${ImageName}:${Version}" | Out-File -Encoding utf8 "${ProjectRoot}\sbom.cyclonedx-trivy.json"
+            if ($LASTEXITCODE -eq 0 -and (Test-Path "${ProjectRoot}\sbom.cyclonedx-trivy.json")) {
+                Write-Success "Trivy CycloneDX SBOM generated: sbom.cyclonedx-trivy.json"
+            }
+        } catch {
+            Write-Warning-Custom "Trivy CycloneDX generation failed: $($_.Exception.Message)"
+        }
+    }
 
     # Step 7: Security scanning
     # Force security scan for production versions
