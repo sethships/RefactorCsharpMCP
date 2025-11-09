@@ -163,18 +163,33 @@ public class ExtractClassTests
     }
 
     [Fact]
-    public void Execute_WithEmptyFieldNames_ShouldReturnFailure()
+    public void Execute_WithEmptyFieldNamesAndMethods_ShouldReturnFailure()
     {
         // Arrange
         var sourceCode = "public class Test { }";
         var refactoring = new ExtractClass();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "Test", "NewClass", "");
+        var result = refactoring.Execute(sourceCode, "Test", "NewClass", "", "");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
-        result.ErrorMessage.Should().Contain("Field names cannot be empty");
+        result.ErrorMessage.Should().Contain("At least one field or method name must be specified");
+    }
+
+    [Fact]
+    public void Execute_WithNullFieldNamesAndMethods_ShouldReturnFailure()
+    {
+        // Arrange
+        var sourceCode = "public class Test { }";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "Test", "NewClass", null, null);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorMessage.Should().Contain("At least one field or method name must be specified");
     }
 
     [Fact]
@@ -770,6 +785,229 @@ public class OtherService
 
         // Should contain the extracted class
         result.RefactoredCode.Should().Contain("public class Address");
+    }
+
+    #endregion
+
+    #region Method-Only Extraction Tests (Service Class Pattern)
+
+    [Fact]
+    public void Execute_WithMethodsOnly_NoFields_ShouldExtractSuccessfully()
+    {
+        // Arrange
+        var sourceCode = @"public class InlineMethod
+{
+    private string _data;
+
+    private bool IsSimpleType(string typeName)
+    {
+        return typeName == ""int"" || typeName == ""string"" || typeName == ""bool"";
+    }
+
+    private bool IsRecursive(string methodName)
+    {
+        return methodName.Contains(""Recursive"");
+    }
+
+    public void Process()
+    {
+        var simple = IsSimpleType(""int"");
+        var recursive = IsRecursive(""TestMethod"");
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act - Extract only methods, no fields
+        var result = refactoring.Execute(sourceCode, "InlineMethod", "TypeChecker", null, "IsSimpleType,IsRecursive");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("public class TypeChecker");
+        result.RefactoredCode.Should().Contain("private bool IsSimpleType(string typeName)");
+        result.RefactoredCode.Should().Contain("private bool IsRecursive(string methodName)");
+        result.RefactoredCode.Should().Contain("private readonly TypeChecker _typeChecker = new TypeChecker();");
+        result.RefactoredCode.Should().Contain("_typeChecker.IsSimpleType(");
+        result.RefactoredCode.Should().Contain("_typeChecker.IsRecursive(");
+
+        // Verify the original field is still in InlineMethod
+        result.RefactoredCode.Should().Contain("private string _data;");
+    }
+
+    [Fact]
+    public void Execute_WithMultipleMethodsOnly_ShouldExtractAllMethods()
+    {
+        // Arrange
+        var sourceCode = @"public class UserService
+{
+    private string _userName;
+
+    private void ValidateUser(string user)
+    {
+        // Validation logic
+    }
+
+    private string FormatUserName(string name)
+    {
+        return name.ToUpper();
+    }
+
+    private bool IsAdmin(string user)
+    {
+        return user == ""admin"";
+    }
+
+    public void ProcessUser()
+    {
+        ValidateUser(_userName);
+        var formatted = FormatUserName(_userName);
+        var admin = IsAdmin(_userName);
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act - Extract three methods without any fields
+        var result = refactoring.Execute(sourceCode, "UserService", "UserValidator", null, "ValidateUser,FormatUserName,IsAdmin");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("public class UserValidator");
+        result.RefactoredCode.Should().Contain("private void ValidateUser(string user)");
+        result.RefactoredCode.Should().Contain("private string FormatUserName(string name)");
+        result.RefactoredCode.Should().Contain("private bool IsAdmin(string user)");
+        result.RefactoredCode.Should().Contain("private readonly UserValidator _userValidator = new UserValidator();");
+
+        // Verify method calls are updated
+        result.RefactoredCode.Should().Contain("_userValidator.ValidateUser(");
+        result.RefactoredCode.Should().Contain("_userValidator.FormatUserName(");
+        result.RefactoredCode.Should().Contain("_userValidator.IsAdmin(");
+
+        // Original field should remain in UserService
+        result.RefactoredCode.Should().Contain("private string _userName;");
+    }
+
+    [Fact]
+    public void Execute_ServicePattern_RealWorldScenario()
+    {
+        // Arrange - Simulating the MethodResolver use case from Issue #99
+        var sourceCode = @"using System;
+
+public class InlineMethod
+{
+    private ILogger? _logger;
+    private string _sourceCode;
+
+    private MethodInfo? ExtractMethodInfo(string code)
+    {
+        _logger?.Log(""Extracting method info"");
+        // Complex extraction logic
+        return new MethodInfo();
+    }
+
+    private ValidationResult CanMethodBeInlined(MethodInfo method)
+    {
+        _logger?.Log(""Validating method"");
+        // Validation logic
+        return new ValidationResult { IsValid = true };
+    }
+
+    private bool IsRecursive(MethodInfo method)
+    {
+        // Recursion check logic
+        return false;
+    }
+
+    private bool IsSimpleType(string typeName)
+    {
+        return typeName == ""int"" || typeName == ""string"";
+    }
+
+    public void InlineTheMethod()
+    {
+        var methodInfo = ExtractMethodInfo(_sourceCode);
+        if (methodInfo != null)
+        {
+            var validation = CanMethodBeInlined(methodInfo);
+            var recursive = IsRecursive(methodInfo);
+            var simple = IsSimpleType(""int"");
+        }
+    }
+}
+
+public class MethodInfo { }
+public class ValidationResult { public bool IsValid { get; set; } }
+public interface ILogger { void Log(string msg); }";
+        var refactoring = new ExtractClass();
+
+        // Act - Extract all four methods into MethodResolver service class
+        var result = refactoring.Execute(
+            sourceCode,
+            "InlineMethod",
+            "MethodResolver",
+            null, // No fields to extract
+            "ExtractMethodInfo,CanMethodBeInlined,IsRecursive,IsSimpleType");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+
+        // Verify service class created
+        result.RefactoredCode.Should().Contain("public class MethodResolver");
+
+        // Verify all methods extracted
+        result.RefactoredCode.Should().Contain("private MethodInfo? ExtractMethodInfo(string code)");
+        result.RefactoredCode.Should().Contain("private ValidationResult CanMethodBeInlined(MethodInfo method)");
+        result.RefactoredCode.Should().Contain("private bool IsRecursive(MethodInfo method)");
+        result.RefactoredCode.Should().Contain("private bool IsSimpleType(string typeName)");
+
+        // Verify composition field created
+        result.RefactoredCode.Should().Contain("private readonly MethodResolver _methodResolver = new MethodResolver();");
+
+        // Verify method calls updated in original class
+        result.RefactoredCode.Should().Contain("_methodResolver.ExtractMethodInfo(");
+        result.RefactoredCode.Should().Contain("_methodResolver.CanMethodBeInlined(");
+        result.RefactoredCode.Should().Contain("_methodResolver.IsRecursive(");
+        result.RefactoredCode.Should().Contain("_methodResolver.IsSimpleType(");
+
+        // Verify original fields remain in InlineMethod
+        var inlineMethodStart = result.RefactoredCode.IndexOf("public class InlineMethod");
+        var methodResolverStart = result.RefactoredCode.IndexOf("public class MethodResolver");
+        inlineMethodStart.Should().BeGreaterThan(-1);
+        methodResolverStart.Should().BeGreaterThan(inlineMethodStart);
+
+        var inlineMethodSection = result.RefactoredCode.Substring(
+            inlineMethodStart,
+            methodResolverStart - inlineMethodStart);
+        inlineMethodSection.Should().Contain("private ILogger? _logger;");
+        inlineMethodSection.Should().Contain("private string _sourceCode;");
+    }
+
+    [Fact]
+    public void Execute_WithMethodsOnlyAndFileScopedNamespace_ShouldExtract()
+    {
+        // Arrange
+        var sourceCode = @"namespace MyApp;
+
+public class Service
+{
+    private void HelperMethod()
+    {
+        // Logic
+    }
+
+    public void MainMethod()
+    {
+        HelperMethod();
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "Service", "Helper", null, "HelperMethod");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("public class Helper");
+        result.RefactoredCode.Should().Contain("private void HelperMethod()");
+        result.RefactoredCode.Should().Contain("_helper.HelperMethod()");
     }
 
     #endregion
