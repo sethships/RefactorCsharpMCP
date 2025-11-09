@@ -28,28 +28,8 @@ internal sealed class ParameterMapper
         InvocationExpressionSyntax invocation,
         SemanticModel semanticModel)
     {
-        var arguments = invocation.ArgumentList.Arguments;
-        if (arguments.Count != methodInfo.Parameters.Count)
-        {
-            // This should never happen for valid C# code that passed compilation
-            // If it does, it indicates a serious semantic analysis bug - fail fast
-            _logger?.LogError(
-                "Argument count mismatch during parameter substitution: expected {Expected}, got {Actual}.",
-                methodInfo.Parameters.Count,
-                arguments.Count);
-
-            throw new InvalidOperationException(
-                $"Argument count mismatch during parameter substitution: " +
-                $"expected {methodInfo.Parameters.Count} parameters, got {arguments.Count} arguments. " +
-                "This indicates a compiler semantic analysis error.");
-        }
-
-        // Create a mapping from parameter symbol to argument expression
-        var parameterMap = new Dictionary<IParameterSymbol, ExpressionSyntax>(SymbolEqualityComparer.Default);
-        for (int i = 0; i < methodInfo.Parameters.Count; i++)
-        {
-            parameterMap[methodInfo.Parameters[i]] = arguments[i].Expression;
-        }
+        // Create parameter-to-argument mapping with validation
+        var parameterMap = CreateParameterMap(methodInfo, invocation);
 
         // Replace all parameter references with arguments using semantic analysis
         var newExpression = expression.ReplaceNodes(
@@ -86,28 +66,8 @@ internal sealed class ParameterMapper
         InvocationExpressionSyntax invocation,
         SemanticModel semanticModel)
     {
-        var arguments = invocation.ArgumentList.Arguments;
-        if (arguments.Count != methodInfo.Parameters.Count)
-        {
-            // This should never happen for valid C# code that passed compilation
-            // If it does, it indicates a serious semantic analysis bug - fail fast
-            _logger?.LogError(
-                "Argument count mismatch during parameter substitution: expected {Expected}, got {Actual}.",
-                methodInfo.Parameters.Count,
-                arguments.Count);
-
-            throw new InvalidOperationException(
-                $"Argument count mismatch during parameter substitution: " +
-                $"expected {methodInfo.Parameters.Count} parameters, got {arguments.Count} arguments. " +
-                "This indicates a compiler semantic analysis error.");
-        }
-
-        // Create a mapping from parameter symbol to argument expression
-        var parameterMap = new Dictionary<IParameterSymbol, ExpressionSyntax>(SymbolEqualityComparer.Default);
-        for (int i = 0; i < methodInfo.Parameters.Count; i++)
-        {
-            parameterMap[methodInfo.Parameters[i]] = arguments[i].Expression;
-        }
+        // Create parameter-to-argument mapping with validation
+        var parameterMap = CreateParameterMap(methodInfo, invocation);
 
         // Replace all parameter references with arguments using semantic analysis
         var newStatement = statement.ReplaceNodes(
@@ -132,6 +92,46 @@ internal sealed class ParameterMapper
             });
 
         return newStatement;
+    }
+
+    /// <summary>
+    /// Creates a mapping from method parameters to invocation arguments with validation.
+    /// Validates that argument count matches parameter count and throws if mismatch detected.
+    /// </summary>
+    /// <param name="methodInfo">The method information containing parameters.</param>
+    /// <param name="invocation">The invocation expression containing arguments.</param>
+    /// <returns>A dictionary mapping parameter symbols to argument expressions.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when argument count doesn't match parameter count.</exception>
+    private Dictionary<IParameterSymbol, ExpressionSyntax> CreateParameterMap(
+        MethodInfo methodInfo,
+        InvocationExpressionSyntax invocation)
+    {
+        var arguments = invocation.ArgumentList.Arguments;
+
+        // Validate argument count matches parameter count
+        if (arguments.Count != methodInfo.Parameters.Count)
+        {
+            // This should never happen for valid C# code that passed compilation
+            // If it does, it indicates a serious semantic analysis bug - fail fast
+            _logger?.LogError(
+                "Argument count mismatch during parameter substitution: expected {Expected}, got {Actual}.",
+                methodInfo.Parameters.Count,
+                arguments.Count);
+
+            throw new InvalidOperationException(
+                $"Argument count mismatch during parameter substitution: " +
+                $"expected {methodInfo.Parameters.Count} parameters, got {arguments.Count} arguments. " +
+                "This indicates a compiler semantic analysis error.");
+        }
+
+        // Create a mapping from parameter symbol to argument expression
+        var parameterMap = new Dictionary<IParameterSymbol, ExpressionSyntax>(SymbolEqualityComparer.Default);
+        for (int i = 0; i < methodInfo.Parameters.Count; i++)
+        {
+            parameterMap[methodInfo.Parameters[i]] = arguments[i].Expression;
+        }
+
+        return parameterMap;
     }
 
     /// <summary>

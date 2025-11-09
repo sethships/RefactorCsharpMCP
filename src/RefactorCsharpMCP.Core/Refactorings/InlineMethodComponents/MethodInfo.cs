@@ -6,8 +6,9 @@ namespace RefactorCsharpMCP.Core.Refactorings.InlineMethodComponents;
 /// <summary>
 /// Information about a method to be inlined.
 /// Immutable record that encapsulates method metadata and body information.
+/// Provides value-based equality and with-expression support for non-destructive mutation.
 /// </summary>
-internal sealed class MethodInfo
+internal sealed record MethodInfo
 {
     /// <summary>
     /// The Roslyn symbol representing the method.

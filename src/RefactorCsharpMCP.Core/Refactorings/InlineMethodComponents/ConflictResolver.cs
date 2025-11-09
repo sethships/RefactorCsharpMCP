@@ -165,15 +165,12 @@ internal sealed class ConflictResolver
             return methodInfo;
         }
 
-        // Return updated MethodInfo
-        return new MethodInfo
+        // Return updated MethodInfo using with-expression (enabled by record type)
+        return methodInfo with
         {
-            Symbol = methodInfo.Symbol,
             MethodDeclaration = renamedDeclaration,
             BlockBody = renamedDeclaration.Body,
-            ExpressionBody = renamedDeclaration.ExpressionBody,
-            IsVoid = methodInfo.IsVoid,
-            Parameters = methodInfo.Parameters
+            ExpressionBody = renamedDeclaration.ExpressionBody
         };
     }
 
