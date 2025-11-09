@@ -660,6 +660,129 @@ const result = await use_mcp_tool({
 - Method calls automatically updated within same class
 - Perfect for decomposing large classes into smaller, focused services
 
+### Encapsulation Through Internal Visibility
+
+Extract Class automatically creates extracted classes and methods with `internal` visibility to enforce proper encapsulation through the composition pattern. This design prevents external code from directly accessing implementation details.
+
+**Design Rationale:**
+- **Encapsulation**: Extracted classes are implementation details of the original class
+- **Composition Pattern**: Access should always go through the composition field (`_extractedClass._field`)
+- **Flexibility**: You can manually change visibility to `public` after extraction if needed
+
+**Example - Internal Class Visibility:**
+```csharp
+// Before extraction
+public class UserService
+{
+    private string _username;
+    private IDatabase _database;
+
+    public void SaveUser()
+    {
+        _database.Save(_username);
+    }
+}
+
+// After extracting _username into UserProfile
+public class UserService
+{
+    private readonly UserProfile _userProfile = new UserProfile();
+    private IDatabase _database;
+
+    public void SaveUser()
+    {
+        _database.Save(_userProfile._username);
+    }
+}
+
+// Extracted class is internal (not public)
+internal class UserProfile
+{
+    internal string _username;
+}
+```
+
+**Example - Internal Method Accessibility:**
+```csharp
+// Before extraction
+public class OrderService
+{
+    private decimal _total;
+
+    private decimal CalculateTax()
+    {
+        return _total * 0.08m;
+    }
+
+    private decimal CalculateShipping()
+    {
+        return _total > 100 ? 0 : 10;
+    }
+
+    public decimal GetFinalTotal()
+    {
+        return _total + CalculateTax() + CalculateShipping();
+    }
+}
+
+// After extracting calculation methods
+public class OrderService
+{
+    private decimal _total;
+    private readonly PricingCalculator _pricingCalculator = new PricingCalculator();
+
+    public decimal GetFinalTotal()
+    {
+        return _total + _pricingCalculator.CalculateTax() + _pricingCalculator.CalculateShipping();
+    }
+}
+
+// Extracted methods are internal (not public)
+internal class PricingCalculator
+{
+    internal decimal CalculateTax()
+    {
+        // Tax calculation logic
+    }
+
+    internal decimal CalculateShipping()
+    {
+        // Shipping calculation logic
+    }
+}
+```
+
+**When to Make Extracted Classes Public:**
+
+You may want to manually change visibility after extraction in these cases:
+
+1. **Shared Services**: When the extracted class should be used by other classes:
+   ```csharp
+   // Change from internal to public after extraction
+   public class ValidationRules
+   {
+       public bool IsValid(string input) { /* ... */ }
+   }
+   ```
+
+2. **API Surface**: When the extracted class is part of your public API:
+   ```csharp
+   // Change from internal to public for API consumers
+   public class Configuration
+   {
+       public string ApiKey { get; set; }
+   }
+   ```
+
+3. **Testing**: When you need to unit test the extracted class directly:
+   ```csharp
+   // Change from internal to public for testing
+   // Or use InternalsVisibleTo attribute
+   public class CalculationEngine { /* ... */ }
+   ```
+
+**Note**: The refactoring always generates `internal` visibility as the safe default. You can manually change to `public` after reviewing the extracted class if needed for your specific use case.
+
 ### Best Practices
 
 1. **Group related fields and methods** - Extract cohesive groups that represent a single concept (e.g., all address-related members).

@@ -389,6 +389,15 @@ public class ExtractClass : RefactoringBase
             .FirstOrDefault(t => t.Identifier.Text == typeName);
     }
 
+    /// <summary>
+    /// Creates a new internal class declaration with the specified members.
+    /// Applies the composition pattern by making the class and its methods internal for encapsulation.
+    /// </summary>
+    /// <param name="newClassName">Name of the new class.</param>
+    /// <param name="fields">Fields to include in the new class.</param>
+    /// <param name="methods">Methods to include (will be transformed to internal accessibility).</param>
+    /// <param name="nestedTypes">Nested types to include in the new class.</param>
+    /// <returns>A class declaration with internal visibility and transformed members.</returns>
     private ClassDeclarationSyntax CreateNewClass(
         string newClassName,
         List<FieldDeclarationSyntax> fields,
