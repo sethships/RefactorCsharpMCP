@@ -968,10 +968,14 @@ public interface ILogger { void Log(string msg); }";
         result.RefactoredCode.Should().Contain("_methodResolver.IsSimpleType(");
 
         // Verify original fields remain in InlineMethod
+        var inlineMethodStart = result.RefactoredCode.IndexOf("public class InlineMethod");
+        var methodResolverStart = result.RefactoredCode.IndexOf("public class MethodResolver");
+        inlineMethodStart.Should().BeGreaterThan(-1);
+        methodResolverStart.Should().BeGreaterThan(inlineMethodStart);
+
         var inlineMethodSection = result.RefactoredCode.Substring(
-            result.RefactoredCode.IndexOf("public class InlineMethod"),
-            result.RefactoredCode.IndexOf("public class MethodResolver") -
-            result.RefactoredCode.IndexOf("public class InlineMethod"));
+            inlineMethodStart,
+            methodResolverStart - inlineMethodStart);
         inlineMethodSection.Should().Contain("private ILogger? _logger;");
         inlineMethodSection.Should().Contain("private string _sourceCode;");
     }

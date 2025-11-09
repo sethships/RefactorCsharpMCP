@@ -29,9 +29,9 @@ public class ExtractClass : RefactoringBase
     /// <param name="sourceCode">The source code containing the class.</param>
     /// <param name="className">The name of the source class.</param>
     /// <param name="newClassName">The name of the new class to create.</param>
-    /// <param name="fieldNames">Comma or semicolon-separated field names to extract (optional if methodNames provided).</param>
+    /// <param name="fieldNames">Comma or semicolon-separated field names to extract. Optional if methodNames is provided; at least one of fieldNames or methodNames must be non-empty.</param>
     /// <param name="targetFramework">The target .NET framework (e.g., "net8.0", "net48").</param>
-    /// <param name="methodNames">Comma or semicolon-separated method names to extract (optional if fieldNames provided).</param>
+    /// <param name="methodNames">Comma or semicolon-separated method names to extract. Optional if fieldNames is provided; at least one of fieldNames or methodNames must be non-empty.</param>
     /// <returns>A result containing the refactored code or error information.</returns>
     public async Task<RefactoringResult> ExecuteAsync(
         string sourceCode,
@@ -53,8 +53,8 @@ public class ExtractClass : RefactoringBase
     /// <param name="sourceCode">The source code containing the class.</param>
     /// <param name="className">The name of the source class.</param>
     /// <param name="newClassName">The name of the new class to create.</param>
-    /// <param name="fieldNames">Comma or semicolon-separated field names to extract (optional if methodNames provided).</param>
-    /// <param name="methodNames">Comma or semicolon-separated method names to extract (optional if fieldNames provided).</param>
+    /// <param name="fieldNames">Comma or semicolon-separated field names to extract. Optional if methodNames is provided; at least one of fieldNames or methodNames must be non-empty.</param>
+    /// <param name="methodNames">Comma or semicolon-separated method names to extract. Optional if fieldNames is provided; at least one of fieldNames or methodNames must be non-empty.</param>
     /// <returns>A result containing the refactored code or error information.</returns>
     public RefactoringResult Execute(
         string sourceCode,

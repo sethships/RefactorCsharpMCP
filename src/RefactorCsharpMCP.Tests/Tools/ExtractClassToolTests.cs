@@ -116,7 +116,7 @@ public class ExtractClassToolTests
 }";
 
         // Act - Extract methods only, no fields
-        var result = await tool.ExtractClass(sourceCode, "Service", "DataValidator", null, "ValidateData,FormatData");
+        var result = await tool.ExtractClass(sourceCode, "Service", "DataValidator", "", "ValidateData,FormatData");
 
         // Assert
         result.Should().NotBeNull();
@@ -140,8 +140,8 @@ public class ExtractClassToolTests
         var tool = new ExtractClassTool();
         var sourceCode = "public class Test { private int _field; }";
 
-        // Act - Both fieldNames and methodNames are null
-        var result = await tool.ExtractClass(sourceCode, "Test", "NewClass", null, null);
+        // Act - Both fieldNames and methodNames are empty/null
+        var result = await tool.ExtractClass(sourceCode, "Test", "NewClass", "", null);
 
         // Assert
         result.Should().NotBeNull();
@@ -200,7 +200,7 @@ public class InlineMethod
 public interface ILogger { }";
 
         // Act - Extract service class with methods only
-        var result = await tool.ExtractClass(sourceCode, "InlineMethod", "TypeChecker", null, "IsSimpleType,IsRecursive");
+        var result = await tool.ExtractClass(sourceCode, "InlineMethod", "TypeChecker", "", "IsSimpleType,IsRecursive");
 
         // Assert
         result.Should().NotBeNull();

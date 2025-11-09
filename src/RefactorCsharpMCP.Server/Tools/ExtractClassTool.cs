@@ -26,7 +26,7 @@ public class ExtractClassTool
         [Description("The complete C# source code")] string sourceCode,
         [Description("The name of the source class")] string className,
         [Description("The name of the new class to create")] string newClassName,
-        [Description("Comma or semicolon-separated field names to extract (optional if methodNames provided)")] string? fieldNames = null,
+        [Description("Comma or semicolon-separated field names to extract (optional if methodNames provided)")] string fieldNames = "",
         [Description("Comma or semicolon-separated method names to extract (optional if fieldNames provided)")] string? methodNames = null)
     {
         // Input validation
@@ -72,17 +72,7 @@ public class ExtractClassTool
             });
         }
 
-        if (string.IsNullOrWhiteSpace(fieldNames) && string.IsNullOrWhiteSpace(methodNames))
-        {
-            return Task.FromResult<object>(new
-            {
-                success = false,
-                error = "At least one field or method name must be specified",
-                message = "Refactoring failed: At least one field or method name must be specified"
-            });
-        }
-
-        // Execute the refactoring
+        // Execute the refactoring (Core layer validates that at least one of fieldNames or methodNames is provided)
         var refactoring = new ExtractClass();
         var result = refactoring.Execute(sourceCode, className, newClassName, fieldNames, methodNames);
 

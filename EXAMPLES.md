@@ -555,14 +555,14 @@ public class InlineMethod
 
     private MethodInfo? ExtractMethodInfo(string code)
     {
-        _logger?.Log("Extracting method info");
+        _logger?.LogInformation("Extracting method info");
         // Complex extraction logic
         return new MethodInfo();
     }
 
     private ValidationResult CanMethodBeInlined(MethodInfo method)
     {
-        _logger?.Log("Validating method");
+        _logger?.LogInformation("Validating method");
         // Validation logic
         return new ValidationResult { IsValid = true };
     }
