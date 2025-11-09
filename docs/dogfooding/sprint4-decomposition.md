@@ -152,7 +152,109 @@ For each extraction, we will document:
 
 ### ParameterExtractor Extraction
 
-_To be filled during Phase 1..._
+**Status**: ⚠️ Tool Limitation Discovered (Real Dogfooding!)
+**Date**: 2025-11-08
+**Approach**: Using extract_class MCP tool - **ACTUAL TOOL EXECUTION**
+
+#### Tool Execution Attempt
+
+**Command**:
+```csharp
+extract_class(
+  sourceCode: ExtractMethod.cs full source,
+  className: "ExtractMethod",
+  newClassName: "ParameterExtractor",
+  methodNames: "AnalyzeDataFlow",
+  nestedTypeNames: "DataFlowInfo;ParameterInfo"
+)
+```
+
+**Result**: ❌ **TOOL FAILED**
+
+**Error Message**:
+```
+"Refactoring failed: Nested type 'DataFlowInfo' not found in class 'ExtractMethod'."
+```
+
+#### Root Cause Analysis
+
+The tool **correctly identified** a structural issue: `DataFlowInfo` and `ParameterInfo` are **NOT** nested types within the `ExtractMethod` class. They are file-level internal classes defined at namespace scope.
+
+**Actual Code Structure** (lines 565-581):
+```csharp
+public class ExtractMethod : RefactoringBase
+{
+    private DataFlowInfo AnalyzeDataFlow(...) { ... }
+    // Uses DataFlowInfo and ParameterInfo
+}
+
+// These are FILE-LEVEL classes at namespace scope, NOT nested!
+internal class DataFlowInfo
+{
+    public List<ParameterInfo> Parameters { get; set; } = new();
+    ...
+}
+
+internal class ParameterInfo
+{
+    public string Name { get; set; } = string.Empty;
+    public string Type { get; set; } = "object";
+}
+```
+
+#### Critical Dogfooding Finding 🎯
+
+**Issue Type**: Tool Limitation - Nested Type Handling
+
+**What Happened**: The `extract_class` tool's `nestedTypeNames` parameter assumes types are truly nested within the source class. It **cannot handle**:
+1. ✗ File-level classes that should be moved together with methods
+2. ✗ Top-level classes at namespace scope that have logical grouping
+3. ✗ Classes defined separately but conceptually belonging to the extracted functionality
+
+**Error Handling Quality**: ⭐⭐⭐⭐ Good
+- Clear error message identifying the specific missing type
+- Failed gracefully without corrupting code
+- Helped diagnose the structural issue
+
+**Tool Behavior**: **CORRECT** - The tool validated its preconditions and failed safely rather than attempting an invalid refactoring.
+
+#### Impact Assessment
+
+**Severity**: Medium
+**Frequency**: Common - Many C# codebases use file-level helper classes instead of nested types
+
+**Real-World Scenario**: In the wild, developers often organize related classes as:
+- Separate top-level classes in the same file (this case)
+- Nested classes within the main class (tool handles this)
+- Separate files entirely (outside tool scope)
+
+The tool currently only handles the middle case.
+
+#### Workaround & Next Steps
+
+Since this is a real tool limitation (not a bug), I'll:
+1. **Document this as Issue #105 reference** (nested type extraction limitation)
+2. **Manually extract** the method and related classes
+3. **Recommend tool enhancement**: Add support for file-level related types
+
+**Recommended Tool Enhancement**:
+```csharp
+// Proposed parameter
+extract_class(
+  ...
+  nestedTypeNames: "ActualNes tedTypes",  // Existing - works
+  fileLevelTypeNames: "DataFlowInfo;ParameterInfo"  // NEW - for file-level classes
+)
+```
+
+#### Value of This Dogfooding
+
+✅ **Discovered real tool limitation** through actual usage
+✅ **Validated error handling** - tool fails safely with clear messages
+✅ **Identified enhancement opportunity** - file-level type extraction
+✅ **Confirms Issue #105** - nested type extraction is indeed limited
+
+_Continuing with manual extraction documented below..._
 
 ### MethodGenerator Extraction
 
