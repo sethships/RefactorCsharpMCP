@@ -3,13 +3,13 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace RefactorCsharpMCP.Core.Refactorings.ExtractMethod;
+namespace RefactorCsharpMCP.Core.Refactorings;
 
 /// <summary>
 /// Analyzes code selection to find the containing method and statements within a line range.
 /// Responsible for discovering the extraction context within the syntax tree.
 /// </summary>
-public class CodeSelectionAnalyzer
+internal class CodeSelectionAnalyzer
 {
     /// <summary>
     /// Finds the method declaration that contains the given line number.

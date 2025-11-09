@@ -6,23 +6,20 @@ using System.Collections.Generic;
 using System.Linq;
 using static Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
 
-namespace RefactorCsharpMCP.Core.Refactorings.ExtractMethod;
+namespace RefactorCsharpMCP.Core.Refactorings;
 
 /// <summary>
 /// Generates new method declarations and method calls for extracted code.
 /// Handles framework-aware syntax generation including tuple returns and modifiers.
+/// Uses SymbolTypeFormatter for consistent type name formatting.
 /// </summary>
-public class MethodGenerator
+internal class MethodGenerator
 {
-    private readonly SymbolTypeFormatter _typeFormatter;
-
     /// <summary>
-    /// Initializes a new instance of MethodGenerator with required dependencies.
+    /// Initializes a new instance of MethodGenerator.
     /// </summary>
-    /// <param name="typeFormatter">Formatter for generating type syntax</param>
-    public MethodGenerator(SymbolTypeFormatter typeFormatter)
+    public MethodGenerator()
     {
-        _typeFormatter = typeFormatter ?? throw new System.ArgumentNullException(nameof(typeFormatter));
     }
 
     /// <summary>

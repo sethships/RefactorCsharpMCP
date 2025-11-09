@@ -1,17 +1,16 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.DataFlowAnalysis;
 using RefactorCsharpMCP.Core.Utilities;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace RefactorCsharpMCP.Core.Refactorings.ExtractMethod;
+namespace RefactorCsharpMCP.Core.Refactorings;
 
 /// <summary>
 /// Analyzes data flow to determine required parameters and return values for extracted methods.
 /// Uses Roslyn's DataFlowAnalysis to identify variables flowing in/out of the selected code region.
 /// </summary>
-public class ParameterExtractor
+internal class ParameterExtractor
 {
     private readonly ReturnValueAnalyzer _returnValueAnalyzer;
 
