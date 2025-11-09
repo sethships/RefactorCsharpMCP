@@ -39,10 +39,9 @@ public class UnusedUsingPatternAnalyzer
         {
             var root = syntaxTree.GetRoot();
 
-            // Get all using directives
+            // Get all using directives (including aliases and static usings)
             var usingDirectives = root.DescendantNodes()
                 .OfType<UsingDirectiveSyntax>()
-                .Where(u => u.Alias == null) // Skip using alias directives (using X = Y)
                 .ToList();
 
             if (!usingDirectives.Any())
@@ -56,7 +55,15 @@ public class UnusedUsingPatternAnalyzer
             // Get all symbols used in the file (excluding the using directives themselves)
             var usedSymbols = GetUsedSymbols(root, semanticModel, usingDirectives);
 
+            // Get types that are accessed via using aliases (these don't require namespace usings)
+            var aliasedTypes = GetAliasedTypes(semanticModel, usingDirectives);
+
+            // Get types that are accessed via static usings (these don't require namespace usings either)
+            var staticUsingTypes = GetStaticUsingTypes(semanticModel, usingDirectives);
+
             _logger?.LogDebug("Found {Count} used symbols in file", usedSymbols.Count);
+            _logger?.LogDebug("Found {Count} aliased types", aliasedTypes.Count);
+            _logger?.LogDebug("Found {Count} static using types", staticUsingTypes.Count);
 
             // Check each using directive
             foreach (var usingDirective in usingDirectives)
@@ -69,7 +76,7 @@ public class UnusedUsingPatternAnalyzer
                     continue;
                 }
 
-                if (!IsUsingDirectiveUsed(usingDirective, semanticModel, usedSymbols))
+                if (!IsUsingDirectiveUsed(usingDirective, semanticModel, usedSymbols, aliasedTypes, staticUsingTypes))
                 {
                     var diagnostic = CreateUnusedUsingDiagnostic(usingDirective);
                     diagnostics.Add(diagnostic);
@@ -183,11 +190,14 @@ public class UnusedUsingPatternAnalyzer
 
     /// <summary>
     /// Checks if a using directive is used in the file.
+    /// Routes to appropriate handler based on directive type (alias, static, or namespace).
     /// </summary>
     private bool IsUsingDirectiveUsed(
         UsingDirectiveSyntax usingDirective,
         SemanticModel semanticModel,
-        HashSet<ISymbol> usedSymbols)
+        HashSet<ISymbol> usedSymbols,
+        HashSet<ITypeSymbol> aliasedTypes,
+        HashSet<ITypeSymbol> staticUsingTypes)
     {
         // Defensive check - Name should never be null for valid using directives
         if (usingDirective.Name == null)
@@ -198,18 +208,19 @@ public class UnusedUsingPatternAnalyzer
 
         try
         {
-            // Get the namespace symbol for this using directive
-            var symbolInfo = semanticModel.GetSymbolInfo(usingDirective.Name);
-
-            if (symbolInfo.Symbol is not INamespaceSymbol namespaceSymbol)
+            // Route based on using directive type
+            if (usingDirective.Alias != null)
             {
-                _logger?.LogDebug("Could not resolve namespace symbol for: {Using}", usingDirective.Name.ToString());
-                // If we can't resolve the symbol, assume it's used to avoid false positives
-                return true;
+                return IsAliasUsed(usingDirective, semanticModel);
             }
 
-            // Check if any used symbol is from this namespace
-            return usedSymbols.Any(symbol => IsSymbolFromNamespace(symbol, namespaceSymbol));
+            if (!usingDirective.StaticKeyword.IsKind(SyntaxKind.None))
+            {
+                return IsStaticUsingUsed(usingDirective, semanticModel, usedSymbols);
+            }
+
+            // Normal namespace using directive
+            return IsNamespaceUsingUsed(usingDirective, semanticModel, usedSymbols, aliasedTypes, staticUsingTypes);
         }
         catch (Exception ex)
         {
@@ -220,6 +231,119 @@ public class UnusedUsingPatternAnalyzer
                 ex.Message);
             return true;
         }
+    }
+
+    /// <summary>
+    /// Checks if a using alias directive is used in the file.
+    /// Example: using StringList = System.Collections.Generic.List&lt;string&gt;;
+    /// Uses semantic analysis to verify binding, preventing false positives from shadowed identifiers or string literals.
+    /// </summary>
+    private bool IsAliasUsed(UsingDirectiveSyntax usingDirective, SemanticModel semanticModel)
+    {
+        if (usingDirective.Alias?.Name == null || usingDirective.Name == null)
+        {
+            return true; // Conservative: assume used
+        }
+
+        var aliasName = usingDirective.Alias.Name.Identifier.Text;
+        var root = semanticModel.SyntaxTree.GetRoot();
+
+        // Get the symbol that the alias refers to
+        var aliasTargetSymbol = semanticModel.GetSymbolInfo(usingDirective.Name).Symbol;
+        if (aliasTargetSymbol == null)
+        {
+            _logger?.LogDebug("Could not resolve target symbol for alias '{Alias}'", aliasName);
+            return true; // Conservative: if we can't resolve, assume used
+        }
+
+        // Check if alias identifier is semantically bound to the aliased type
+        // This prevents false positives from shadowed identifiers or string literals
+        var aliasIsReferenced = root.DescendantNodes()
+            .OfType<IdentifierNameSyntax>()
+            .Where(id => !IsNodeInUsingDirective(id, new List<UsingDirectiveSyntax> { usingDirective }))
+            .Any(id =>
+            {
+                if (id.Identifier.Text != aliasName) return false;
+
+                // Verify that this identifier is semantically bound to the same symbol as the alias
+                var symbolInfo = semanticModel.GetSymbolInfo(id);
+                return SymbolEqualityComparer.Default.Equals(symbolInfo.Symbol, aliasTargetSymbol);
+            });
+
+        _logger?.LogDebug("Using alias '{Alias}' is {Status}",
+            aliasName,
+            aliasIsReferenced ? "used" : "unused");
+
+        return aliasIsReferenced;
+    }
+
+    /// <summary>
+    /// Checks if a static using directive is used in the file.
+    /// Example: using static System.Math;
+    /// </summary>
+    private bool IsStaticUsingUsed(
+        UsingDirectiveSyntax usingDirective,
+        SemanticModel semanticModel,
+        HashSet<ISymbol> usedSymbols)
+    {
+        if (usingDirective.Name == null)
+        {
+            return true; // Conservative: assume used
+        }
+
+        var symbolInfo = semanticModel.GetSymbolInfo(usingDirective.Name);
+
+        if (symbolInfo.Symbol is not INamedTypeSymbol typeSymbol)
+        {
+            _logger?.LogDebug("Could not resolve type symbol for static using: {Using}", usingDirective.Name.ToString());
+            return true; // Conservative: assume used
+        }
+
+        // Check if any used symbol is a static member of this type
+        var staticMemberUsed = usedSymbols.Any(symbol =>
+            symbol.IsStatic &&
+            symbol.ContainingType != null &&
+            (SymbolEqualityComparer.Default.Equals(symbol.ContainingType, typeSymbol) ||
+             symbol.ContainingType.ToDisplayString() == typeSymbol.ToDisplayString()));
+
+        _logger?.LogDebug("Static using '{Type}' is {Status}",
+            typeSymbol.ToDisplayString(),
+            staticMemberUsed ? "used" : "unused");
+
+        return staticMemberUsed;
+    }
+
+    /// <summary>
+    /// Checks if a namespace using directive is used in the file.
+    /// Example: using System.Linq;
+    /// Excludes symbols that are only accessed via using aliases or static usings.
+    /// </summary>
+    private bool IsNamespaceUsingUsed(
+        UsingDirectiveSyntax usingDirective,
+        SemanticModel semanticModel,
+        HashSet<ISymbol> usedSymbols,
+        HashSet<ITypeSymbol> aliasedTypes,
+        HashSet<ITypeSymbol> staticUsingTypes)
+    {
+        if (usingDirective.Name == null)
+        {
+            return true; // Conservative: assume used
+        }
+
+        // Get the namespace symbol for this using directive
+        var symbolInfo = semanticModel.GetSymbolInfo(usingDirective.Name);
+
+        if (symbolInfo.Symbol is not INamespaceSymbol namespaceSymbol)
+        {
+            _logger?.LogDebug("Could not resolve namespace symbol for: {Using}", usingDirective.Name.ToString());
+            // If we can't resolve the symbol, assume it's used to avoid false positives
+            return true;
+        }
+
+        // Check if any used symbol is from this namespace, excluding symbols accessed via aliases or static usings
+        return usedSymbols.Any(symbol =>
+            IsSymbolFromNamespace(symbol, namespaceSymbol) &&
+            !IsSymbolAccessedViaAliasOrStaticUsing(symbol, aliasedTypes, staticUsingTypes));
     }
 
     /// <summary>
@@ -344,5 +468,100 @@ public class UnusedUsingPatternAnalyzer
             descriptor,
             usingDirective.GetLocation(),
             usingDirective.Name!.ToString()); // Null-forgiving: Name validated by caller
+    }
+
+    /// <summary>
+    /// Gets all types that are accessed via using alias directives.
+    /// These types don't require their namespace to be imported via using directives.
+    /// </summary>
+    private HashSet<ITypeSymbol> GetAliasedTypes(SemanticModel semanticModel, List<UsingDirectiveSyntax> usingDirectives)
+    {
+        var aliasedTypes = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default);
+
+        foreach (var usingDirective in usingDirectives.Where(u => u.Alias != null && u.Name != null))
+        {
+            try
+            {
+                var symbolInfo = semanticModel.GetSymbolInfo(usingDirective.Name!);
+                if (symbolInfo.Symbol is ITypeSymbol typeSymbol)
+                {
+                    aliasedTypes.Add(typeSymbol);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to resolve alias type for {Using}", usingDirective.Name?.ToString() ?? "unknown");
+            }
+        }
+
+        return aliasedTypes;
+    }
+
+    /// <summary>
+    /// Checks if a symbol is accessed via a using alias or static using.
+    /// If a symbol is a type that's aliased/static-imported, contained in such a type, or is a namespace
+    /// that contains such a type, returns true.
+    /// </summary>
+    private bool IsSymbolAccessedViaAliasOrStaticUsing(
+        ISymbol symbol,
+        HashSet<ITypeSymbol> aliasedTypes,
+        HashSet<ITypeSymbol> staticUsingTypes)
+    {
+        // Check both sets directly without creating intermediate HashSet (performance optimization)
+        // If the symbol itself is a specially-accessed type
+        if (symbol is ITypeSymbol typeSymbol &&
+            (aliasedTypes.Contains(typeSymbol) || staticUsingTypes.Contains(typeSymbol)))
+        {
+            return true;
+        }
+
+        // If the symbol's containing type is specially accessed (e.g., member of an aliased type)
+        if (symbol.ContainingType != null &&
+            (aliasedTypes.Contains(symbol.ContainingType) || staticUsingTypes.Contains(symbol.ContainingType)))
+        {
+            return true;
+        }
+
+        // If the symbol is a namespace and contains any specially-accessed types
+        if (symbol is INamespaceSymbol namespaceSymbol)
+        {
+            foreach (var specialType in aliasedTypes.Concat(staticUsingTypes))
+            {
+                // Check if the type is within this namespace
+                if (IsSymbolFromNamespace(specialType, namespaceSymbol))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Gets all types that are accessed via static using directives.
+    /// These types don't require their namespace to be imported via using directives.
+    /// </summary>
+    private HashSet<ITypeSymbol> GetStaticUsingTypes(SemanticModel semanticModel, List<UsingDirectiveSyntax> usingDirectives)
+    {
+        var staticUsingTypes = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default);
+
+        foreach (var usingDirective in usingDirectives.Where(u => !u.StaticKeyword.IsKind(SyntaxKind.None) && u.Name != null))
+        {
+            try
+            {
+                var symbolInfo = semanticModel.GetSymbolInfo(usingDirective.Name!);
+                if (symbolInfo.Symbol is INamedTypeSymbol typeSymbol)
+                {
+                    staticUsingTypes.Add(typeSymbol);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to resolve static using type for {Using}", usingDirective.Name?.ToString() ?? "unknown");
+            }
+        }
+
+        return staticUsingTypes;
     }
 }

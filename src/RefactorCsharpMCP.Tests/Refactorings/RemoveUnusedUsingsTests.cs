@@ -250,6 +250,34 @@ public class DataManager
     }
 
     [Fact]
+    public void Execute_WithAliasAndStaticUsing_ShouldRemoveRedundantNamespaceUsing()
+    {
+        // Arrange - Tests interaction between alias, static using, and regular namespace using
+        var sourceCode = @"using StringList = System.Collections.Generic.List<string>;
+using static System.Math;
+using System;
+using System.Collections.Generic;
+
+public class Test
+{
+    private StringList _data = new StringList();  // Uses alias
+    private double _pi = PI;  // Uses static using
+}";
+        var refactoring = new RemoveUnusedUsings();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "net8.0");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("using StringList =");
+        result.RefactoredCode.Should().Contain("using static System.Math;");
+        // System.Collections.Generic should be removed - type accessed via alias
+        result.RefactoredCode.Should().NotContain("using System.Collections.Generic;");
+        result.RefactoredCode.Should().NotContain("using System;");
+    }
+
+    [Fact]
     public void Execute_WithSyntaxErrors_ShouldReturnFailure()
     {
         // Arrange
