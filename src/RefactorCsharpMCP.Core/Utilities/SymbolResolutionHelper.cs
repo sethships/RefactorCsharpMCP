@@ -41,6 +41,10 @@ public class SymbolResolutionHelper
     /// Initializes a new instance of the <see cref="SymbolResolutionHelper"/> class.
     /// Creates instances of all specialized symbol utility classes.
     /// </summary>
+    /// <remarks>
+    /// All specialized classes have parameterless constructors with no I/O or external dependencies,
+    /// guaranteeing exception-free initialization. Constructor cannot fail under normal conditions.
+    /// </remarks>
     public SymbolResolutionHelper()
     {
         _positionResolver = new PositionBasedResolver();

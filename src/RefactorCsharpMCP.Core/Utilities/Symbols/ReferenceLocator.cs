@@ -60,14 +60,9 @@ public class ReferenceLocator
         }
         catch (Exception ex)
         {
-            // Log the exception for debugging purposes
-            // Debug.WriteLine is compiled out in Release builds
-            System.Diagnostics.Debug.WriteLine($"Error finding references for symbol '{symbol?.Name}': {ex.GetType().Name} - {ex.Message}");
-
-            // Return empty list as fallback
-            // Note: This risks false negatives in SafeDelete (deleting methods that are actually referenced)
-            // Consider alternative: throw exception or return Result<List<Location>, string>
-            return new List<Location>();
+            throw new InvalidOperationException(
+                $"Failed to find references for symbol '{symbol?.Name}'. " +
+                $"This may indicate compilation errors or API changes.", ex);
         }
     }
 }
