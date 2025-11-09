@@ -236,10 +236,11 @@ public class UnusedUsingPatternAnalyzer
     /// <summary>
     /// Checks if a using alias directive is used in the file.
     /// Example: using StringList = System.Collections.Generic.List&lt;string&gt;;
+    /// Uses semantic analysis to verify binding, preventing false positives from shadowed identifiers or string literals.
     /// </summary>
     private bool IsAliasUsed(UsingDirectiveSyntax usingDirective, SemanticModel semanticModel)
     {
-        if (usingDirective.Alias?.Name == null)
+        if (usingDirective.Alias?.Name == null || usingDirective.Name == null)
         {
             return true; // Conservative: assume used
         }
@@ -247,11 +248,27 @@ public class UnusedUsingPatternAnalyzer
         var aliasName = usingDirective.Alias.Name.Identifier.Text;
         var root = semanticModel.SyntaxTree.GetRoot();
 
-        // Check if alias identifier appears anywhere in code (excluding the using directive itself)
+        // Get the symbol that the alias refers to
+        var aliasTargetSymbol = semanticModel.GetSymbolInfo(usingDirective.Name).Symbol;
+        if (aliasTargetSymbol == null)
+        {
+            _logger?.LogDebug("Could not resolve target symbol for alias '{Alias}'", aliasName);
+            return true; // Conservative: if we can't resolve, assume used
+        }
+
+        // Check if alias identifier is semantically bound to the aliased type
+        // This prevents false positives from shadowed identifiers or string literals
         var aliasIsReferenced = root.DescendantNodes()
             .OfType<IdentifierNameSyntax>()
             .Where(id => !IsNodeInUsingDirective(id, new List<UsingDirectiveSyntax> { usingDirective }))
-            .Any(id => id.Identifier.Text == aliasName);
+            .Any(id =>
+            {
+                if (id.Identifier.Text != aliasName) return false;
+
+                // Verify that this identifier is semantically bound to the same symbol as the alias
+                var symbolInfo = semanticModel.GetSymbolInfo(id);
+                return SymbolEqualityComparer.Default.Equals(symbolInfo.Symbol, aliasTargetSymbol);
+            });
 
         _logger?.LogDebug("Using alias '{Alias}' is {Status}",
             aliasName,
@@ -490,19 +507,17 @@ public class UnusedUsingPatternAnalyzer
         HashSet<ITypeSymbol> aliasedTypes,
         HashSet<ITypeSymbol> staticUsingTypes)
     {
-        // Combine both sets for checking
-        var specialAccessTypes = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default);
-        foreach (var type in aliasedTypes) specialAccessTypes.Add(type);
-        foreach (var type in staticUsingTypes) specialAccessTypes.Add(type);
-
+        // Check both sets directly without creating intermediate HashSet (performance optimization)
         // If the symbol itself is a specially-accessed type
-        if (symbol is ITypeSymbol typeSymbol && specialAccessTypes.Contains(typeSymbol))
+        if (symbol is ITypeSymbol typeSymbol &&
+            (aliasedTypes.Contains(typeSymbol) || staticUsingTypes.Contains(typeSymbol)))
         {
             return true;
         }
 
         // If the symbol's containing type is specially accessed (e.g., member of an aliased type)
-        if (symbol.ContainingType != null && specialAccessTypes.Contains(symbol.ContainingType))
+        if (symbol.ContainingType != null &&
+            (aliasedTypes.Contains(symbol.ContainingType) || staticUsingTypes.Contains(symbol.ContainingType)))
         {
             return true;
         }
@@ -510,7 +525,7 @@ public class UnusedUsingPatternAnalyzer
         // If the symbol is a namespace and contains any specially-accessed types
         if (symbol is INamespaceSymbol namespaceSymbol)
         {
-            foreach (var specialType in specialAccessTypes)
+            foreach (var specialType in aliasedTypes.Concat(staticUsingTypes))
             {
                 // Check if the type is within this namespace
                 if (IsSymbolFromNamespace(specialType, namespaceSymbol))

@@ -596,7 +596,7 @@ public class TestClass
         var result = helper.FindSymbolConflicts(semanticModel, "newVar", methodDeclaration);
         stopwatch.Stop();
 
-        // Assert - Should complete in reasonable time (< 750ms for 100 variables, increased 50% for full suite system load)
+        // Assert - Should complete in reasonable time (< 750ms for 100 variables, increased 50% to account for full suite system load)
         stopwatch.ElapsedMilliseconds.Should().BeLessThan(750,
             "conflict detection should be efficient even with many local variables");
         result.Should().NotBeNull();
