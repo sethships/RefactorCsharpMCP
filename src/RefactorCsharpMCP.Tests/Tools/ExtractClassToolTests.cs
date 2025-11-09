@@ -148,7 +148,7 @@ public class ExtractClassToolTests
         var json = JsonSerializer.Serialize(result);
         var doc = JsonDocument.Parse(json);
         doc.RootElement.GetProperty("success").GetBoolean().Should().BeFalse();
-        doc.RootElement.GetProperty("error").GetString().Should().Contain("At least one field or method name must be specified");
+        doc.RootElement.GetProperty("error").GetString().Should().Contain("At least one field, method, or nested type name must be specified");
     }
 
     [Fact]
@@ -166,7 +166,7 @@ public class ExtractClassToolTests
         var json = JsonSerializer.Serialize(result);
         var doc = JsonDocument.Parse(json);
         doc.RootElement.GetProperty("success").GetBoolean().Should().BeFalse();
-        doc.RootElement.GetProperty("error").GetString().Should().Contain("At least one field or method name must be specified");
+        doc.RootElement.GetProperty("error").GetString().Should().Contain("At least one field, method, or nested type name must be specified");
     }
 
     [Fact]
