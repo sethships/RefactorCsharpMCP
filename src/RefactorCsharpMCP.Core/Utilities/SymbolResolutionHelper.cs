@@ -1,46 +1,70 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.FindSymbols;
-using Microsoft.CodeAnalysis.Text;
+using RefactorCsharpMCP.Core.Utilities.Symbols;
 
 namespace RefactorCsharpMCP.Core.Utilities;
 
 /// <summary>
-/// Provides utilities for resolving and analyzing symbols in C# code.
-/// Used by refactorings that need to locate symbols by position, detect conflicts, and analyze scope.
+/// Facade for symbol resolution utilities in C# code.
+/// Provides a simplified API for position-based symbol resolution, conflict detection,
+/// scope analysis, and reference finding by delegating to specialized classes.
 /// </summary>
+/// <remarks>
+/// <para>
+/// This class was refactored to a facade pattern as part of Sprint 3 decomposition (Issue #90).
+/// The original 643-line class was split into 5 focused classes:
+/// </para>
+/// <list type="bullet">
+/// <item><see cref="PositionBasedResolver"/>: Position-to-symbol resolution</item>
+/// <item><see cref="ConflictDetector"/>: Symbol name conflict detection</item>
+/// <item><see cref="ScopeAnalyzer"/>: Symbol scope and accessibility analysis</item>
+/// <item><see cref="ReferenceLocator"/>: Finding references across compilation</item>
+/// <item><see cref="SymbolResolutionHelper"/>: Facade for simplified API</item>
+/// </list>
+/// <para>
+/// <strong>When to use the facade vs specialized classes:</strong>
+/// </para>
+/// <list type="bullet">
+/// <item>Use <strong>SymbolResolutionHelper</strong> (this facade) for simple, one-off operations</item>
+/// <item>Use specialized classes directly for fine-grained control or performance optimization</item>
+/// <item>Example: For batch conflict detection, inject <see cref="ConflictDetector"/> directly to avoid facade overhead</item>
+/// </list>
+/// </remarks>
 public class SymbolResolutionHelper
 {
+    private readonly PositionBasedResolver _positionResolver;
+    private readonly ConflictDetector _conflictDetector;
+    private readonly ScopeAnalyzer _scopeAnalyzer;
+    private readonly ReferenceLocator _referenceLocator;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="SymbolResolutionHelper"/> class.
+    /// Creates instances of all specialized symbol utility classes.
+    /// </summary>
+    /// <remarks>
+    /// All specialized classes have parameterless constructors with no I/O or external dependencies,
+    /// guaranteeing exception-free initialization. Constructor cannot fail under normal conditions.
+    /// </remarks>
+    public SymbolResolutionHelper()
+    {
+        _positionResolver = new PositionBasedResolver();
+        _conflictDetector = new ConflictDetector();
+        _scopeAnalyzer = new ScopeAnalyzer();
+        _referenceLocator = new ReferenceLocator();
+    }
+
     /// <summary>
     /// Result of symbol resolution at a specific position.
     /// </summary>
-    public class SymbolResolutionResult
+    /// <remarks>
+    /// Forwarded from <see cref="PositionBasedResolver.SymbolResolutionResult"/> for backward compatibility.
+    /// </remarks>
+    public class SymbolResolutionResult : PositionBasedResolver.SymbolResolutionResult
     {
-        /// <summary>
-        /// Indicates whether a symbol was found at the position.
-        /// </summary>
-        public bool Success { get; init; }
-
-        /// <summary>
-        /// The resolved symbol, if found.
-        /// </summary>
-        public ISymbol? Symbol { get; init; }
-
-        /// <summary>
-        /// The syntax node at the position.
-        /// </summary>
-        public SyntaxNode? Node { get; init; }
-
-        /// <summary>
-        /// Error message if resolution failed.
-        /// </summary>
-        public string? ErrorMessage { get; init; }
-
         /// <summary>
         /// Creates a successful resolution result.
         /// </summary>
-        public static SymbolResolutionResult Successful(ISymbol symbol, SyntaxNode node)
+        public static new SymbolResolutionResult Successful(ISymbol symbol, SyntaxNode node)
         {
             return new SymbolResolutionResult
             {
@@ -54,7 +78,7 @@ public class SymbolResolutionHelper
         /// <summary>
         /// Creates a failed resolution result.
         /// </summary>
-        public static SymbolResolutionResult Failed(string errorMessage)
+        public static new SymbolResolutionResult Failed(string errorMessage)
         {
             return new SymbolResolutionResult
             {
@@ -69,22 +93,11 @@ public class SymbolResolutionHelper
     /// <summary>
     /// Result of symbol conflict detection.
     /// </summary>
-    public class ConflictDetectionResult
+    /// <remarks>
+    /// Forwarded from <see cref="ConflictDetector.ConflictDetectionResult"/> for backward compatibility.
+    /// </remarks>
+    public class ConflictDetectionResult : ConflictDetector.ConflictDetectionResult
     {
-        /// <summary>
-        /// Indicates whether conflicts were found.
-        /// </summary>
-        public bool HasConflicts { get; init; }
-
-        /// <summary>
-        /// List of conflicting symbols.
-        /// </summary>
-        public List<ISymbol> Conflicts { get; init; } = new();
-
-        /// <summary>
-        /// Human-readable description of conflicts.
-        /// </summary>
-        public string? ConflictDescription { get; init; }
     }
 
     /// <summary>
@@ -96,70 +109,12 @@ public class SymbolResolutionHelper
     /// <returns>A result containing the symbol at the position, or an error.</returns>
     public SymbolResolutionResult GetSymbolAtPosition(string sourceCode, int lineNumber, int columnNumber)
     {
-        if (string.IsNullOrWhiteSpace(sourceCode))
-        {
-            return SymbolResolutionResult.Failed("Source code cannot be empty.");
-        }
+        var result = _positionResolver.GetSymbolAtPosition(sourceCode, lineNumber, columnNumber);
 
-        if (lineNumber < 1 || columnNumber < 1)
-        {
-            return SymbolResolutionResult.Failed($"Invalid position: line {lineNumber}, column {columnNumber}. Must be 1-based.");
-        }
-
-        try
-        {
-            var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);
-            var root = syntaxTree.GetRoot();
-
-            // Convert 1-based line/column to 0-based for Roslyn
-            var position = GetTextPosition(syntaxTree, lineNumber - 1, columnNumber - 1);
-            if (position == null)
-            {
-                return SymbolResolutionResult.Failed($"Position line {lineNumber}, column {columnNumber} is out of range.");
-            }
-
-            // Find the syntax node at this position
-            var node = root.FindNode(new TextSpan(position.Value, 0));
-            if (node == null)
-            {
-                return SymbolResolutionResult.Failed($"No syntax node found at line {lineNumber}, column {columnNumber}.");
-            }
-
-            // Create compilation and semantic model
-            var compilation = CSharpCompilation.Create("temp")
-                .AddReferences(MetadataReference.CreateFromFile(typeof(object).Assembly.Location))
-                .AddSyntaxTrees(syntaxTree);
-            var semanticModel = compilation.GetSemanticModel(syntaxTree);
-
-            // Try to get symbol info
-            var symbolInfo = semanticModel.GetSymbolInfo(node);
-            var symbol = symbolInfo.Symbol;
-
-            if (symbol == null)
-            {
-                // Try getting declared symbol if it's a declaration
-                symbol = semanticModel.GetDeclaredSymbol(node);
-            }
-
-            if (symbol == null)
-            {
-                return SymbolResolutionResult.Failed($"No symbol found at line {lineNumber}, column {columnNumber}.");
-            }
-
-            return SymbolResolutionResult.Successful(symbol, node);
-        }
-        catch (Exception ex)
-        {
-            // Sanitize exception message to avoid leaking internal details
-            var errorCategory = ex switch
-            {
-                ArgumentOutOfRangeException => "InvalidPosition",
-                ArgumentException => "InvalidArgument",
-                InvalidOperationException => "InvalidState",
-                _ => "InternalError"
-            };
-            return SymbolResolutionResult.Failed($"Error resolving symbol ({errorCategory}). Verify source code syntax and position.");
-        }
+        // Convert to facade result type for backward compatibility
+        return result.Success
+            ? SymbolResolutionResult.Successful(result.Symbol!, result.Node!)
+            : SymbolResolutionResult.Failed(result.ErrorMessage!);
     }
 
     /// <summary>
@@ -167,47 +122,9 @@ public class SymbolResolutionHelper
     /// This overload maintains SyntaxTree identity for operations requiring consistent compilation context.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// <strong>SyntaxTree Identity Requirements:</strong>
-    /// </para>
-    /// <para>
-    /// Roslyn's semantic analysis relies on object identity for SyntaxTree instances. When you create
-    /// a SemanticModel from a Compilation, that model is bound to specific SyntaxTree objects.
-    /// Operations like finding references, analyzing symbols, or detecting conflicts must use the
-    /// SAME SyntaxTree instances throughout the entire refactoring operation.
-    /// </para>
-    /// <para>
-    /// <strong>When to use this overload:</strong>
-    /// </para>
-    /// <list type="bullet">
-    /// <item>You already have a parsed SyntaxTree from a previous operation</item>
-    /// <item>You need to find references after resolving a symbol</item>
-    /// <item>You're implementing a position-based refactoring (e.g., RenameSymbol)</item>
-    /// <item>You want to leverage compilation caching for performance</item>
-    /// </list>
-    /// <para>
-    /// <strong>When to use the string-based overload:</strong>
-    /// </para>
-    /// <list type="bullet">
-    /// <item>Standalone symbol lookup without existing compilation context</item>
-    /// <item>Quick diagnostic or validation checks</item>
-    /// <item>You don't need to perform further operations on the symbol</item>
-    /// </list>
+    /// See <see cref="PositionBasedResolver.GetSymbolAtPosition(SemanticModel, SyntaxTree, int, int)"/>
+    /// for detailed documentation on SyntaxTree identity requirements.
     /// </remarks>
-    /// <example>
-    /// <code>
-    /// // Canonical pattern for position-based refactorings:
-    /// var parseResult = ParseAndValidateSyntax(sourceCode, out var root, out var syntaxTree);
-    /// var compilation = CreateCompilation(syntaxTree);  // Leverages cache
-    /// var semanticModel = compilation.GetSemanticModel(syntaxTree);
-    ///
-    /// // Use THIS overload to maintain SyntaxTree identity
-    /// var symbolResult = helper.GetSymbolAtPosition(semanticModel, syntaxTree, line, column);
-    ///
-    /// // Now find references using the SAME compilation
-    /// var references = helper.GetAllReferences(symbolResult.Symbol, compilation);
-    /// </code>
-    /// </example>
     /// <param name="semanticModel">The semantic model to use for symbol resolution (must not be null).</param>
     /// <param name="syntaxTree">The syntax tree containing the position (must match semantic model's tree).</param>
     /// <param name="lineNumber">1-based line number.</param>
@@ -219,112 +136,20 @@ public class SymbolResolutionHelper
         int lineNumber,
         int columnNumber)
     {
-        if (semanticModel == null)
-        {
-            return SymbolResolutionResult.Failed("Semantic model must not be null.");
-        }
+        var result = _positionResolver.GetSymbolAtPosition(semanticModel, syntaxTree, lineNumber, columnNumber);
 
-        if (syntaxTree == null)
-        {
-            return SymbolResolutionResult.Failed("Syntax tree must not be null.");
-        }
-
-        if (lineNumber < 1 || columnNumber < 1)
-        {
-            return SymbolResolutionResult.Failed($"Invalid position: line {lineNumber}, column {columnNumber}. Must be 1-based.");
-        }
-
-        try
-        {
-            var root = syntaxTree.GetRoot();
-
-            // Convert 1-based line/column to 0-based for Roslyn
-            var position = GetTextPosition(syntaxTree, lineNumber - 1, columnNumber - 1);
-            if (position == null)
-            {
-                return SymbolResolutionResult.Failed($"Position line {lineNumber}, column {columnNumber} is out of range.");
-            }
-
-            // Find the syntax node at this position
-            var node = root.FindNode(new TextSpan(position.Value, 0));
-            if (node == null)
-            {
-                return SymbolResolutionResult.Failed($"No syntax node found at line {lineNumber}, column {columnNumber}.");
-            }
-
-            // Use provided semantic model (maintains SyntaxTree identity)
-            var symbolInfo = semanticModel.GetSymbolInfo(node);
-            var symbol = symbolInfo.Symbol;
-
-            if (symbol == null)
-            {
-                // Try getting declared symbol if it's a declaration
-                symbol = semanticModel.GetDeclaredSymbol(node);
-            }
-
-            if (symbol == null)
-            {
-                return SymbolResolutionResult.Failed($"No symbol found at line {lineNumber}, column {columnNumber}.");
-            }
-
-            return SymbolResolutionResult.Successful(symbol, node);
-        }
-        catch (Exception ex)
-        {
-            // Sanitize exception message to avoid leaking internal details
-            var errorCategory = ex switch
-            {
-                ArgumentOutOfRangeException => "InvalidPosition",
-                ArgumentException => "InvalidArgument",
-                InvalidOperationException => "InvalidState",
-                _ => "InternalError"
-            };
-            return SymbolResolutionResult.Failed($"Error resolving symbol ({errorCategory}). Verify source code syntax and position.");
-        }
+        // Convert to facade result type for backward compatibility
+        return result.Success
+            ? SymbolResolutionResult.Successful(result.Symbol!, result.Node!)
+            : SymbolResolutionResult.Failed(result.ErrorMessage!);
     }
 
     /// <summary>
     /// Detects if a symbol name would conflict with existing symbols in a given scope.
-    /// Uses a combination of semantic analysis (LookupSymbols) and explicit AST traversal
-    /// to detect all potential naming conflicts including local variables, parameters,
-    /// lambda parameters, local functions, foreach variables, catch variables, methods, fields, and properties.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// This method uses two complementary approaches to ensure comprehensive conflict detection:
-    /// </para>
-    /// <list type="number">
-    /// <item>
-    /// <description>
-    /// <strong>Explicit AST traversal</strong>: Walks the syntax tree to find ALL local declarations
-    /// (local variables, parameters, lambda parameters, local functions, foreach variables, catch variables)
-    /// including those declared later in the scope that LookupSymbols cannot see.
-    /// </description>
-    /// </item>
-    /// <item>
-    /// <description>
-    /// <strong>Semantic lookup via LookupSymbols</strong>: Identifies symbols from enclosing scopes
-    /// (fields, properties, methods, type members) that aren't local declarations.
-    /// </description>
-    /// </item>
-    /// </list>
-    /// <para>
-    /// <strong>Checked symbol types:</strong>
-    /// </para>
-    /// <list type="bullet">
-    /// <item><description>Local variables (including nested scopes)</description></item>
-    /// <item><description>Method parameters</description></item>
-    /// <item><description>Lambda parameters (simple, parenthesized, and anonymous method expressions)</description></item>
-    /// <item><description>Local functions</description></item>
-    /// <item><description>Foreach variables</description></item>
-    /// <item><description>Catch clause variables</description></item>
-    /// <item><description>Methods (when scope is a class)</description></item>
-    /// <item><description>Fields and properties</description></item>
-    /// </list>
-    /// <para>
-    /// The method is optimized to avoid redundant symbol lookups by using explicit traversal
-    /// for local declarations and LookupSymbols only for enclosing scope members.
-    /// </para>
+    /// See <see cref="ConflictDetector.FindSymbolConflicts"/> for detailed documentation
+    /// on conflict detection strategies and checked symbol types.
     /// </remarks>
     /// <param name="semanticModel">The semantic model for analysis.</param>
     /// <param name="symbolName">The proposed symbol name to check for conflicts.</param>
@@ -335,186 +160,15 @@ public class SymbolResolutionHelper
         string symbolName,
         SyntaxNode scopeNode)
     {
-        if (string.IsNullOrWhiteSpace(symbolName))
+        var result = _conflictDetector.FindSymbolConflicts(semanticModel, symbolName, scopeNode);
+
+        // Result already has compatible type
+        return new ConflictDetectionResult
         {
-            return new ConflictDetectionResult
-            {
-                HasConflicts = false,
-                ConflictDescription = "Symbol name is empty."
-            };
-        }
-
-        try
-        {
-            // Use HashSet to automatically handle uniqueness and avoid duplicates
-            var conflicts = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
-
-            // Use LookupSymbols to catch symbols from enclosing scopes (fields, properties, type members)
-            // Note: Local variables, parameters, and lambda parameters are checked explicitly below
-            // because LookupSymbols at scope start cannot see declarations that appear later in the method
-            var enclosingScopeSymbols = semanticModel.LookupSymbols(scopeNode.SpanStart, name: symbolName);
-            foreach (var symbol in enclosingScopeSymbols.Where(s =>
-                s.Kind != SymbolKind.Local &&    // Checked explicitly below
-                s.Kind != SymbolKind.Parameter)) // Checked explicitly below
-            {
-                conflicts.Add(symbol);
-            }
-
-            // Explicitly check ALL local variables, parameters, and lambda parameters
-            // (optimization: avoids redundant LookupSymbols calls for local declarations)
-            var methodDeclaration = scopeNode.AncestorsAndSelf().OfType<BaseMethodDeclarationSyntax>().FirstOrDefault();
-
-            // Single traversal for all local variable declarations, local functions, and foreach variables (performance optimization)
-            foreach (var node in scopeNode.DescendantNodes())
-            {
-                // Check for local variables
-                if (node is VariableDeclaratorSyntax varDeclarator &&
-                    varDeclarator.Identifier.Text == symbolName)
-                {
-                    var symbol = semanticModel.GetDeclaredSymbol(varDeclarator);
-                    if (symbol != null)
-                        conflicts.Add(symbol);
-                }
-                // Check for local functions
-                else if (node is LocalFunctionStatementSyntax localFunction &&
-                         localFunction.Identifier.Text == symbolName)
-                {
-                    var symbol = semanticModel.GetDeclaredSymbol(localFunction);
-                    if (symbol != null)
-                        conflicts.Add(symbol);
-                }
-                // Check for foreach variables
-                else if (node is ForEachStatementSyntax foreachStatement &&
-                         foreachStatement.Identifier.Text == symbolName)
-                {
-                    var symbol = semanticModel.GetDeclaredSymbol(foreachStatement);
-                    if (symbol != null)
-                        conflicts.Add(symbol);
-                }
-                // Check for catch clause variables
-                else if (node is CatchClauseSyntax catchClause &&
-                         catchClause.Declaration?.Identifier.Text == symbolName)
-                {
-                    var symbol = semanticModel.GetDeclaredSymbol(catchClause.Declaration);
-                    if (symbol != null)
-                        conflicts.Add(symbol);
-                }
-            }
-
-            // Check method parameters separately (parameters are not in DescendantNodes)
-            if (methodDeclaration?.ParameterList != null)
-            {
-                foreach (var parameter in methodDeclaration.ParameterList.Parameters)
-                {
-                    if (parameter.Identifier.Text == symbolName)
-                    {
-                        var symbol = semanticModel.GetDeclaredSymbol(parameter);
-                        if (symbol != null)
-                            conflicts.Add(symbol);
-                    }
-                }
-            }
-
-            // Check lambda parameters (SimpleLambdaExpression, ParenthesizedLambdaExpression, AnonymousMethodExpression)
-            // These are checked explicitly to ensure comprehensive coverage and enable LookupSymbols optimization
-            var lambdaExpressions = scopeNode.DescendantNodesAndSelf().Where(n =>
-                n is SimpleLambdaExpressionSyntax ||
-                n is ParenthesizedLambdaExpressionSyntax ||
-                n is AnonymousMethodExpressionSyntax);
-
-            foreach (var lambda in lambdaExpressions)
-            {
-                if (lambda is SimpleLambdaExpressionSyntax simpleLambda &&
-                    simpleLambda.Parameter.Identifier.Text == symbolName)
-                {
-                    var symbol = semanticModel.GetDeclaredSymbol(simpleLambda.Parameter);
-                    if (symbol != null)
-                        conflicts.Add(symbol);
-                }
-                else if (lambda is ParenthesizedLambdaExpressionSyntax parenthesizedLambda)
-                {
-                    foreach (var parameter in parenthesizedLambda.ParameterList.Parameters)
-                    {
-                        if (parameter.Identifier.Text == symbolName)
-                        {
-                            var symbol = semanticModel.GetDeclaredSymbol(parameter);
-                            if (symbol != null)
-                                conflicts.Add(symbol);
-                        }
-                    }
-                }
-                else if (lambda is AnonymousMethodExpressionSyntax anonymousMethod &&
-                         anonymousMethod.ParameterList != null)
-                {
-                    foreach (var parameter in anonymousMethod.ParameterList.Parameters)
-                    {
-                        if (parameter.Identifier.Text == symbolName)
-                        {
-                            var symbol = semanticModel.GetDeclaredSymbol(parameter);
-                            if (symbol != null)
-                                conflicts.Add(symbol);
-                        }
-                    }
-                }
-            }
-
-            // Check for methods with the same name
-            if (scopeNode is ClassDeclarationSyntax classDeclaration)
-            {
-                var methodSymbols = classDeclaration.DescendantNodes()
-                    .OfType<MethodDeclarationSyntax>()
-                    .Where(m => m.Identifier.Text == symbolName)
-                    .Select(m => semanticModel.GetDeclaredSymbol(m))
-                    .Where(s => s != null)
-                    .Cast<ISymbol>();
-
-                foreach (var symbol in methodSymbols)
-                {
-                    conflicts.Add(symbol);
-                }
-            }
-
-            // Check for fields with the same name
-            var fieldSymbols = semanticModel.LookupSymbols(scopeNode.SpanStart, name: symbolName)
-                .Where(s => s.Kind == SymbolKind.Field || s.Kind == SymbolKind.Property);
-
-            foreach (var symbol in fieldSymbols)
-            {
-                conflicts.Add(symbol);
-            }
-
-            if (conflicts.Any())
-            {
-                var conflictTypes = string.Join(", ", conflicts.Select(s => $"{s.Kind} '{s.Name}'").Distinct());
-                return new ConflictDetectionResult
-                {
-                    HasConflicts = true,
-                    Conflicts = conflicts.ToList(),
-                    ConflictDescription = $"Name '{symbolName}' conflicts with existing symbols: {conflictTypes}"
-                };
-            }
-
-            return new ConflictDetectionResult
-            {
-                HasConflicts = false,
-                ConflictDescription = null
-            };
-        }
-        catch (Exception ex)
-        {
-            // Sanitize exception message to avoid leaking internal details
-            var errorCategory = ex switch
-            {
-                ArgumentException => "InvalidArgument",
-                InvalidOperationException => "InvalidState",
-                _ => "InternalError"
-            };
-            return new ConflictDetectionResult
-            {
-                HasConflicts = false,
-                ConflictDescription = $"Error detecting conflicts ({errorCategory}). Unable to determine if conflicts exist."
-            };
-        }
+            HasConflicts = result.HasConflicts,
+            Conflicts = result.Conflicts,
+            ConflictDescription = result.ConflictDescription
+        };
     }
 
     /// <summary>
@@ -524,34 +178,7 @@ public class SymbolResolutionHelper
     /// <returns>Information about the symbol's scope.</returns>
     public SymbolScopeInfo AnalyzeSymbolScope(ISymbol symbol)
     {
-        if (symbol == null)
-        {
-            return new SymbolScopeInfo
-            {
-                ScopeName = "Unknown",
-                IsLocal = false,
-                IsParameter = false,
-                IsField = false,
-                IsMethod = false,
-                IsPublic = false
-            };
-        }
-
-        var scopeName = symbol.ContainingType?.Name ?? symbol.ContainingNamespace?.Name ?? "Global";
-
-        return new SymbolScopeInfo
-        {
-            ScopeName = scopeName,
-            IsLocal = symbol.Kind == SymbolKind.Local,
-            IsParameter = symbol.Kind == SymbolKind.Parameter,
-            IsField = symbol.Kind == SymbolKind.Field,
-            IsMethod = symbol.Kind == SymbolKind.Method,
-            IsProperty = symbol.Kind == SymbolKind.Property,
-            IsPublic = symbol.DeclaredAccessibility == Accessibility.Public,
-            IsPrivate = symbol.DeclaredAccessibility == Accessibility.Private,
-            IsProtected = symbol.DeclaredAccessibility == Accessibility.Protected,
-            IsInternal = symbol.DeclaredAccessibility == Accessibility.Internal
-        };
+        return _scopeAnalyzer.AnalyzeSymbolScope(symbol);
     }
 
     /// <summary>
@@ -564,80 +191,6 @@ public class SymbolResolutionHelper
     /// <returns>A list of reference locations.</returns>
     public List<Location> GetAllReferences(ISymbol symbol, Compilation compilation)
     {
-        if (symbol == null || compilation == null)
-        {
-            return new List<Location>();
-        }
-
-        try
-        {
-            var references = new List<Location>();
-
-            foreach (var syntaxTree in compilation.SyntaxTrees)
-            {
-                var semanticModel = compilation.GetSemanticModel(syntaxTree);
-                var root = syntaxTree.GetRoot();
-
-                // Find all identifier nodes that reference this symbol
-                var identifiers = root.DescendantNodes()
-                    .OfType<IdentifierNameSyntax>();
-
-                foreach (var identifier in identifiers)
-                {
-                    var symbolInfo = semanticModel.GetSymbolInfo(identifier);
-                    if (SymbolEqualityComparer.Default.Equals(symbolInfo.Symbol, symbol))
-                    {
-                        references.Add(identifier.GetLocation());
-                    }
-                }
-            }
-
-            return references;
-        }
-        catch (Exception ex)
-        {
-            // Log the exception for debugging purposes
-            // Debug.WriteLine is compiled out in Release builds
-            System.Diagnostics.Debug.WriteLine($"Error finding references for symbol '{symbol?.Name}': {ex.GetType().Name} - {ex.Message}");
-
-            // Return empty list as fallback
-            // Note: This risks false negatives in SafeDelete (deleting methods that are actually referenced)
-            // Consider alternative: throw exception or return Result<List<Location>, string>
-            return new List<Location>();
-        }
+        return _referenceLocator.GetAllReferences(symbol, compilation);
     }
-
-    /// <summary>
-    /// Converts 0-based line and column to a text position in the syntax tree.
-    /// </summary>
-    private int? GetTextPosition(SyntaxTree syntaxTree, int line, int column)
-    {
-        try
-        {
-            var text = syntaxTree.GetText();
-            var linePosition = new LinePosition(line, column);
-            return text.Lines.GetPosition(linePosition);
-        }
-        catch
-        {
-            return null;
-        }
-    }
-}
-
-/// <summary>
-/// Information about a symbol's scope and accessibility.
-/// </summary>
-public class SymbolScopeInfo
-{
-    public required string ScopeName { get; init; }
-    public required bool IsLocal { get; init; }
-    public required bool IsParameter { get; init; }
-    public required bool IsField { get; init; }
-    public required bool IsMethod { get; init; }
-    public bool IsProperty { get; init; }
-    public bool IsPublic { get; init; }
-    public bool IsPrivate { get; init; }
-    public bool IsProtected { get; init; }
-    public bool IsInternal { get; init; }
 }
