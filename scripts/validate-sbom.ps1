@@ -49,10 +49,7 @@ param(
     [string]$Format = "auto",
 
     [Parameter()]
-    [int]$MinPackages = 80,  # .NET 8 runtime + typical MCP server dependencies (~80-150 packages)
-
-    [Parameter()]
-    [switch]$Verbose
+    [int]$MinPackages = 80  # .NET 8 runtime + typical MCP server dependencies (~80-150 packages)
 )
 
 $ErrorActionPreference = "Stop"
@@ -273,7 +270,7 @@ try {
     }
 
     # Step 9: Verbose output (if requested)
-    if ($Verbose) {
+    if ($PSBoundParameters.ContainsKey('Verbose') -and $PSBoundParameters['Verbose']) {
         Write-Host "=== Package Details ===" -ForegroundColor Cyan
         Write-Host ""
 

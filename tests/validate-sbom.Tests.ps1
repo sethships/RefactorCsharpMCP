@@ -12,8 +12,13 @@
     - Error handling and edge cases
 
 .NOTES
-    Requires: Pester 5.x
-    Run with: Invoke-Pester -Path .\tests\validate-sbom.Tests.ps1
+    Requires: Pester 5.x (Windows default is 3.4.0 - upgrade required)
+
+    Install Pester 5.x:
+        Install-Module -Name Pester -Force -SkipPublisherCheck -Scope CurrentUser
+
+    Run tests:
+        Invoke-Pester -Path .\tests\validate-sbom.Tests.ps1 -Output Detailed
 #>
 
 BeforeAll {
@@ -107,13 +112,13 @@ Describe "validate-sbom.ps1 - Path Validation" {
         $testFile = New-TestSBOM -Format "spdx" -FileName "test.json"
 
         # Run script and capture output
-        $result = & $scriptPath -SbomPath $invalidPath 2>&1
+        $result = & $scriptPath -SbomPath $invalidPath *>&1
         $LASTEXITCODE | Should -Be 1
     }
 
     It "Should accept valid paths" {
         $testFile = New-TestSBOM -Format "spdx" -FileName "valid-sbom.json"
-        $result = & $scriptPath -SbomPath $testFile -MinPackages 10 2>&1
+        $result = & $scriptPath -SbomPath $testFile -MinPackages 10 *>&1
         $LASTEXITCODE | Should -Be 0
     }
 }
@@ -121,13 +126,13 @@ Describe "validate-sbom.ps1 - Path Validation" {
 Describe "validate-sbom.ps1 - File Existence" {
     It "Should fail when file does not exist" {
         $nonExistentPath = Join-Path $script:TempDir "nonexistent.json"
-        $result = & $scriptPath -SbomPath $nonExistentPath 2>&1
+        $result = & $scriptPath -SbomPath $nonExistentPath *>&1
         $LASTEXITCODE | Should -Be 1
     }
 
     It "Should succeed when file exists" {
         $testFile = New-TestSBOM -Format "spdx" -FileName "exists.json"
-        $result = & $scriptPath -SbomPath $testFile -MinPackages 10 2>&1
+        $result = & $scriptPath -SbomPath $testFile -MinPackages 10 *>&1
         $LASTEXITCODE | Should -Be 0
     }
 }
@@ -135,23 +140,23 @@ Describe "validate-sbom.ps1 - File Existence" {
 Describe "validate-sbom.ps1 - Format Detection" {
     It "Should detect SPDX format from content" {
         $testFile = New-TestSBOM -Format "spdx" -FileName "detect-spdx.json"
-        $result = & $scriptPath -SbomPath $testFile -Format auto -MinPackages 10 2>&1
-        $result | Should -Contain "Format detected: spdx"
+        $result = & $scriptPath -SbomPath $testFile -Format auto -MinPackages 10 *>&1
+        ($result -join "`n") | Should -Match "Format detected: spdx"
         $LASTEXITCODE | Should -Be 0
     }
 
     It "Should detect CycloneDX format from content" {
         $testFile = New-TestSBOM -Format "cyclonedx" -FileName "detect-cyclonedx.json"
-        $result = & $scriptPath -SbomPath $testFile -Format auto -MinPackages 10 2>&1
-        $result | Should -Contain "Format detected: cyclonedx"
+        $result = & $scriptPath -SbomPath $testFile -Format auto -MinPackages 10 *>&1
+        ($result -join "`n") | Should -Match "Format detected: cyclonedx"
         $LASTEXITCODE | Should -Be 0
     }
 
     It "Should detect CycloneDX from filename when content ambiguous" {
         $testFile = New-TestSBOM -Format "spdx" -FileName "ambiguous.cyclonedx.json"
-        $result = & $scriptPath -SbomPath $testFile -Format auto -MinPackages 10 2>&1
+        $result = & $scriptPath -SbomPath $testFile -Format auto -MinPackages 10 *>&1
         # Should use content-based detection (SPDX) not filename
-        $result | Should -Contain "Format detected: spdx"
+        ($result -join "`n") | Should -Match "Format detected: spdx"
         $LASTEXITCODE | Should -Be 0
     }
 }
@@ -161,14 +166,14 @@ Describe "validate-sbom.ps1 - JSON Parsing" {
         $invalidJsonPath = Join-Path $script:TempDir "invalid.json"
         "{ invalid json" | Out-File -FilePath $invalidJsonPath -Encoding UTF8
 
-        $result = & $scriptPath -SbomPath $invalidJsonPath 2>&1
+        $result = & $scriptPath -SbomPath $invalidJsonPath *>&1
         $LASTEXITCODE | Should -Be 1
-        $result | Should -Match "Invalid JSON"
+        ($result -join "`n") | Should -Match "Invalid JSON"
     }
 
     It "Should succeed on valid JSON" {
         $testFile = New-TestSBOM -Format "spdx" -FileName "valid-json.json"
-        $result = & $scriptPath -SbomPath $testFile -MinPackages 10 2>&1
+        $result = & $scriptPath -SbomPath $testFile -MinPackages 10 *>&1
         $LASTEXITCODE | Should -Be 0
     }
 }
@@ -176,21 +181,21 @@ Describe "validate-sbom.ps1 - JSON Parsing" {
 Describe "validate-sbom.ps1 - Package Count Validation" {
     It "Should pass when package count meets minimum" {
         $testFile = New-TestSBOM -Format "spdx" -PackageCount 100 -FileName "meets-min.json"
-        $result = & $scriptPath -SbomPath $testFile -MinPackages 80 2>&1
+        $result = & $scriptPath -SbomPath $testFile -MinPackages 80 *>&1
         $LASTEXITCODE | Should -Be 0
     }
 
     It "Should warn when package count below minimum" {
         $testFile = New-TestSBOM -Format "spdx" -PackageCount 50 -FileName "below-min.json"
-        $result = & $scriptPath -SbomPath $testFile -MinPackages 80 2>&1
-        $result | Should -Match "below minimum threshold"
+        $result = & $scriptPath -SbomPath $testFile -MinPackages 80 *>&1
+        ($result -join "`n") | Should -Match "below minimum threshold"
         # Note: Script warns but doesn't fail (exit 0)
         $LASTEXITCODE | Should -Be 0
     }
 
     It "Should handle custom minimum package count" {
         $testFile = New-TestSBOM -Format "spdx" -PackageCount 30 -FileName "custom-min.json"
-        $result = & $scriptPath -SbomPath $testFile -MinPackages 25 2>&1
+        $result = & $scriptPath -SbomPath $testFile -MinPackages 25 *>&1
         $LASTEXITCODE | Should -Be 0
     }
 }
@@ -198,15 +203,15 @@ Describe "validate-sbom.ps1 - Package Count Validation" {
 Describe "validate-sbom.ps1 - License Coverage (SPDX)" {
     It "Should calculate license coverage correctly" {
         $testFile = New-TestSBOM -Format "spdx" -PackageCount 100 -IncludeLicenses $true -FileName "license-coverage.json"
-        $result = & $scriptPath -SbomPath $testFile -MinPackages 10 2>&1
-        $result | Should -Match "Packages with license info"
+        $result = & $scriptPath -SbomPath $testFile -MinPackages 10 *>&1
+        ($result -join "`n") | Should -Match "Packages with license info"
         $LASTEXITCODE | Should -Be 0
     }
 
     It "Should exclude NOASSERTION from license count" {
         # Package creation includes some with NOASSERTION
         $testFile = New-TestSBOM -Format "spdx" -PackageCount 100 -IncludeLicenses $true -FileName "noassertion.json"
-        $result = & $scriptPath -SbomPath $testFile -MinPackages 10 2>&1
+        $result = & $scriptPath -SbomPath $testFile -MinPackages 10 *>&1
 
         # Read the SBOM to verify NOASSERTION packages exist
         $sbom = Get-Content $testFile -Raw | ConvertFrom-Json
@@ -218,8 +223,8 @@ Describe "validate-sbom.ps1 - License Coverage (SPDX)" {
 
     It "Should report good license coverage (>80%)" {
         $testFile = New-TestSBOM -Format "spdx" -PackageCount 100 -IncludeLicenses $true -FileName "good-coverage.json"
-        $result = & $scriptPath -SbomPath $testFile -MinPackages 10 2>&1
-        $result | Should -Match "Good license coverage|Moderate license coverage"
+        $result = & $scriptPath -SbomPath $testFile -MinPackages 10 *>&1
+        ($result -join "`n") | Should -Match "Good license coverage|Moderate license coverage"
         $LASTEXITCODE | Should -Be 0
     }
 }
@@ -227,15 +232,15 @@ Describe "validate-sbom.ps1 - License Coverage (SPDX)" {
 Describe "validate-sbom.ps1 - CycloneDX Support" {
     It "Should validate CycloneDX SBOM structure" {
         $testFile = New-TestSBOM -Format "cyclonedx" -FileName "cyclonedx-valid.json"
-        $result = & $scriptPath -SbomPath $testFile -Format cyclonedx -MinPackages 10 2>&1
-        $result | Should -Contain "BOM format: CycloneDX"
+        $result = & $scriptPath -SbomPath $testFile -Format cyclonedx -MinPackages 10 *>&1
+        ($result -join "`n") | Should -Match "BOM format: CycloneDX"
         $LASTEXITCODE | Should -Be 0
     }
 
     It "Should count components in CycloneDX SBOM" {
         $testFile = New-TestSBOM -Format "cyclonedx" -PackageCount 50 -FileName "cyclonedx-count.json"
-        $result = & $scriptPath -SbomPath $testFile -Format cyclonedx -MinPackages 10 2>&1
-        $result | Should -Match "Total packages/components: 50"
+        $result = & $scriptPath -SbomPath $testFile -Format cyclonedx -MinPackages 10 *>&1
+        ($result -join "`n") | Should -Match "Total packages/components: 50"
         $LASTEXITCODE | Should -Be 0
     }
 }
@@ -245,7 +250,7 @@ Describe "validate-sbom.ps1 - Error Handling" {
         $emptyPath = Join-Path $script:TempDir "empty.json"
         "" | Out-File -FilePath $emptyPath -Encoding UTF8
 
-        $result = & $scriptPath -SbomPath $emptyPath 2>&1
+        $result = & $scriptPath -SbomPath $emptyPath *>&1
         $LASTEXITCODE | Should -Be 1
     }
 
@@ -253,17 +258,17 @@ Describe "validate-sbom.ps1 - Error Handling" {
         $invalidPath = Join-Path $script:TempDir "missing-fields.json"
         @{ someField = "value" } | ConvertTo-Json | Out-File -FilePath $invalidPath -Encoding UTF8
 
-        $result = & $scriptPath -SbomPath $invalidPath -Format spdx 2>&1
+        $result = & $scriptPath -SbomPath $invalidPath -Format spdx *>&1
         $LASTEXITCODE | Should -Be 1
-        $result | Should -Match "Missing spdxVersion field"
+        ($result -join "`n") | Should -Match "Missing spdxVersion field"
     }
 }
 
 Describe "validate-sbom.ps1 - Verbose Output" {
     It "Should provide detailed output with -Verbose flag" {
         $testFile = New-TestSBOM -Format "spdx" -PackageCount 25 -FileName "verbose-test.json"
-        $result = & $scriptPath -SbomPath $testFile -MinPackages 10 -Verbose 2>&1
-        $result | Should -Match "Package Details"
+        $result = & $scriptPath -SbomPath $testFile -MinPackages 10 -Verbose *>&1
+        ($result -join "`n") | Should -Match "Package Details"
         $LASTEXITCODE | Should -Be 0
     }
 }

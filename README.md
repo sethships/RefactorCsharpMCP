@@ -49,6 +49,11 @@ RefactorCsharpMCP/
 
 **Optional:**
 - Docker Desktop 4.42.0+ (for Docker deployment)
+- **Pester 5.x** (for PowerShell script validation tests)
+  ```powershell
+  Install-Module -Name Pester -Force -SkipPublisherCheck -Scope CurrentUser
+  ```
+  **Note**: Windows includes Pester 3.4.0 by default. The SBOM validation test suite requires Pester 5.x for `BeforeAll`/`AfterAll` test lifecycle support.
 
 **Important for WSL users**: .NET SDK must be installed **inside** the WSL distribution, not just on the Windows host. See [E2E-TESTING.md](E2E-TESTING.md#wsl-specific-requirements) for WSL installation instructions.
 
