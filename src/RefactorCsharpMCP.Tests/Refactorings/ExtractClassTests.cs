@@ -29,7 +29,7 @@ public class ExtractClassTests
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class LoggingContext");
+        result.RefactoredCode.Should().Contain("internal class LoggingContext");
         result.RefactoredCode.Should().Contain("private ILogger _logger;");
         result.RefactoredCode.Should().Contain("private readonly LoggingContext _loggingContext = new LoggingContext();");
         result.RefactoredCode.Should().Contain("private IDatabase _database;");
@@ -57,7 +57,7 @@ public class ExtractClassTests
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class Telemetry");
+        result.RefactoredCode.Should().Contain("internal class Telemetry");
         result.RefactoredCode.Should().Contain("private ILogger _logger;");
         result.RefactoredCode.Should().Contain("private IMetrics _metrics;");
         result.RefactoredCode.Should().Contain("private IDatabase _database;");
@@ -80,7 +80,7 @@ public class ExtractClassTests
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class Data");
+        result.RefactoredCode.Should().Contain("internal class Data");
         result.RefactoredCode.Should().Contain("private int _count;");
         result.RefactoredCode.Should().Contain("private string _name;");
     }
@@ -111,9 +111,9 @@ public class ExtractClassTests
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class Logger");
+        result.RefactoredCode.Should().Contain("internal class Logger");
         result.RefactoredCode.Should().Contain("private ILogger _logger;");
-        result.RefactoredCode.Should().Contain("private void Log(string msg)");
+        result.RefactoredCode.Should().Contain("internal void Log(string msg)");
         result.RefactoredCode.Should().Contain("public void Process()");
         result.RefactoredCode.Should().Contain("private string _message;");
     }
@@ -266,7 +266,7 @@ public class Service
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class LoggerContext");
+        result.RefactoredCode.Should().Contain("internal class LoggerContext");
         result.RefactoredCode.Should().Contain("private ILogger _logger;");
     }
 
@@ -286,7 +286,7 @@ public class Service
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class LoggerContext");
+        result.RefactoredCode.Should().Contain("internal class LoggerContext");
         result.RefactoredCode.Should().Contain("private ILogger _logger;");
         result.RefactoredCode.Should().Contain("private readonly LoggerContext _loggerContext");
     }
@@ -350,7 +350,7 @@ public class Service
         // (it should only exist in the Address class now)
         var userServiceSection = result.RefactoredCode.Substring(
             result.RefactoredCode.IndexOf("public class UserService"),
-            result.RefactoredCode.IndexOf("public class Address") - result.RefactoredCode.IndexOf("public class UserService"));
+            result.RefactoredCode.IndexOf("internal class Address") - result.RefactoredCode.IndexOf("public class UserService"));
 
         userServiceSection.Should().NotContain("private string _city");
         userServiceSection.Should().Contain("private string _state"); // _state should remain
@@ -490,7 +490,7 @@ public class Service
 
         // Should still succeed even with no references
         result.RefactoredCode.Should().Contain("private readonly UnusedData _unusedData");
-        result.RefactoredCode.Should().Contain("public class UnusedData");
+        result.RefactoredCode.Should().Contain("internal class UnusedData");
 
         // Should indicate no external references
         result.Message.Should().NotContain("WARNING");
@@ -529,7 +529,7 @@ public class Service
         result.IsSuccess.Should().BeTrue();
 
         // Should contain the extracted class with field
-        result.RefactoredCode.Should().Contain("public class Address");
+        result.RefactoredCode.Should().Contain("internal class Address");
         result.RefactoredCode.Should().Contain("private readonly Address _address");
 
         // Field reference in UseField should be transformed
@@ -581,7 +581,7 @@ public class Service
         result.IsSuccess.Should().BeTrue();
 
         // Should contain the extracted class
-        result.RefactoredCode.Should().Contain("public class Address");
+        result.RefactoredCode.Should().Contain("internal class Address");
         result.RefactoredCode.Should().Contain("private readonly Address _address");
 
         // Field reference in UseField should be transformed
@@ -634,7 +634,7 @@ public partial class UserService
         result.IsSuccess.Should().BeTrue();
 
         // Should contain the extracted class
-        result.RefactoredCode.Should().Contain("public class Address");
+        result.RefactoredCode.Should().Contain("internal class Address");
 
         // References in both partial class parts should be transformed
         result.RefactoredCode.Should().Contain("_address._city");
@@ -690,7 +690,7 @@ public class OtherService
         // Should contain both original classes and the new extracted class
         result.RefactoredCode.Should().Contain("public class UserService");
         result.RefactoredCode.Should().Contain("public class OtherService");
-        result.RefactoredCode.Should().Contain("public class Address");
+        result.RefactoredCode.Should().Contain("internal class Address");
 
         // UserService should have transformed reference
         var userServiceSection = result.RefactoredCode.Substring(
@@ -702,7 +702,7 @@ public class OtherService
         // OtherService should NOT have transformed reference
         var otherServiceSection = result.RefactoredCode.Substring(
             result.RefactoredCode.IndexOf("public class OtherService"),
-            result.RefactoredCode.IndexOf("public class Address") -
+            result.RefactoredCode.IndexOf("internal class Address") -
             result.RefactoredCode.IndexOf("public class OtherService"));
 
         // OtherService should still have its own _city field
@@ -738,7 +738,7 @@ public class OtherService
         result.IsSuccess.Should().BeTrue();
 
         // Should contain extracted class
-        result.RefactoredCode.Should().Contain("public class Address");
+        result.RefactoredCode.Should().Contain("internal class Address");
         result.RefactoredCode.Should().Contain("private readonly Address _address");
 
         // Qualified access should be transformed to: this._address._city
@@ -784,7 +784,7 @@ public class OtherService
         result.RefactoredCode.Should().Contain("// Display the full location");
 
         // Should contain the extracted class
-        result.RefactoredCode.Should().Contain("public class Address");
+        result.RefactoredCode.Should().Contain("internal class Address");
     }
 
     #endregion
@@ -822,9 +822,9 @@ public class OtherService
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class TypeChecker");
-        result.RefactoredCode.Should().Contain("private bool IsSimpleType(string typeName)");
-        result.RefactoredCode.Should().Contain("private bool IsRecursive(string methodName)");
+        result.RefactoredCode.Should().Contain("internal class TypeChecker");
+        result.RefactoredCode.Should().Contain("internal bool IsSimpleType(string typeName)");
+        result.RefactoredCode.Should().Contain("internal bool IsRecursive(string methodName)");
         result.RefactoredCode.Should().Contain("private readonly TypeChecker _typeChecker = new TypeChecker();");
         result.RefactoredCode.Should().Contain("_typeChecker.IsSimpleType(");
         result.RefactoredCode.Should().Contain("_typeChecker.IsRecursive(");
@@ -870,10 +870,10 @@ public class OtherService
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class UserValidator");
-        result.RefactoredCode.Should().Contain("private void ValidateUser(string user)");
-        result.RefactoredCode.Should().Contain("private string FormatUserName(string name)");
-        result.RefactoredCode.Should().Contain("private bool IsAdmin(string user)");
+        result.RefactoredCode.Should().Contain("internal class UserValidator");
+        result.RefactoredCode.Should().Contain("internal void ValidateUser(string user)");
+        result.RefactoredCode.Should().Contain("internal string FormatUserName(string name)");
+        result.RefactoredCode.Should().Contain("internal bool IsAdmin(string user)");
         result.RefactoredCode.Should().Contain("private readonly UserValidator _userValidator = new UserValidator();");
 
         // Verify method calls are updated
@@ -950,13 +950,13 @@ public interface ILogger { void Log(string msg); }";
         result.IsSuccess.Should().BeTrue();
 
         // Verify service class created
-        result.RefactoredCode.Should().Contain("public class MethodResolver");
+        result.RefactoredCode.Should().Contain("internal class MethodResolver");
 
         // Verify all methods extracted
-        result.RefactoredCode.Should().Contain("private MethodInfo? ExtractMethodInfo(string code)");
-        result.RefactoredCode.Should().Contain("private ValidationResult CanMethodBeInlined(MethodInfo method)");
-        result.RefactoredCode.Should().Contain("private bool IsRecursive(MethodInfo method)");
-        result.RefactoredCode.Should().Contain("private bool IsSimpleType(string typeName)");
+        result.RefactoredCode.Should().Contain("internal MethodInfo? ExtractMethodInfo(string code)");
+        result.RefactoredCode.Should().Contain("internal ValidationResult CanMethodBeInlined(MethodInfo method)");
+        result.RefactoredCode.Should().Contain("internal bool IsRecursive(MethodInfo method)");
+        result.RefactoredCode.Should().Contain("internal bool IsSimpleType(string typeName)");
 
         // Verify composition field created
         result.RefactoredCode.Should().Contain("private readonly MethodResolver _methodResolver = new MethodResolver();");
@@ -969,7 +969,7 @@ public interface ILogger { void Log(string msg); }";
 
         // Verify original fields remain in InlineMethod
         var inlineMethodStart = result.RefactoredCode.IndexOf("public class InlineMethod");
-        var methodResolverStart = result.RefactoredCode.IndexOf("public class MethodResolver");
+        var methodResolverStart = result.RefactoredCode.IndexOf("internal class MethodResolver");
         inlineMethodStart.Should().BeGreaterThan(-1);
         methodResolverStart.Should().BeGreaterThan(inlineMethodStart);
 
@@ -1005,8 +1005,8 @@ public class Service
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class Helper");
-        result.RefactoredCode.Should().Contain("private void HelperMethod()");
+        result.RefactoredCode.Should().Contain("internal class Helper");
+        result.RefactoredCode.Should().Contain("internal void HelperMethod()");
         result.RefactoredCode.Should().Contain("_helper.HelperMethod()");
     }
 
@@ -1043,8 +1043,8 @@ public class Service
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class Configuration");
-        result.RefactoredCode.Should().Contain("public class NestedConfig");
+        result.RefactoredCode.Should().Contain("internal class Configuration");
+        result.RefactoredCode.Should().Contain("public class NestedConfig"); // Nested type stays public (not part of bug fixes)
         result.RefactoredCode.Should().Contain("private readonly Configuration _configuration = new Configuration();");
         result.RefactoredCode.Should().NotContain("Container.NestedConfig"); // Should not remain in original class
     }
@@ -1075,7 +1075,7 @@ public class Service
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class Geometry");
+        result.RefactoredCode.Should().Contain("internal class Geometry");
         result.RefactoredCode.Should().Contain("public struct Point");
         result.RefactoredCode.Should().NotContain("DataProcessor.Point");
     }
@@ -1112,7 +1112,7 @@ public class Service
             Console.WriteLine($"ERROR: {result.ErrorMessage}");
         }
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class LogConfiguration");
+        result.RefactoredCode.Should().Contain("internal class LogConfiguration");
         result.RefactoredCode.Should().Contain("public enum LogLevel");
         result.RefactoredCode.Should().Contain("Debug");
         result.RefactoredCode.Should().Contain("Error");
@@ -1141,7 +1141,7 @@ public class Service
 
         // Assert
         result.IsSuccess.Should().BeTrue($"Refactoring should succeed, but failed with: {result.ErrorMessage}");
-        result.RefactoredCode.Should().Contain("public class UserData");
+        result.RefactoredCode.Should().Contain("internal class UserData");
         result.RefactoredCode.Should().Contain("public record UserInfo");
     }
 
@@ -1184,10 +1184,10 @@ public class Service
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class GameTypes");
+        result.RefactoredCode.Should().Contain("internal class GameTypes");
         result.RefactoredCode.Should().Contain("public enum GameState");
         result.RefactoredCode.Should().Contain("public struct Vector2D");
-        result.RefactoredCode.Should().Contain("public class Player");
+        result.RefactoredCode.Should().Contain("public class Player"); // Nested type stays public (not part of bug fixes)
         result.Message.Should().Contain("3 nested type(s)");
     }
 
@@ -1221,9 +1221,9 @@ public class Service
 
         // Assert
         result.IsSuccess.Should().BeTrue($"Refactoring should succeed, but failed with: {result.ErrorMessage}");
-        result.RefactoredCode.Should().Contain("public class PositionBasedResolver");
-        result.RefactoredCode.Should().Contain("public class SymbolResolutionResult");
-        result.RefactoredCode.Should().Contain("public SymbolResolutionResult GetSymbolAtPosition");
+        result.RefactoredCode.Should().Contain("internal class PositionBasedResolver");
+        result.RefactoredCode.Should().Contain("public class SymbolResolutionResult"); // Nested type stays public (not part of bug fixes)
+        result.RefactoredCode.Should().Contain("internal SymbolResolutionResult GetSymbolAtPosition");
         // The extracted method should use SymbolResolutionResult directly (it's in the same class now)
         result.RefactoredCode.Should().Contain("return new SymbolResolutionResult");
     }
@@ -1278,7 +1278,7 @@ public class Service
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class TaskProcessor");
+        result.RefactoredCode.Should().Contain("internal class TaskProcessor");
         result.RefactoredCode.Should().Contain("private ILogger _logger;");
         result.RefactoredCode.Should().Contain("public void ProcessTask");
         result.RefactoredCode.Should().Contain("public enum Priority");
@@ -1313,7 +1313,7 @@ public class Service
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class Interfaces");
+        result.RefactoredCode.Should().Contain("internal class Interfaces");
         result.RefactoredCode.Should().Contain("public interface IProcessor");
         result.RefactoredCode.Should().Contain("void Process();");
         result.RefactoredCode.Should().Contain("string GetResult();");
@@ -1344,8 +1344,8 @@ public class Service
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class Configuration");
-        result.RefactoredCode.Should().Contain("public class Config");
+        result.RefactoredCode.Should().Contain("internal class Configuration");
+        result.RefactoredCode.Should().Contain("internal class Config");
         // Critical: Field type reference should remain as 'Config', not '_configuration.Config'
         result.RefactoredCode.Should().Contain("private Config _config");
         result.RefactoredCode.Should().NotContain("private _configuration.Config");

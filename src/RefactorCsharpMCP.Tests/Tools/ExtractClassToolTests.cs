@@ -30,7 +30,7 @@ public class ExtractClassToolTests
         var json = JsonSerializer.Serialize(result);
         var doc = JsonDocument.Parse(json);
         doc.RootElement.GetProperty("success").GetBoolean().Should().BeTrue();
-        doc.RootElement.GetProperty("refactoredCode").GetString().Should().Contain("public class LoggingContext");
+        doc.RootElement.GetProperty("refactoredCode").GetString().Should().Contain("internal class LoggingContext");
     }
 
     [Fact]
@@ -125,9 +125,9 @@ public class ExtractClassToolTests
         doc.RootElement.GetProperty("success").GetBoolean().Should().BeTrue();
 
         var refactoredCode = doc.RootElement.GetProperty("refactoredCode").GetString();
-        refactoredCode.Should().Contain("public class DataValidator");
-        refactoredCode.Should().Contain("private void ValidateData()");
-        refactoredCode.Should().Contain("private string FormatData(string input)");
+        refactoredCode.Should().Contain("internal class DataValidator");
+        refactoredCode.Should().Contain("internal void ValidateData()");
+        refactoredCode.Should().Contain("internal string FormatData(string input)");
         refactoredCode.Should().Contain("private readonly DataValidator _dataValidator");
         refactoredCode.Should().Contain("_dataValidator.ValidateData()");
         refactoredCode.Should().Contain("_dataValidator.FormatData(");
@@ -209,9 +209,9 @@ public interface ILogger { }";
         doc.RootElement.GetProperty("success").GetBoolean().Should().BeTrue();
 
         var refactoredCode = doc.RootElement.GetProperty("refactoredCode").GetString();
-        refactoredCode.Should().Contain("public class TypeChecker");
-        refactoredCode.Should().Contain("private bool IsSimpleType(string typeName)");
-        refactoredCode.Should().Contain("private bool IsRecursive(string methodName)");
+        refactoredCode.Should().Contain("internal class TypeChecker");
+        refactoredCode.Should().Contain("internal bool IsSimpleType(string typeName)");
+        refactoredCode.Should().Contain("internal bool IsRecursive(string methodName)");
         refactoredCode.Should().Contain("private readonly TypeChecker _typeChecker");
 
         // Verify original field remains in InlineMethod

@@ -350,6 +350,49 @@ public abstract class RefactoringBase
     }
 
     /// <summary>
+    /// Validates that refactored code compiles without errors.
+    /// This method performs semantic validation by creating a compilation and checking for error diagnostics.
+    /// </summary>
+    /// <param name="sourceCode">The refactored source code to validate.</param>
+    /// <returns>A RefactoringResult indicating success or describing compilation errors.</returns>
+    protected RefactoringResult ValidateCompilation(string sourceCode)
+    {
+        try
+        {
+            CurrentPhase = "Compilation Validation";
+
+            var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);
+            var compilation = CreateCompilation(syntaxTree);
+
+            // Filter compilation errors, excluding CS5001 (missing Main method)
+            // Refactored code is typically a snippet, not a complete program
+            var errors = compilation.GetDiagnostics()
+                .Where(d => d.Severity == DiagnosticSeverity.Error &&
+                            d.Id != "CS5001") // Exclude "Program does not contain a static 'Main' method"
+                .ToList();
+
+            if (errors.Any())
+            {
+                var errorSummary = string.Join("; ",
+                    errors.Take(3).Select(d => $"{d.Id}: {d.GetMessage()}"));
+
+                Logger?.LogError("Compilation validation failed with {Count} errors: {Errors}",
+                    errors.Count, errorSummary);
+
+                return RefactoringResult.Failure(
+                    $"Generated code has compilation errors: {errorSummary}. Total errors: {errors.Count}");
+            }
+
+            Logger?.LogDebug("Compilation validation passed");
+            return RefactoringResult.Success(sourceCode, "Compilation validation passed");
+        }
+        catch (Exception ex)
+        {
+            return HandleException(ex, "compilation validation");
+        }
+    }
+
+    /// <summary>
     /// Normalizes whitespace in a syntax node to ensure proper formatting, or preserves original formatting based on options.
     /// </summary>
     /// <param name="node">The syntax node to process.</param>
