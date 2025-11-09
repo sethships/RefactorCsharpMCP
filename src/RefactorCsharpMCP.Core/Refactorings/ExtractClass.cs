@@ -32,6 +32,7 @@ public class ExtractClass : RefactoringBase
     /// <param name="fieldNames">Comma or semicolon-separated field names to extract. Optional if methodNames is provided; at least one of fieldNames or methodNames must be non-empty.</param>
     /// <param name="targetFramework">The target .NET framework (e.g., "net8.0", "net48").</param>
     /// <param name="methodNames">Comma or semicolon-separated method names to extract. Optional if fieldNames is provided; at least one of fieldNames or methodNames must be non-empty.</param>
+    /// <param name="nestedTypeNames">Comma or semicolon-separated nested type names to extract. Optional.</param>
     /// <returns>A result containing the refactored code or error information.</returns>
     public async Task<RefactoringResult> ExecuteAsync(
         string sourceCode,
@@ -39,12 +40,13 @@ public class ExtractClass : RefactoringBase
         string newClassName,
         string? fieldNames,
         string targetFramework,
-        string? methodNames = null)
+        string? methodNames = null,
+        string? nestedTypeNames = null)
     {
         return await ExecuteWithValidationAsync(
             sourceCode,
             targetFramework,
-            async () => await Task.Run(() => Execute(sourceCode, className, newClassName, fieldNames, methodNames)));
+            async () => await Task.Run(() => Execute(sourceCode, className, newClassName, fieldNames, methodNames, nestedTypeNames)));
     }
 
     /// <summary>
@@ -55,13 +57,15 @@ public class ExtractClass : RefactoringBase
     /// <param name="newClassName">The name of the new class to create.</param>
     /// <param name="fieldNames">Comma or semicolon-separated field names to extract. Optional if methodNames is provided; at least one of fieldNames or methodNames must be non-empty.</param>
     /// <param name="methodNames">Comma or semicolon-separated method names to extract. Optional if fieldNames is provided; at least one of fieldNames or methodNames must be non-empty.</param>
+    /// <param name="nestedTypeNames">Comma or semicolon-separated nested type names to extract. Optional.</param>
     /// <returns>A result containing the refactored code or error information.</returns>
     public RefactoringResult Execute(
         string sourceCode,
         string className,
         string newClassName,
         string? fieldNames,
-        string? methodNames = null)
+        string? methodNames = null,
+        string? nestedTypeNames = null)
     {
         // Validate inputs
         var sourceValidation = ValidateNonEmpty(sourceCode, "Source code");
@@ -73,21 +77,26 @@ public class ExtractClass : RefactoringBase
         var newClassValidation = ValidateNonEmpty(newClassName, "New class name");
         if (!newClassValidation.IsSuccess) return newClassValidation;
 
-        // Validate that at least one of fieldNames or methodNames is provided
-        if (string.IsNullOrWhiteSpace(fieldNames) && string.IsNullOrWhiteSpace(methodNames))
+        // Validate that at least one of fieldNames, methodNames, or nestedTypeNames is provided
+        if (string.IsNullOrWhiteSpace(fieldNames) &&
+            string.IsNullOrWhiteSpace(methodNames) &&
+            string.IsNullOrWhiteSpace(nestedTypeNames))
         {
-            return RefactoringResult.Failure("At least one field or method name must be specified.");
+            return RefactoringResult.Failure("At least one field, method, or nested type name must be specified.");
         }
 
         try
         {
-            // Parse field and method names
+            // Parse field, method, and nested type names
             var fieldsToExtract = string.IsNullOrWhiteSpace(fieldNames)
                 ? new List<string>()
                 : ParseNames(fieldNames);
             var methodsToExtract = string.IsNullOrWhiteSpace(methodNames)
                 ? new List<string>()
                 : ParseNames(methodNames);
+            var nestedTypesToExtract = string.IsNullOrWhiteSpace(nestedTypeNames)
+                ? new List<string>()
+                : ParseNames(nestedTypeNames);
 
             // Parse and validate syntax
             var parseResult = ParseAndValidateSyntax(sourceCode, out var root, out var syntaxTree);
@@ -134,8 +143,20 @@ public class ExtractClass : RefactoringBase
                 methodsToExtractNodes.Add(methodDeclaration);
             }
 
+            // Validate all nested types exist
+            var nestedTypesToExtractNodes = new List<BaseTypeDeclarationSyntax>();
+            foreach (var typeName in nestedTypesToExtract)
+            {
+                var nestedType = FindNestedType(classDeclaration, typeName);
+                if (nestedType == null)
+                {
+                    return RefactoringResult.Failure($"Nested type '{typeName}' not found in class '{className}'.");
+                }
+                nestedTypesToExtractNodes.Add(nestedType);
+            }
+
             // Get symbols for extracted members BEFORE any modifications
-            var extractedSymbols = GetExtractedSymbols(semanticModel, fieldsToExtractNodes, methodsToExtractNodes);
+            var extractedSymbols = GetExtractedSymbols(semanticModel, fieldsToExtractNodes, methodsToExtractNodes, nestedTypesToExtractNodes);
 
             // Get the source class symbol for semantic comparison
             var sourceClassSymbol = semanticModel.GetDeclaredSymbol(classDeclaration);
@@ -160,6 +181,7 @@ public class ExtractClass : RefactoringBase
                 sameClassReferences,
                 extractedSymbols,
                 newClassFieldName,
+                newClassName,
                 semanticModel,
                 sourceClassSymbol);
 
@@ -203,7 +225,7 @@ public class ExtractClass : RefactoringBase
             }
 
             // Create the new class with the ORIGINAL extracted member nodes
-            var newClass = CreateNewClass(newClassName, fieldsToExtractNodes, methodsToExtractNodes);
+            var newClass = CreateNewClass(newClassName, fieldsToExtractNodes, methodsToExtractNodes, nestedTypesToExtractNodes);
 
             // Remove extracted members from the updated class
             var updatedClass = classDeclaration;
@@ -225,6 +247,27 @@ public class ExtractClass : RefactoringBase
                 if (updatedClass == null)
                 {
                     return RefactoringResult.Failure("Failed to remove method from original class.");
+                }
+            }
+
+            // Re-find and remove nested types from the updated class
+            var nestedTypesToRemove = new List<BaseTypeDeclarationSyntax>();
+            foreach (var typeName in nestedTypesToExtract)
+            {
+                var nestedType = FindNestedType(updatedClass, typeName);
+                if (nestedType != null)
+                {
+                    nestedTypesToRemove.Add(nestedType);
+                }
+            }
+
+            // Remove nested types
+            foreach (var nestedType in nestedTypesToRemove)
+            {
+                updatedClass = updatedClass.RemoveNode(nestedType, SyntaxRemoveOptions.KeepNoTrivia);
+                if (updatedClass == null)
+                {
+                    return RefactoringResult.Failure("Failed to remove nested type from original class.");
                 }
             }
 
@@ -277,6 +320,7 @@ public class ExtractClass : RefactoringBase
                 externalReferences,
                 fieldsToExtract.Count,
                 methodsToExtract.Count,
+                nestedTypesToExtract.Count,
                 newClassName);
 
             return RefactoringResult.Success(
@@ -306,10 +350,23 @@ public class ExtractClass : RefactoringBase
             .FirstOrDefault(f => f.Declaration.Variables.Any(v => v.Identifier.Text == fieldName));
     }
 
+    /// <summary>
+    /// Finds a nested type declaration by name.
+    /// Uses BaseTypeDeclarationSyntax for polymorphism (supports class, struct, record, enum, interface).
+    /// NOTE: Does not support nested delegate types as they inherit from BaseMethodDeclarationSyntax, not BaseTypeDeclarationSyntax.
+    /// </summary>
+    private BaseTypeDeclarationSyntax? FindNestedType(ClassDeclarationSyntax classDeclaration, string typeName)
+    {
+        return classDeclaration.Members
+            .OfType<BaseTypeDeclarationSyntax>()
+            .FirstOrDefault(t => t.Identifier.Text == typeName);
+    }
+
     private ClassDeclarationSyntax CreateNewClass(
         string newClassName,
         List<FieldDeclarationSyntax> fields,
-        List<MethodDeclarationSyntax> methods)
+        List<MethodDeclarationSyntax> methods,
+        List<BaseTypeDeclarationSyntax> nestedTypes)
     {
         var members = new List<MemberDeclarationSyntax>();
 
@@ -318,6 +375,9 @@ public class ExtractClass : RefactoringBase
 
         // Add methods
         members.AddRange(methods);
+
+        // Add nested types
+        members.AddRange(nestedTypes);
 
         // Create class declaration
         var classDecl = SyntaxFactory.ClassDeclaration(newClassName)
@@ -346,12 +406,13 @@ public class ExtractClass : RefactoringBase
     }
 
     /// <summary>
-    /// Gets symbols for extracted field and method declarations.
+    /// Gets symbols for extracted field, method, and nested type declarations.
     /// </summary>
     private List<ISymbol> GetExtractedSymbols(
         SemanticModel semanticModel,
         List<FieldDeclarationSyntax> fieldDeclarations,
-        List<MethodDeclarationSyntax> methodDeclarations)
+        List<MethodDeclarationSyntax> methodDeclarations,
+        List<BaseTypeDeclarationSyntax> nestedTypeDeclarations)
     {
         var symbols = new List<ISymbol>();
 
@@ -372,6 +433,16 @@ public class ExtractClass : RefactoringBase
         foreach (var method in methodDeclarations)
         {
             var symbol = semanticModel.GetDeclaredSymbol(method);
+            if (symbol != null)
+            {
+                symbols.Add(symbol);
+            }
+        }
+
+        // Get nested type symbols
+        foreach (var nestedType in nestedTypeDeclarations)
+        {
+            var symbol = semanticModel.GetDeclaredSymbol(nestedType);
             if (symbol != null)
             {
                 symbols.Add(symbol);
@@ -434,6 +505,7 @@ public class ExtractClass : RefactoringBase
         List<Location> sameClassReferences,
         List<ISymbol> extractedSymbols,
         string newClassFieldName,
+        string newClassName,
         SemanticModel semanticModel,
         INamedTypeSymbol sourceClassSymbol)
     {
@@ -442,6 +514,7 @@ public class ExtractClass : RefactoringBase
             semanticModel,
             extractedSymbols,
             newClassFieldName,
+            newClassName,
             sourceClassSymbol);
 
         return (CompilationUnitSyntax)rewriter.Visit(root);
@@ -454,9 +527,15 @@ public class ExtractClass : RefactoringBase
         List<Location> externalReferences,
         int fieldsCount,
         int methodsCount,
+        int nestedTypesCount,
         string newClassName)
     {
-        var baseMessage = $"Extracted {fieldsCount} field(s) and {methodsCount} method(s) into new class '{newClassName}'.";
+        var parts = new List<string>();
+        if (fieldsCount > 0) parts.Add($"{fieldsCount} field(s)");
+        if (methodsCount > 0) parts.Add($"{methodsCount} method(s)");
+        if (nestedTypesCount > 0) parts.Add($"{nestedTypesCount} nested type(s)");
+
+        var baseMessage = $"Extracted {string.Join(", ", parts)} into new class '{newClassName}'.";
 
         if (externalReferences.Any())
         {
@@ -484,17 +563,20 @@ public class ExtractClass : RefactoringBase
         private readonly SemanticModel _semanticModel;
         private readonly HashSet<ISymbol> _extractedSymbolSet;
         private readonly string _newClassFieldName;
+        private readonly string _newClassName;
         private readonly INamedTypeSymbol _sourceClassSymbol;
 
         public ReferenceUpdateRewriter(
             SemanticModel semanticModel,
             List<ISymbol> extractedSymbols,
             string newClassFieldName,
+            string newClassName,
             INamedTypeSymbol sourceClassSymbol)
         {
             _semanticModel = semanticModel;
             _extractedSymbolSet = extractedSymbols.ToHashSet(SymbolEqualityComparer.Default);
             _newClassFieldName = newClassFieldName;
+            _newClassName = newClassName;
             _sourceClassSymbol = sourceClassSymbol;
         }
 
@@ -544,6 +626,18 @@ public class ExtractClass : RefactoringBase
                 return base.VisitIdentifierName(node);
             }
 
+            // Do NOT transform type symbols (INamedTypeSymbol) in identifier contexts
+            // Rationale:
+            // - Type references in variable declarations (e.g., 'MyType myVar') should NOT become '_field.MyType'
+            // - Type references in object creation (e.g., 'new MyType()') should NOT become 'new _field.MyType()'
+            // - Type references in type parameters (e.g., 'List<MyType>') should NOT be transformed
+            // - Only qualified type names (OriginalClass.MyType) need transformation, handled by VisitQualifiedName
+            // This prevents InvalidCastException when Roslyn tries to use member access in type contexts
+            if (symbolInfo.Symbol is INamedTypeSymbol)
+            {
+                return base.VisitIdentifierName(node);
+            }
+
             // Check if this identifier is already part of a member access expression
             // (e.g., _address._city or this._city) - if so, don't transform it again
             if (node.Parent is MemberAccessExpressionSyntax memberAccess &&
@@ -568,6 +662,44 @@ public class ExtractClass : RefactoringBase
                 node);
 
             return memberAccessExpr.WithTriviaFrom(node);
+        }
+
+        public override SyntaxNode? VisitQualifiedName(QualifiedNameSyntax node)
+        {
+            // Handle qualified type names like: OriginalClass.NestedType
+            // NOTE: Currently handles two-level qualified names only.
+            // Multi-level nesting (e.g., Outer.Middle.Inner) will be handled recursively
+            // by base visitor, but only the rightmost qualification is checked here.
+            // For complex nested scenarios, consider explicit multi-level support in future versions.
+
+            // Get the symbol for the right side (the nested type name)
+            var symbolInfo = _semanticModel.GetSymbolInfo(node.Right);
+            if (symbolInfo.Symbol == null)
+            {
+                return base.VisitQualifiedName(node);
+            }
+
+            // Only process if the right side is an extracted nested type symbol
+            if (!_extractedSymbolSet.Contains(symbolInfo.Symbol))
+            {
+                return base.VisitQualifiedName(node);
+            }
+
+            // Check if the left side refers to the source class
+            var leftSymbolInfo = _semanticModel.GetSymbolInfo(node.Left);
+            if (leftSymbolInfo.Symbol is INamedTypeSymbol leftTypeSymbol &&
+                SymbolEqualityComparer.Default.Equals(leftTypeSymbol, _sourceClassSymbol))
+            {
+                // Transform: OriginalClass.NestedType -> NewClass.NestedType
+                var newClassIdentifier = SyntaxFactory.IdentifierName(_newClassName);
+                var newQualifiedName = SyntaxFactory.QualifiedName(
+                    newClassIdentifier,
+                    (SimpleNameSyntax)node.Right);
+
+                return newQualifiedName.WithTriviaFrom(node);
+            }
+
+            return base.VisitQualifiedName(node);
         }
     }
 }

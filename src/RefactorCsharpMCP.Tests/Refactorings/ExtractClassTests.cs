@@ -174,7 +174,7 @@ public class ExtractClassTests
 
         // Assert
         result.IsSuccess.Should().BeFalse();
-        result.ErrorMessage.Should().Contain("At least one field or method name must be specified");
+        result.ErrorMessage.Should().Contain("At least one field, method, or nested type name must be specified");
     }
 
     [Fact]
@@ -189,7 +189,7 @@ public class ExtractClassTests
 
         // Assert
         result.IsSuccess.Should().BeFalse();
-        result.ErrorMessage.Should().Contain("At least one field or method name must be specified");
+        result.ErrorMessage.Should().Contain("At least one field, method, or nested type name must be specified");
     }
 
     [Fact]
@@ -1008,6 +1008,350 @@ public class Service
         result.RefactoredCode.Should().Contain("public class Helper");
         result.RefactoredCode.Should().Contain("private void HelperMethod()");
         result.RefactoredCode.Should().Contain("_helper.HelperMethod()");
+    }
+
+    #endregion
+
+    #region Nested Type Extraction Tests
+
+    [Fact]
+    public void ExtractClass_WithNestedClass_ExtractsSuccessfully()
+    {
+        // Arrange
+        var sourceCode = @"public class Container
+{
+    private string _data;
+
+    public class NestedConfig
+    {
+        public int MaxSize { get; set; }
+        public bool Enabled { get; set; }
+    }
+
+    public void Process(NestedConfig config)
+    {
+        if (config.Enabled)
+        {
+            // Process logic
+        }
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "Container", "Configuration", null, null, "NestedConfig");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("public class Configuration");
+        result.RefactoredCode.Should().Contain("public class NestedConfig");
+        result.RefactoredCode.Should().Contain("private readonly Configuration _configuration = new Configuration();");
+        result.RefactoredCode.Should().NotContain("Container.NestedConfig"); // Should not remain in original class
+    }
+
+    [Fact]
+    public void ExtractClass_WithNestedStruct_ExtractsSuccessfully()
+    {
+        // Arrange
+        var sourceCode = @"public class DataProcessor
+{
+    private int _counter;
+
+    public struct Point
+    {
+        public int X;
+        public int Y;
+    }
+
+    public void PlotPoint(Point p)
+    {
+        // Plotting logic
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "DataProcessor", "Geometry", null, null, "Point");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("public class Geometry");
+        result.RefactoredCode.Should().Contain("public struct Point");
+        result.RefactoredCode.Should().NotContain("DataProcessor.Point");
+    }
+
+    [Fact]
+    public void ExtractClass_WithNestedEnum_ExtractsSuccessfully()
+    {
+        // Arrange
+        var sourceCode = @"public class Logger
+{
+    private string _logPath;
+
+    public enum LogLevel
+    {
+        Debug,
+        Info,
+        Warning,
+        Error
+    }
+
+    public void Log(string message, LogLevel level)
+    {
+        // Logging logic
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "Logger", "LogConfiguration", null, null, "LogLevel");
+
+        // Assert
+        if (!result.IsSuccess)
+        {
+            Console.WriteLine($"ERROR: {result.ErrorMessage}");
+        }
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("public class LogConfiguration");
+        result.RefactoredCode.Should().Contain("public enum LogLevel");
+        result.RefactoredCode.Should().Contain("Debug");
+        result.RefactoredCode.Should().Contain("Error");
+    }
+
+    [Fact]
+    public void ExtractClass_WithNestedRecord_ExtractsSuccessfully()
+    {
+        // Arrange
+        var sourceCode = @"public class UserManager
+{
+    private List<User> _users;
+
+    public record UserInfo(string Name, int Age);
+
+    public UserInfo GetUserInfo(int userId)
+    {
+        // Get user info logic
+        return new UserInfo(""John"", 30);
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "UserManager", "UserData", null, null, "UserInfo");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue($"Refactoring should succeed, but failed with: {result.ErrorMessage}");
+        result.RefactoredCode.Should().Contain("public class UserData");
+        result.RefactoredCode.Should().Contain("public record UserInfo");
+    }
+
+    [Fact]
+    public void ExtractClass_WithMultipleNestedTypes_ExtractsAllSuccessfully()
+    {
+        // Arrange
+        var sourceCode = @"public class GameEngine
+{
+    private int _score;
+
+    public enum GameState
+    {
+        Running,
+        Paused,
+        GameOver
+    }
+
+    public struct Vector2D
+    {
+        public float X;
+        public float Y;
+    }
+
+    public class Player
+    {
+        public string Name { get; set; }
+        public int Health { get; set; }
+    }
+
+    public void Update(GameState state, Vector2D position)
+    {
+        // Update logic
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "GameEngine", "GameTypes", null, null, "GameState,Vector2D,Player");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("public class GameTypes");
+        result.RefactoredCode.Should().Contain("public enum GameState");
+        result.RefactoredCode.Should().Contain("public struct Vector2D");
+        result.RefactoredCode.Should().Contain("public class Player");
+        result.Message.Should().Contain("3 nested type(s)");
+    }
+
+    [Fact]
+    public void ExtractClass_NestedTypeReferencesUpdated_InExtractedMethods()
+    {
+        // Arrange
+        var sourceCode = @"public class SymbolResolutionHelper
+{
+    private string _data;
+
+    public class SymbolResolutionResult
+    {
+        public bool Success { get; init; }
+        public string ErrorMessage { get; init; }
+    }
+
+    public SymbolResolutionResult GetSymbolAtPosition(int line, int column)
+    {
+        return new SymbolResolutionResult
+        {
+            Success = true,
+            ErrorMessage = null
+        };
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "SymbolResolutionHelper", "PositionBasedResolver", null, "GetSymbolAtPosition", "SymbolResolutionResult");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue($"Refactoring should succeed, but failed with: {result.ErrorMessage}");
+        result.RefactoredCode.Should().Contain("public class PositionBasedResolver");
+        result.RefactoredCode.Should().Contain("public class SymbolResolutionResult");
+        result.RefactoredCode.Should().Contain("public SymbolResolutionResult GetSymbolAtPosition");
+        // The extracted method should use SymbolResolutionResult directly (it's in the same class now)
+        result.RefactoredCode.Should().Contain("return new SymbolResolutionResult");
+    }
+
+    [Fact]
+    public void ExtractClass_WithNonExistentNestedType_ShouldFail()
+    {
+        // Arrange
+        var sourceCode = @"public class Container
+{
+    private string _data;
+
+    public class RealNestedClass
+    {
+        public int Value { get; set; }
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "Container", "NewClass", null, null, "FakeNestedType");
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorMessage.Should().Contain("Nested type 'FakeNestedType' not found");
+    }
+
+    [Fact]
+    public void ExtractClass_WithFieldMethodAndNestedType_ExtractsAll()
+    {
+        // Arrange
+        var sourceCode = @"public class Service
+{
+    private ILogger _logger;
+
+    public enum Priority
+    {
+        Low,
+        Medium,
+        High
+    }
+
+    public void ProcessTask(Priority priority)
+    {
+        _logger.Log($""Processing with priority: {priority}"");
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "Service", "TaskProcessor", "_logger", "ProcessTask", "Priority");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("public class TaskProcessor");
+        result.RefactoredCode.Should().Contain("private ILogger _logger;");
+        result.RefactoredCode.Should().Contain("public void ProcessTask");
+        result.RefactoredCode.Should().Contain("public enum Priority");
+        result.Message.Should().Contain("1 field(s)");
+        result.Message.Should().Contain("1 method(s)");
+        result.Message.Should().Contain("1 nested type(s)");
+    }
+
+    [Fact]
+    public void ExtractClass_WithNestedInterface_ExtractsSuccessfully()
+    {
+        // Arrange
+        var sourceCode = @"public class Container
+{
+    private string _data;
+
+    public interface IProcessor
+    {
+        void Process();
+        string GetResult();
+    }
+
+    public void Execute(IProcessor processor)
+    {
+        processor.Process();
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "Container", "Interfaces", null, null, "IProcessor");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("public class Interfaces");
+        result.RefactoredCode.Should().Contain("public interface IProcessor");
+        result.RefactoredCode.Should().Contain("void Process();");
+        result.RefactoredCode.Should().Contain("string GetResult();");
+    }
+
+    [Fact]
+    public void ExtractClass_WithNestedTypeAsFieldType_PreservesFieldDeclaration()
+    {
+        // Arrange
+        var sourceCode = @"public class Container
+{
+    public class Config
+    {
+        public string Setting { get; set; }
+    }
+
+    private Config _config;
+
+    public void Initialize()
+    {
+        _config = new Config();
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "Container", "Configuration", null, null, "Config");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("public class Configuration");
+        result.RefactoredCode.Should().Contain("public class Config");
+        // Critical: Field type reference should remain as 'Config', not '_configuration.Config'
+        result.RefactoredCode.Should().Contain("private Config _config");
+        result.RefactoredCode.Should().NotContain("private _configuration.Config");
+        // Object creation should also use 'Config' directly
+        result.RefactoredCode.Should().Contain("new Config()");
+        result.RefactoredCode.Should().NotContain("new _configuration.Config()");
     }
 
     #endregion
