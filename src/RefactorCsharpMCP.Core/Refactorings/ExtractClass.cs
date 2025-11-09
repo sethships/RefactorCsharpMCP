@@ -240,13 +240,21 @@ public class ExtractClass : RefactoringBase
                 }
             }
 
-            // Remove methods
+            // Remove methods - re-find each method in updated class to avoid stale references
             foreach (var method in methodsToRemove)
             {
-                updatedClass = updatedClass.RemoveNode(method, SyntaxRemoveOptions.KeepNoTrivia);
-                if (updatedClass == null)
+                var methodName = method.Identifier.Text;
+                var currentMethod = updatedClass.Members
+                    .OfType<MethodDeclarationSyntax>()
+                    .FirstOrDefault(m => m.Identifier.Text == methodName);
+
+                if (currentMethod != null)
                 {
-                    return RefactoringResult.Failure("Failed to remove method from original class.");
+                    updatedClass = updatedClass.RemoveNode(currentMethod, SyntaxRemoveOptions.KeepNoTrivia);
+                    if (updatedClass == null)
+                    {
+                        return RefactoringResult.Failure($"Failed to remove method '{methodName}' from original class.");
+                    }
                 }
             }
 

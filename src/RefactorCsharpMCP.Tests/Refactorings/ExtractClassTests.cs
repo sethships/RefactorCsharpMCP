@@ -1280,7 +1280,7 @@ public class Service
         result.IsSuccess.Should().BeTrue();
         result.RefactoredCode.Should().Contain("internal class TaskProcessor");
         result.RefactoredCode.Should().Contain("private ILogger _logger;");
-        result.RefactoredCode.Should().Contain("public void ProcessTask");
+        result.RefactoredCode.Should().Contain("internal void ProcessTask");
         result.RefactoredCode.Should().Contain("public enum Priority");
         result.Message.Should().Contain("1 field(s)");
         result.Message.Should().Contain("1 method(s)");
@@ -1352,6 +1352,321 @@ public class Service
         // Object creation should also use 'Config' directly
         result.RefactoredCode.Should().Contain("new Config()");
         result.RefactoredCode.Should().NotContain("new _configuration.Config()");
+    }
+
+    #endregion
+
+    #region Bug Fix Validation Tests (Issue #112)
+
+    [Fact]
+    public void Execute_ExtractedClassHasInternalVisibility_Bug4()
+    {
+        // Arrange - Bug #4: Extracted classes should be internal, not public
+        var sourceCode = @"public class UserService
+{
+    private ILogger _logger;
+    private IDatabase _database;
+
+    public void Process()
+    {
+        _logger.Log(""Processing"");
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "UserService", "LoggingContext", "_logger");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+
+        // Bug #4: Extracted class must have internal visibility for encapsulation
+        result.RefactoredCode.Should().Contain("internal class LoggingContext");
+        result.RefactoredCode.Should().NotContain("public class LoggingContext");
+
+        // Source class remains public
+        result.RefactoredCode.Should().Contain("public class UserService");
+    }
+
+    [Fact]
+    public void Execute_ExtractedMethodsHaveInternalAccessibility_Bug3()
+    {
+        // Arrange - Bug #3: Extracted methods need internal accessibility to be callable via composition
+        var sourceCode = @"public class DataProcessor
+{
+    private string _data;
+
+    private void ValidateData()
+    {
+        // Validation logic
+    }
+
+    private string TransformData(string input)
+    {
+        return input.ToUpper();
+    }
+
+    public void Process()
+    {
+        ValidateData();
+        var result = TransformData(_data);
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "DataProcessor", "DataValidator", null, "ValidateData,TransformData");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+
+        // Bug #3: Extracted methods must be internal to allow composition field access
+        result.RefactoredCode.Should().Contain("internal void ValidateData()");
+        result.RefactoredCode.Should().Contain("internal string TransformData(string input)");
+
+        // Methods should not remain private (would prevent composition field access)
+        result.RefactoredCode.Should().NotContain("private void ValidateData()");
+        result.RefactoredCode.Should().NotContain("private string TransformData(string input)");
+
+        // Verify composition field can call the methods
+        result.RefactoredCode.Should().Contain("_dataValidator.ValidateData()");
+        result.RefactoredCode.Should().Contain("_dataValidator.TransformData(");
+    }
+
+    [Fact]
+    public void Execute_ExtractedMethodsRemovedFromSourceClass_Bug1()
+    {
+        // Arrange - Bug #1: Methods must be removed from source class after extraction
+        var sourceCode = @"public class Calculator
+{
+    private int _value;
+
+    private int Add(int a, int b)
+    {
+        return a + b;
+    }
+
+    private int Multiply(int a, int b)
+    {
+        return a * b;
+    }
+
+    public int Calculate()
+    {
+        var sum = Add(5, 3);
+        var product = Multiply(sum, 2);
+        return product;
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "Calculator", "MathOperations", null, "Add,Multiply");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+
+        // Bug #1: Methods should be removed from source class (stale tree reference bug)
+        var sourceClassStart = result.RefactoredCode.IndexOf("public class Calculator");
+        var extractedClassStart = result.RefactoredCode.IndexOf("internal class MathOperations");
+        var sourceClassSection = result.RefactoredCode.Substring(
+            sourceClassStart,
+            extractedClassStart - sourceClassStart);
+
+        // Extracted methods should NOT appear in source class
+        sourceClassSection.Should().NotContain("int Add(int a, int b)");
+        sourceClassSection.Should().NotContain("int Multiply(int a, int b)");
+
+        // But should appear in extracted class
+        var extractedSection = result.RefactoredCode.Substring(extractedClassStart);
+        extractedSection.Should().Contain("internal int Add(int a, int b)");
+        extractedSection.Should().Contain("internal int Multiply(int a, int b)");
+
+        // Source class should delegate to composition field
+        sourceClassSection.Should().Contain("_mathOperations.Add(");
+        sourceClassSection.Should().Contain("_mathOperations.Multiply(");
+    }
+
+    [Fact]
+    public void Execute_AllMethodInvocationsUpdatedToDelegate_Bug2()
+    {
+        // Arrange - Bug #2: Direct method invocations must be updated to delegate through composition field
+        var sourceCode = @"public class Validator
+{
+    private string _input;
+
+    private bool IsValid(string value)
+    {
+        return !string.IsNullOrEmpty(value);
+    }
+
+    private bool IsNumeric(string value)
+    {
+        return int.TryParse(value, out _);
+    }
+
+    public void Validate()
+    {
+        // Direct method invocations - these need to be updated
+        if (IsValid(_input) && IsNumeric(_input))
+        {
+            var valid = IsValid(""test"");
+        }
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "Validator", "ValidationRules", null, "IsValid,IsNumeric");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+
+        // Bug #2: All direct invocations should be updated to delegate
+        var sourceClassStart = result.RefactoredCode.IndexOf("public class Validator");
+        var extractedClassStart = result.RefactoredCode.IndexOf("internal class ValidationRules");
+        var sourceClassSection = result.RefactoredCode.Substring(
+            sourceClassStart,
+            extractedClassStart - sourceClassStart);
+
+        // Should delegate through composition field
+        sourceClassSection.Should().Contain("_validationRules.IsValid(_input)");
+        sourceClassSection.Should().Contain("_validationRules.IsNumeric(_input)");
+        sourceClassSection.Should().Contain("_validationRules.IsValid(\"test\")");
+
+        // Should NOT have direct invocations
+        sourceClassSection.Should().NotContain("if (IsValid(_input)");
+        sourceClassSection.Should().NotContain("&& IsNumeric(_input)");
+        sourceClassSection.Should().NotContain("var valid = IsValid(\"test\")");
+    }
+
+    [Fact]
+    public void Execute_MultiMethodExtraction_GeneratesValidCode()
+    {
+        // Arrange - Integration test: Extract multiple methods and verify generated code structure
+        var sourceCode = @"public class Service
+{
+    private string _data;
+
+    private void Initialize()
+    {
+        _data = ""initialized"";
+    }
+
+    private void Cleanup()
+    {
+        _data = null;
+    }
+
+    private bool Validate()
+    {
+        return _data != null;
+    }
+
+    public void Run()
+    {
+        Initialize();
+        if (Validate())
+        {
+            // Process
+        }
+        Cleanup();
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "Service", "Lifecycle", null, "Initialize,Cleanup,Validate");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+
+        // Verify extracted class structure
+        result.RefactoredCode.Should().Contain("internal class Lifecycle");
+        result.RefactoredCode.Should().Contain("internal void Initialize()");
+        result.RefactoredCode.Should().Contain("internal void Cleanup()");
+        result.RefactoredCode.Should().Contain("internal bool Validate()");
+
+        // Verify composition field
+        result.RefactoredCode.Should().Contain("private readonly Lifecycle _lifecycle = new Lifecycle();");
+
+        // Verify all method calls delegated
+        result.RefactoredCode.Should().Contain("_lifecycle.Initialize()");
+        result.RefactoredCode.Should().Contain("_lifecycle.Validate()");
+        result.RefactoredCode.Should().Contain("_lifecycle.Cleanup()");
+
+        // Verify methods removed from source
+        var sourceClassStart = result.RefactoredCode.IndexOf("public class Service");
+        var extractedClassStart = result.RefactoredCode.IndexOf("internal class Lifecycle");
+        var sourceClassSection = result.RefactoredCode.Substring(
+            sourceClassStart,
+            extractedClassStart - sourceClassStart);
+
+        sourceClassSection.Should().NotContain("void Initialize()");
+        sourceClassSection.Should().NotContain("void Cleanup()");
+        sourceClassSection.Should().NotContain("bool Validate()");
+    }
+
+    [Fact]
+    public void Execute_DogfoodingScenario_ExtractPositionBasedResolver()
+    {
+        // Arrange - Issue #91 dogfooding scenario: Extract PositionBasedResolver from SymbolResolutionHelper
+        var sourceCode = @"public class SymbolResolutionHelper
+{
+    private string _data;
+
+    public SymbolResolutionResult GetSymbolAtPosition(int line, int column)
+    {
+        return new SymbolResolutionResult
+        {
+            Success = true,
+            ErrorMessage = null
+        };
+    }
+
+    public class SymbolResolutionResult
+    {
+        public bool Success { get; init; }
+        public string ErrorMessage { get; init; }
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act - Extract method and nested type
+        var result = refactoring.Execute(
+            sourceCode,
+            "SymbolResolutionHelper",
+            "PositionBasedResolver",
+            null,
+            "GetSymbolAtPosition",
+            "SymbolResolutionResult");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+
+        // Verify extracted class is internal (Bug #4)
+        result.RefactoredCode.Should().Contain("internal class PositionBasedResolver");
+
+        // Verify extracted method is internal (Bug #3)
+        result.RefactoredCode.Should().Contain("internal SymbolResolutionResult GetSymbolAtPosition");
+
+        // Verify method removed from source (Bug #1)
+        var sourceClassStart = result.RefactoredCode.IndexOf("public class SymbolResolutionHelper");
+        var extractedClassStart = result.RefactoredCode.IndexOf("internal class PositionBasedResolver");
+        var sourceClassSection = result.RefactoredCode.Substring(
+            sourceClassStart,
+            extractedClassStart - sourceClassStart);
+
+        sourceClassSection.Should().NotContain("GetSymbolAtPosition(int line, int column)");
+
+        // Verify composition field created
+        result.RefactoredCode.Should().Contain("private readonly PositionBasedResolver _positionBasedResolver = new PositionBasedResolver();");
+
+        // Verify nested type moved
+        result.RefactoredCode.Should().Contain("public class SymbolResolutionResult");
+
+        // Verify operation succeeded
+        result.Message.Should().Contain("Extracted");
     }
 
     #endregion
