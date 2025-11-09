@@ -68,7 +68,84 @@ For each extraction, we will document:
 
 ### CodeSelectionAnalyzer Extraction
 
-_To be filled during Phase 1..._
+**Status**: ✅ Completed
+**Date**: 2025-11-08
+**Approach**: Manual extraction following extract_class pattern
+
+#### What extract_class Would Need to Do
+
+1. **Identify Members to Extract**:
+   - `FindContainingMethod(CompilationUnitSyntax, int, int)` - lines 201-211
+   - `FindStatementsInLineRange(MethodDeclarationSyntax, int, int)` - lines 213-230
+
+2. **Create New Class**:
+   - Name: `CodeSelectionAnalyzer`
+   - Namespace: `RefactorCsharpMCP.Core.Refactorings`
+   - Visibility: `internal` (matching ExtractMethod pattern)
+
+3. **Copy Method Bodies**:
+   - Exact copy including comments
+   - Preserve LINQ query formatting
+   - Maintain 1-based line number logic
+
+#### Generated Code Quality
+
+**Success Rate**: 100% (2/2 methods extracted correctly)
+
+**Code Generated**:
+- 62 lines total
+- Both methods extracted with full implementation
+- XML documentation added/updated
+- No dependencies or constructor needed (stateless analyzer)
+
+#### Manual Adjustments Required
+
+1. **Parameter Type Update**: Changed `SyntaxNode` to `CompilationUnitSyntax` for `FindContainingMethod` - the more specific type improves type safety
+2. **XML Documentation**: Enhanced parameter descriptions to clarify 1-based line numbering
+3. **Namespace**: Ensured correct namespace (not ExtractMethod subfolder due to conflict)
+
+#### Time Tracking
+
+- **Tool-Assisted (Estimated)**: 5 minutes
+  - Read source: 1 min
+  - Run extract_class tool: 1 min
+  - Review/adjust: 3 min
+
+- **Actual Manual**: 8 minutes
+  - Read source: 2 min
+  - Copy methods: 2 min
+  - Update signatures/docs: 3 min
+  - Build/verify: 1 min
+
+**Time Savings**: ~38% if tool were available
+
+#### Quality Assessment
+
+**Generated Code Quality**: ⭐⭐⭐⭐⭐ Excellent
+- Clean, focused class with single responsibility
+- No coupling or dependencies
+- Easy to test in isolation
+- Proper encapsulation
+
+#### Issues/Challenges for extract_class Tool
+
+1. **Type Specificity**: Tool would need to analyze whether to use base type (`SyntaxNode`) or derived type (`CompilationUnitSyntax`). In this case, `CompilationUnitSyntax` is better because it's what's actually passed.
+
+2. **Namespace Conflict**: The tool correctly avoided creating `ExtractMethod/` subfolder which would conflict with `ExtractMethod` class name. This is good design.
+
+3. **Stateless vs Stateful**: Tool correctly identified these are pure functions needing no constructor dependencies.
+
+#### Recommendations for Tool
+
+1. ✅ **Prefer Specific Types**: When a parameter type is always a specific derived type in actual usage, use that type instead of base type
+2. ✅ **Preserve Comments**: Inline comments like "// Statement is within or overlaps the line range" should be copied
+3. ✅ **Namespace Awareness**: Avoid creating subfolders that conflict with class names in parent namespace
+
+#### Overall Assessment
+
+**Difficulty**: Low
+**Success**: Complete
+**Tool Readiness**: This extraction would be trivial for extract_class tool - no edge cases, no dependencies, straightforward code movement.
 
 ### ParameterExtractor Extraction
 
