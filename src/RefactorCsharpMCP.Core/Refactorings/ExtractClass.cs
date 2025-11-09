@@ -29,15 +29,15 @@ public class ExtractClass : RefactoringBase
     /// <param name="sourceCode">The source code containing the class.</param>
     /// <param name="className">The name of the source class.</param>
     /// <param name="newClassName">The name of the new class to create.</param>
-    /// <param name="fieldNames">Comma or semicolon-separated field names to extract.</param>
+    /// <param name="fieldNames">Comma or semicolon-separated field names to extract (optional if methodNames provided).</param>
     /// <param name="targetFramework">The target .NET framework (e.g., "net8.0", "net48").</param>
-    /// <param name="methodNames">Comma or semicolon-separated method names to extract (optional).</param>
+    /// <param name="methodNames">Comma or semicolon-separated method names to extract (optional if fieldNames provided).</param>
     /// <returns>A result containing the refactored code or error information.</returns>
     public async Task<RefactoringResult> ExecuteAsync(
         string sourceCode,
         string className,
         string newClassName,
-        string fieldNames,
+        string? fieldNames,
         string targetFramework,
         string? methodNames = null)
     {
@@ -53,14 +53,14 @@ public class ExtractClass : RefactoringBase
     /// <param name="sourceCode">The source code containing the class.</param>
     /// <param name="className">The name of the source class.</param>
     /// <param name="newClassName">The name of the new class to create.</param>
-    /// <param name="fieldNames">Comma or semicolon-separated field names to extract.</param>
-    /// <param name="methodNames">Comma or semicolon-separated method names to extract (optional).</param>
+    /// <param name="fieldNames">Comma or semicolon-separated field names to extract (optional if methodNames provided).</param>
+    /// <param name="methodNames">Comma or semicolon-separated method names to extract (optional if fieldNames provided).</param>
     /// <returns>A result containing the refactored code or error information.</returns>
     public RefactoringResult Execute(
         string sourceCode,
         string className,
         string newClassName,
-        string fieldNames,
+        string? fieldNames,
         string? methodNames = null)
     {
         // Validate inputs
@@ -73,21 +73,21 @@ public class ExtractClass : RefactoringBase
         var newClassValidation = ValidateNonEmpty(newClassName, "New class name");
         if (!newClassValidation.IsSuccess) return newClassValidation;
 
-        var fieldValidation = ValidateNonEmpty(fieldNames, "Field names");
-        if (!fieldValidation.IsSuccess) return fieldValidation;
+        // Validate that at least one of fieldNames or methodNames is provided
+        if (string.IsNullOrWhiteSpace(fieldNames) && string.IsNullOrWhiteSpace(methodNames))
+        {
+            return RefactoringResult.Failure("At least one field or method name must be specified.");
+        }
 
         try
         {
             // Parse field and method names
-            var fieldsToExtract = ParseNames(fieldNames);
+            var fieldsToExtract = string.IsNullOrWhiteSpace(fieldNames)
+                ? new List<string>()
+                : ParseNames(fieldNames);
             var methodsToExtract = string.IsNullOrWhiteSpace(methodNames)
                 ? new List<string>()
                 : ParseNames(methodNames);
-
-            if (!fieldsToExtract.Any())
-            {
-                return RefactoringResult.Failure("At least one field name must be specified.");
-            }
 
             // Parse and validate syntax
             var parseResult = ParseAndValidateSyntax(sourceCode, out var root, out var syntaxTree);

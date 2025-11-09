@@ -542,14 +542,133 @@ You must manually update external references:
 System.Console.WriteLine(_userService._address._city);
 ```
 
+### Service Class Extraction (Methods-Only)
+
+Starting with V1.3, `extract_class` supports extracting methods without any fields - perfect for creating service classes that encapsulate related logic without state.
+
+**Before:**
+```csharp
+public class InlineMethod
+{
+    private ILogger _logger;
+    private string _sourceCode;
+
+    private MethodInfo? ExtractMethodInfo(string code)
+    {
+        _logger?.Log("Extracting method info");
+        // Complex extraction logic
+        return new MethodInfo();
+    }
+
+    private ValidationResult CanMethodBeInlined(MethodInfo method)
+    {
+        _logger?.Log("Validating method");
+        // Validation logic
+        return new ValidationResult { IsValid = true };
+    }
+
+    private bool IsRecursive(MethodInfo method)
+    {
+        // Recursion check logic
+        return false;
+    }
+
+    private bool IsSimpleType(string typeName)
+    {
+        return typeName == "int" || typeName == "string";
+    }
+
+    public void InlineTheMethod()
+    {
+        var methodInfo = ExtractMethodInfo(_sourceCode);
+        if (methodInfo != null)
+        {
+            var validation = CanMethodBeInlined(methodInfo);
+            var recursive = IsRecursive(methodInfo);
+            var simple = IsSimpleType("int");
+        }
+    }
+}
+```
+
+**After extraction** of methods into `MethodResolver` service class:
+```csharp
+public class InlineMethod
+{
+    private ILogger _logger;
+    private string _sourceCode;
+    private readonly MethodResolver _methodResolver = new MethodResolver();
+
+    public void InlineTheMethod()
+    {
+        var methodInfo = _methodResolver.ExtractMethodInfo(_sourceCode);
+        if (methodInfo != null)
+        {
+            var validation = _methodResolver.CanMethodBeInlined(methodInfo);
+            var recursive = _methodResolver.IsRecursive(methodInfo);
+            var simple = _methodResolver.IsSimpleType("int");
+        }
+    }
+}
+
+public class MethodResolver
+{
+    private MethodInfo? ExtractMethodInfo(string code)
+    {
+        // Complex extraction logic
+        return new MethodInfo();
+    }
+
+    private ValidationResult CanMethodBeInlined(MethodInfo method)
+    {
+        // Validation logic
+        return new ValidationResult { IsValid = true };
+    }
+
+    private bool IsRecursive(MethodInfo method)
+    {
+        // Recursion check logic
+        return false;
+    }
+
+    private bool IsSimpleType(string typeName)
+    {
+        return typeName == "int" || typeName == "string";
+    }
+}
+```
+
+**MCP Tool Usage:**
+```javascript
+// Extract methods only (no fields)
+const result = await use_mcp_tool({
+  server_name: "refactor-csharp-mcp",
+  tool_name: "extract_class",
+  arguments: {
+    sourceCode: "...",
+    className: "InlineMethod",
+    newClassName: "MethodResolver",
+    fieldNames: null,  // No fields to extract
+    methodNames: "ExtractMethodInfo,CanMethodBeInlined,IsRecursive,IsSimpleType"
+  }
+});
+```
+
+**Key Features:**
+- No fields required - extract pure service classes
+- Automatic composition field creation
+- Method calls automatically updated within same class
+- Perfect for decomposing large classes into smaller, focused services
+
 ### Best Practices
 
 1. **Group related fields and methods** - Extract cohesive groups that represent a single concept (e.g., all address-related members).
-2. **Use descriptive class names** - The new class name should clearly describe what it represents (`Address`, `Configuration`, `Credentials`).
-3. **Handle external references** - Always review and update external references after the refactoring completes.
-4. **Test after refactoring** - Run your tests to ensure all references were updated correctly.
-5. **Consider partial classes** - References in all parts of a partial class are automatically updated.
-6. **Encapsulation** - After extraction, consider making extracted fields private and adding public properties/methods as needed.
+2. **Use descriptive class names** - The new class name should clearly describe what it represents (`Address`, `Configuration`, `Credentials`, `MethodResolver`).
+3. **Service Class Pattern** - Extract methods-only to create stateless service classes that encapsulate related logic.
+4. **Handle external references** - Always review and update external references after the refactoring completes.
+5. **Test after refactoring** - Run your tests to ensure all references were updated correctly.
+6. **Consider partial classes** - References in all parts of a partial class are automatically updated.
+7. **Encapsulation** - After extraction, consider making extracted fields private and adding public properties/methods as needed.
 
 ## Combined Refactoring Workflow
 
