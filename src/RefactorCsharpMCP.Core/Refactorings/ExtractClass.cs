@@ -250,8 +250,15 @@ public class ExtractClass : RefactoringBase
             var strategyFactory = new ExtractionStrategyFactory();
             var strategy = strategyFactory.SelectStrategy(context);
 
-            // Create the new class with the ORIGINAL extracted member nodes
-            var newClass = CreateNewClass(newClassName, fieldsToExtractNodes, methodsToExtractNodes, nestedTypesToExtractNodes, strategy, context);
+            // Create the new class with the ORIGINAL extracted member nodes using builder pattern
+            var newClass = new ExtractedClassBuilder()
+                .WithClassName(newClassName)
+                .WithFields(fieldsToExtractNodes)
+                .WithMethods(methodsToExtractNodes)
+                .WithNestedTypes(nestedTypesToExtractNodes)
+                .WithStrategy(strategy)
+                .WithContext(context)
+                .Build();
 
             // Remove extracted members from the updated class
             var updatedClass = classDeclaration;
@@ -415,48 +422,6 @@ public class ExtractClass : RefactoringBase
         return classDeclaration.Members
             .OfType<BaseTypeDeclarationSyntax>()
             .FirstOrDefault(t => t.Identifier.Text == typeName);
-    }
-
-    /// <summary>
-    /// Creates a new class declaration with the specified members using the provided strategy for modifiers.
-    /// </summary>
-    /// <param name="newClassName">Name of the new class.</param>
-    /// <param name="fields">Fields to include in the new class.</param>
-    /// <param name="methods">Methods to include in the new class.</param>
-    /// <param name="nestedTypes">Nested types to include in the new class.</param>
-    /// <param name="strategy">The strategy for determining class and member modifiers.</param>
-    /// <param name="context">The extraction context for strategy decisions.</param>
-    /// <returns>A class declaration with modifiers determined by the strategy.</returns>
-    private ClassDeclarationSyntax CreateNewClass(
-        string newClassName,
-        List<FieldDeclarationSyntax> fields,
-        List<MethodDeclarationSyntax> methods,
-        List<BaseTypeDeclarationSyntax> nestedTypes,
-        IExtractionModifierStrategy strategy,
-        ExtractionContext context)
-    {
-        var members = new List<MemberDeclarationSyntax>();
-
-        // Transform fields using strategy
-        var transformedFields = fields.Select(f => strategy.TransformFieldModifiers(f, context));
-        members.AddRange(transformedFields);
-
-        // Transform methods using strategy
-        var transformedMethods = methods.Select(m => strategy.TransformMethodModifiers(m, context));
-        members.AddRange(transformedMethods);
-
-        // Add nested types (not transformed by strategy currently)
-        members.AddRange(nestedTypes);
-
-        // Get class modifiers from strategy
-        var classModifiers = strategy.GetClassModifiers(context);
-
-        // Create class declaration with strategy-determined modifiers
-        var classDecl = SyntaxFactory.ClassDeclaration(newClassName)
-            .WithModifiers(classModifiers)
-            .WithMembers(SyntaxFactory.List(members));
-
-        return classDecl;
     }
 
     /// <summary>
