@@ -27,6 +27,7 @@ The Core project includes a shared infrastructure layer that eliminates boilerpl
   - Common helper methods (`FindClass`, `FindMethod`)
   - **Structured error logging** with sanitized exception handling (`HandleException`, `RefactoringErrorContext`)
   - Framework-aware validation wrapper (`ExecuteWithValidationAsync`)
+  - **Compilation validation** with framework-specific BCL references (`ValidateCompilationWithFrameworkAsync`, Issue #115)
   - **Formatting preservation options** for whitespace normalization (`NormalizeWhitespace`, `RefactoringOptions`)
   - **Optional metrics tracking** for performance monitoring (`RefactoringMetrics`, `MetricsTracker`)
   - **Optional ILogger integration** for telemetry and diagnostics
@@ -124,7 +125,7 @@ dotnet test --collect:"XPlat Code Coverage"
 2. **Constructor Injection**: Convert method parameters to constructor-injected fields
 3. **Make Field Readonly**: Make fields readonly if only assigned in constructors
 4. **Safe Delete**: Delete methods/classes after verifying no references exist
-5. **Extract Class**: Extract fields and methods into a new class with composition pattern
+5. **Extract Class**: Extract fields and methods into a new class with composition pattern. **Includes optional compilation validation with framework-specific BCL references (enabled by default, Issue #115).**
 6. **Remove Unused Usings**: Remove unused using directives detected via Roslyn diagnostics (IDE0005, CS8019), with framework-aware handling of global usings (C# 10+)
 7. **Inline Method (Part 1)**: Inline a method by replacing its single invocation with the method's body. Supports void methods with simple parameters (primitives, string). Single caller only. Framework-aware with automatic syntax validation.
 
