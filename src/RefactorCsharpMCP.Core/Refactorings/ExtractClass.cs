@@ -26,29 +26,66 @@ public class ExtractClass : RefactoringBase
     }
 
     /// <summary>
-    /// Extracts specified fields and methods into a new class with framework-aware validation.
+    /// Extracts specified fields and methods into a new class with optional framework-aware compilation validation.
     /// </summary>
     /// <param name="sourceCode">The source code containing the class.</param>
     /// <param name="className">The name of the source class.</param>
     /// <param name="newClassName">The name of the new class to create.</param>
     /// <param name="fieldNames">Comma or semicolon-separated field names to extract. Optional if methodNames is provided; at least one of fieldNames or methodNames must be non-empty.</param>
-    /// <param name="targetFramework">The target .NET framework (e.g., "net8.0", "net48").</param>
+    /// <param name="targetFramework">The target .NET framework (e.g., "net8.0", "net48", "netstandard2.0"). Used for compilation validation when enabled.</param>
+    /// <param name="validateCompilation">Enable full compilation validation with framework-specific reference assemblies. Default: true. When enabled, validates that extracted code compiles successfully with complete BCL references for the target framework.</param>
     /// <param name="methodNames">Comma or semicolon-separated method names to extract. Optional if fieldNames is provided; at least one of fieldNames or methodNames must be non-empty.</param>
     /// <param name="nestedTypeNames">Comma or semicolon-separated nested type names to extract. Optional.</param>
+    /// <param name="additionalReferences">Optional metadata references for custom assemblies not in the BCL. Reserved for future use.</param>
     /// <returns>A result containing the refactored code or error information.</returns>
+    /// <remarks>
+    /// <para><strong>Validation Behavior:</strong></para>
+    /// <list type="bullet">
+    ///   <item>When <paramref name="validateCompilation"/> is true (default): Performs comprehensive semantic validation using framework-specific BCL references. Catches type resolution errors, missing assemblies, and semantic issues.</item>
+    ///   <item>When <paramref name="validateCompilation"/> is false: Performs syntax validation only. Faster but may miss semantic errors.</item>
+    /// </list>
+    /// <para><strong>Backward Compatibility:</strong></para>
+    /// <para>
+    /// The synchronous <see cref="Execute"/> method remains unchanged and performs syntax validation only.
+    /// Use this async variant when you need comprehensive compilation validation for production code.
+    /// </para>
+    /// </remarks>
     public async Task<RefactoringResult> ExecuteAsync(
         string sourceCode,
         string className,
         string newClassName,
         string? fieldNames,
-        string targetFramework,
+        string targetFramework = "net8.0",
+        bool validateCompilation = true,
         string? methodNames = null,
-        string? nestedTypeNames = null)
+        string? nestedTypeNames = null,
+        IEnumerable<MetadataReference>? additionalReferences = null)
     {
-        return await ExecuteWithValidationAsync(
-            sourceCode,
+        // Perform the refactoring operation synchronously
+        var refactoringResult = Execute(sourceCode, className, newClassName, fieldNames, methodNames, nestedTypeNames);
+
+        // If refactoring failed or validation is disabled, return immediately
+        if (!refactoringResult.IsSuccess || !validateCompilation)
+        {
+            return refactoringResult;
+        }
+
+        // Perform framework-aware compilation validation on the refactored code
+        var validationResult = await ValidateCompilationWithFrameworkAsync(
+            refactoringResult.RefactoredCode!,
             targetFramework,
-            async () => await Task.Run(() => Execute(sourceCode, className, newClassName, fieldNames, methodNames, nestedTypeNames)));
+            additionalReferences);
+
+        // If validation failed, return the validation failure
+        if (!validationResult.IsSuccess)
+        {
+            return validationResult;
+        }
+
+        // Validation succeeded - update the success message to indicate validation passed
+        return RefactoringResult.Success(
+            refactoringResult.RefactoredCode!,
+            $"{refactoringResult.Message} Compilation validation passed for framework {targetFramework}.");
     }
 
     /// <summary>
@@ -218,17 +255,10 @@ public class ExtractClass : RefactoringBase
             // Normalize whitespace to ensure proper formatting
             newRoot = NormalizeWhitespace(newRoot);
 
-            // NOTE: Compilation validation disabled for snippet-based refactoring
-            // The minimal reference set in CreateCompilation() doesn't include all types used in test code
-            // (ILogger, IDatabase, etc.). For production use with full project context, consider enabling
-            // validation or using a more complete compilation with all project references.
-            // See RefactoringBase.CreateCompilation() documentation for limitations.
-            //
-            // var compilationResult = ValidateCompilation(newRoot.ToFullString());
-            // if (!compilationResult.IsSuccess)
-            // {
-            //     return compilationResult;
-            // }
+            // NOTE: This synchronous Execute() method performs syntax validation only.
+            // For comprehensive compilation validation with framework-specific BCL references,
+            // use ExecuteAsync() with validateCompilation = true (default).
+            // See ExecuteAsync() method documentation for details on validation options.
 
             // Build result message (warning only if external references exist)
             var resultMessage = BuildExternalReferencesWarning(

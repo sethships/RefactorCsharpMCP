@@ -879,6 +879,286 @@ public class DerivedService : BaseService
 }
 ```
 
+### Compilation Validation (V1.3+)
+
+Starting with V1.3, Extract Class includes **optional compilation validation** that ensures the extracted code compiles successfully with framework-specific BCL references. **Validation is enabled by default.**
+
+#### Example 1: Validation Enabled by Default (Recommended)
+
+**Before:**
+```csharp
+public class DataProcessor
+{
+    private string _data;
+
+    private void ValidateData()
+    {
+        if (string.IsNullOrEmpty(_data))
+            throw new ArgumentException("Invalid data");
+    }
+
+    private string FormatData(string input)
+    {
+        return input.ToUpper();
+    }
+
+    public void Process()
+    {
+        ValidateData();
+        var formatted = FormatData(_data);
+        Console.WriteLine(formatted);
+    }
+}
+```
+
+**MCP Tool Usage (validation enabled by default):**
+```javascript
+const result = await use_mcp_tool({
+  server_name: "refactor-csharp-mcp",
+  tool_name: "extract_class",
+  arguments: {
+    sourceCode: "...",
+    className: "DataProcessor",
+    newClassName: "DataValidator",
+    fieldNames: "",
+    methodNames: "ValidateData,FormatData",
+    targetFramework: "net8.0",      // Default: "net8.0"
+    validateCompilation: true        // Default: true
+  }
+});
+
+// Result includes validation confirmation:
+// "Extracted 2 method(s) into new class 'DataValidator'.
+//  Compilation validation passed for framework net8.0."
+```
+
+**After (with validation confirmation):**
+```csharp
+public class DataProcessor
+{
+    private string _data;
+    private readonly DataValidator _dataValidator = new DataValidator();
+
+    public void Process()
+    {
+        _dataValidator.ValidateData();
+        var formatted = _dataValidator.FormatData(_data);
+        Console.WriteLine(formatted);
+    }
+}
+
+internal class DataValidator
+{
+    internal void ValidateData()
+    {
+        if (string.IsNullOrEmpty(_data))
+            throw new ArgumentException("Invalid data");
+    }
+
+    internal string FormatData(string input)
+    {
+        return input.ToUpper();
+    }
+}
+```
+
+#### Example 2: Disabling Validation for Custom Types
+
+When extracting code that uses types not available in the BCL (e.g., custom classes, third-party libraries), you may need to disable validation:
+
+**Before:**
+```csharp
+public class UserService
+{
+    private ILogger _logger;          // Custom interface
+    private IDatabase _database;      // Custom interface
+    private string _username;
+
+    public void SaveUser()
+    {
+        _logger.LogInformation("Saving user");
+        _database.Save(_username);
+    }
+}
+```
+
+**MCP Tool Usage (validation disabled for custom types):**
+```javascript
+const result = await use_mcp_tool({
+  server_name: "refactor-csharp-mcp",
+  tool_name: "extract_class",
+  arguments: {
+    sourceCode: "...",
+    className: "UserService",
+    newClassName: "UserContext",
+    fieldNames: "_username",
+    validateCompilation: false  // Disable - uses custom ILogger/IDatabase
+  }
+});
+
+// Result without validation:
+// "Extracted 1 field(s) into new class 'UserContext'."
+```
+
+#### Example 3: Framework-Specific Validation
+
+Different target frameworks support different language features. Validation ensures compatibility:
+
+**Code with Modern C# 12 Syntax:**
+```csharp
+public class Calculator
+{
+    private int[] _numbers = [1, 2, 3];  // Collection expression (C# 12)
+
+    public int Sum()
+    {
+        return _numbers.Sum();
+    }
+}
+```
+
+**Validation with net8.0 (C# 12 supported):**
+```javascript
+const result = await use_mcp_tool({
+  server_name: "refactor-csharp-mcp",
+  tool_name: "extract_class",
+  arguments: {
+    sourceCode: "...",
+    className: "Calculator",
+    newClassName: "NumberStore",
+    fieldNames: "_numbers",
+    targetFramework: "net8.0",      // Supports C# 12
+    validateCompilation: true
+  }
+});
+
+// ✅ Success - C# 12 syntax supported in net8.0
+```
+
+**Validation with net48 (C# 7.3 only):**
+```javascript
+const result = await use_mcp_tool({
+  server_name: "refactor-csharp-mcp",
+  tool_name: "extract_class",
+  arguments: {
+    sourceCode: "...",
+    className: "Calculator",
+    newClassName: "NumberStore",
+    fieldNames: "_numbers",
+    targetFramework: "net48",       // Only supports C# 7.3
+    validateCompilation: true
+  }
+});
+
+// ❌ Failure - Collection expressions not supported in net48
+// Error: "Generated code has compilation errors for framework net48"
+// Solution: Either use net8.0 or change collection expression to:
+//   private int[] _numbers = new int[] { 1, 2, 3 };
+```
+
+#### Example 4: Validation with Complex Refactoring
+
+For complex refactorings with multiple fields and methods, validation provides confidence:
+
+```csharp
+public class OrderProcessor
+{
+    private string _street;
+    private string _city;
+    private string _state;
+    private decimal _taxRate;
+
+    private decimal CalculateTax(decimal amount)
+    {
+        return amount * _taxRate;
+    }
+
+    private string FormatAddress()
+    {
+        return $"{_street}, {_city}, {_state}";
+    }
+
+    public decimal ProcessOrder(decimal orderAmount)
+    {
+        var tax = CalculateTax(orderAmount);
+        var address = FormatAddress();
+        Console.WriteLine($"Shipping to: {address}");
+        return orderAmount + tax;
+    }
+}
+```
+
+**MCP Tool Usage (validates both fields and methods):**
+```javascript
+const result = await use_mcp_tool({
+  server_name: "refactor-csharp-mcp",
+  tool_name: "extract_class",
+  arguments: {
+    sourceCode: "...",
+    className: "OrderProcessor",
+    newClassName: "OrderContext",
+    fieldNames: "_street,_city,_state,_taxRate",
+    methodNames: "CalculateTax,FormatAddress",
+    targetFramework: "net8.0",
+    validateCompilation: true  // Validates entire refactored code
+  }
+});
+
+// ✅ Success with validation confirmation:
+// "Extracted 4 field(s) and 2 method(s) into new class 'OrderContext'.
+//  Compilation validation passed for framework net8.0."
+```
+
+#### When to Disable Validation
+
+**Disable validation when:**
+1. **Custom Types**: Code uses custom classes, interfaces, or third-party libraries not in BCL
+2. **External Dependencies**: Code references types from NuGet packages or project references
+3. **Performance Critical**: Very large files where validation overhead is not acceptable
+4. **Known Compatibility**: You're confident the extracted code is valid for your framework
+
+**Example - Disabling for Custom Types:**
+```javascript
+// Code uses ILogger, IDatabase, IEmailService (custom interfaces)
+const result = await use_mcp_tool({
+  server_name: "refactor-csharp-mcp",
+  tool_name: "extract_class",
+  arguments: {
+    sourceCode: "...",
+    className: "Service",
+    newClassName: "ServiceContext",
+    fieldNames: "_logger,_database,_emailService",
+    validateCompilation: false  // Skip validation - custom types
+  }
+});
+```
+
+#### Validation Error Messages
+
+When validation fails, you receive detailed error information:
+
+```javascript
+// Example validation failure
+{
+  "success": false,
+  "message": "Generated code has compilation errors for framework net8.0: (5,15): error CS0246: The type or namespace name 'ICustomService' could not be found",
+  "error": "Compilation validation failed"
+}
+```
+
+**Common Validation Errors:**
+- **CS0246**: Type or namespace not found → Disable validation for custom types
+- **CS1061**: Type doesn't contain definition → Check framework compatibility
+- **CS0103**: Name doesn't exist in context → Check field/method references
+
+#### Best Practices for Validation
+
+1. **Keep validation enabled by default** - Provides safety net for BCL-only code
+2. **Disable for custom types** - Use `validateCompilation: false` when code uses non-BCL types
+3. **Match your project's framework** - Use same `targetFramework` as your .csproj
+4. **Review validation errors** - Error messages help identify compatibility issues
+5. **Test after refactoring** - Validation doesn't replace unit tests
+
 ### Best Practices
 
 1. **Group related fields and methods** - Extract cohesive groups that represent a single concept (e.g., all address-related members).
@@ -888,6 +1168,7 @@ public class DerivedService : BaseService
 5. **Test after refactoring** - Run your tests to ensure all references were updated correctly.
 6. **Consider partial classes** - References in all parts of a partial class are automatically updated.
 7. **Encapsulation** - After extraction, consider making extracted fields private and adding public properties/methods as needed.
+8. **Use compilation validation** - Keep `validateCompilation: true` (default) for BCL-only code to catch compilation errors early.
 
 ## Combined Refactoring Workflow
 
