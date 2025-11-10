@@ -352,6 +352,7 @@ public abstract class RefactoringBase
     /// <summary>
     /// Validates that refactored code compiles without errors.
     /// This method performs semantic validation by creating a compilation and checking for error diagnostics.
+    /// Excludes CS5001 (missing Main entry point) as refactored code is typically a snippet, not a complete program.
     /// </summary>
     /// <param name="sourceCode">The refactored source code to validate.</param>
     /// <returns>A RefactoringResult indicating success or describing compilation errors.</returns>

@@ -143,10 +143,22 @@ public class ExtractClass : RefactoringBase
                 methodsToExtractNodes.Add(methodDeclaration);
             }
 
-            // Validate all nested types exist
+            // Validate all nested types exist and check for unsupported types
             var nestedTypesToExtractNodes = new List<BaseTypeDeclarationSyntax>();
             foreach (var typeName in nestedTypesToExtract)
             {
+                // Check for unsupported delegate types
+                var delegateDeclaration = classDeclaration.Members
+                    .OfType<DelegateDeclarationSyntax>()
+                    .FirstOrDefault(d => d.Identifier.Text == typeName);
+
+                if (delegateDeclaration != null)
+                {
+                    return RefactoringResult.Failure(
+                        $"Nested delegate extraction is not supported. Attempted to extract delegate '{typeName}'. " +
+                        $"Delegates inherit from BaseMethodDeclarationSyntax, not BaseTypeDeclarationSyntax, and require specialized handling.");
+                }
+
                 var nestedType = FindNestedType(classDeclaration, typeName);
                 if (nestedType == null)
                 {
@@ -241,9 +253,11 @@ public class ExtractClass : RefactoringBase
             }
 
             // Remove methods - re-find each method in updated class to avoid stale references
-            foreach (var method in methodsToRemove)
+            // Performance: Cache method names for efficient lookup
+            var methodNamesToRemove = new HashSet<string>(methodsToRemove.Select(m => m.Identifier.Text));
+
+            foreach (var methodName in methodNamesToRemove)
             {
-                var methodName = method.Identifier.Text;
                 var currentMethod = updatedClass.Members
                     .OfType<MethodDeclarationSyntax>()
                     .FirstOrDefault(m => m.Identifier.Text == methodName);

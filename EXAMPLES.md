@@ -783,6 +783,102 @@ You may want to manually change visibility after extraction in these cases:
 
 **Note**: The refactoring always generates `internal` visibility as the safe default. You can manually change to `public` after reviewing the extracted class if needed for your specific use case.
 
+### Protected Methods and Inheritance Patterns
+
+**Important**: Protected methods become `internal` during extraction, which breaks inheritance patterns. If you're working with class hierarchies that rely on protected members, carefully consider whether Extract Class is the right refactoring.
+
+**Issue**: When extracting protected methods, they become `internal` in the new class, which prevents derived classes from accessing them:
+
+```csharp
+// Before extraction
+public class BaseService
+{
+    protected virtual void ValidateInput(string input)
+    {
+        if (string.IsNullOrEmpty(input))
+            throw new ArgumentException("Invalid input");
+    }
+}
+
+public class DerivedService : BaseService
+{
+    public void Process(string data)
+    {
+        ValidateInput(data);  // Can access protected method
+        // Process data
+    }
+}
+
+// After extracting ValidateInput - BREAKS INHERITANCE
+public class BaseService
+{
+    private readonly Validator _validator = new Validator();
+    // ValidateInput no longer accessible to derived classes
+}
+
+internal class Validator
+{
+    internal void ValidateInput(string input)  // Now internal, not protected
+    {
+        if (string.IsNullOrEmpty(input))
+            throw new ArgumentException("Invalid input");
+    }
+}
+
+public class DerivedService : BaseService
+{
+    public void Process(string data)
+    {
+        ValidateInput(data);  // ERROR: Cannot access ValidateInput
+        // Process data
+    }
+}
+```
+
+**When to Use Extract Class** (Composition Pattern):
+- Original class uses composition, not inheritance
+- Extracted functionality doesn't need to be inherited
+- Breaking down large classes into focused services
+- Creating stateless helper classes
+
+**When NOT to Use Extract Class** (Use Extract Superclass Instead):
+- Class hierarchy relies on protected members
+- Derived classes need to override or access the extracted methods
+- Working with template method patterns
+- Maintaining inheritance-based polymorphism
+
+**Alternative**: If you need to extract protected methods while preserving inheritance, consider:
+1. **Extract Superclass**: Move protected members to a base class (not yet implemented)
+2. **Manual Refactoring**: Create a protected composition field that derived classes can access
+3. **Strategy Pattern**: Replace inheritance with composition using interfaces
+
+**Example - Manual Workaround for Protected Access**:
+```csharp
+// Manually expose extracted class to derived classes
+public class BaseService
+{
+    protected readonly Validator Validator = new Validator();  // Protected field
+}
+
+public class Validator  // Make public instead of internal
+{
+    public virtual void ValidateInput(string input)  // Public for access
+    {
+        if (string.IsNullOrEmpty(input))
+            throw new ArgumentException("Invalid input");
+    }
+}
+
+public class DerivedService : BaseService
+{
+    public void Process(string data)
+    {
+        Validator.ValidateInput(data);  // Can access through protected field
+        // Process data
+    }
+}
+```
+
 ### Best Practices
 
 1. **Group related fields and methods** - Extract cohesive groups that represent a single concept (e.g., all address-related members).

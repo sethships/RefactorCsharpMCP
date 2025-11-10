@@ -41,6 +41,9 @@ bld/
 # Claude Code
 .claude/
 
+# Code review feedback files
+review-feedback*.md
+
 # Rider
 .idea/
 
