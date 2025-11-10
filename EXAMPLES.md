@@ -660,6 +660,225 @@ const result = await use_mcp_tool({
 - Method calls automatically updated within same class
 - Perfect for decomposing large classes into smaller, focused services
 
+### Encapsulation Through Internal Visibility
+
+Extract Class automatically creates extracted classes and methods with `internal` visibility to enforce proper encapsulation through the composition pattern. This design prevents external code from directly accessing implementation details.
+
+**Design Rationale:**
+- **Encapsulation**: Extracted classes are implementation details of the original class
+- **Composition Pattern**: Access should always go through the composition field (`_extractedClass._field`)
+- **Flexibility**: You can manually change visibility to `public` after extraction if needed
+
+**Example - Internal Class Visibility:**
+```csharp
+// Before extraction
+public class UserService
+{
+    private string _username;
+    private IDatabase _database;
+
+    public void SaveUser()
+    {
+        _database.Save(_username);
+    }
+}
+
+// After extracting _username into UserProfile
+public class UserService
+{
+    private readonly UserProfile _userProfile = new UserProfile();
+    private IDatabase _database;
+
+    public void SaveUser()
+    {
+        _database.Save(_userProfile._username);
+    }
+}
+
+// Extracted class is internal (not public)
+internal class UserProfile
+{
+    internal string _username;
+}
+```
+
+**Example - Internal Method Accessibility:**
+```csharp
+// Before extraction
+public class OrderService
+{
+    private decimal _total;
+
+    private decimal CalculateTax()
+    {
+        return _total * 0.08m;
+    }
+
+    private decimal CalculateShipping()
+    {
+        return _total > 100 ? 0 : 10;
+    }
+
+    public decimal GetFinalTotal()
+    {
+        return _total + CalculateTax() + CalculateShipping();
+    }
+}
+
+// After extracting calculation methods
+public class OrderService
+{
+    private decimal _total;
+    private readonly PricingCalculator _pricingCalculator = new PricingCalculator();
+
+    public decimal GetFinalTotal()
+    {
+        return _total + _pricingCalculator.CalculateTax() + _pricingCalculator.CalculateShipping();
+    }
+}
+
+// Extracted methods are internal (not public)
+internal class PricingCalculator
+{
+    internal decimal CalculateTax()
+    {
+        // Tax calculation logic
+    }
+
+    internal decimal CalculateShipping()
+    {
+        // Shipping calculation logic
+    }
+}
+```
+
+**When to Make Extracted Classes Public:**
+
+You may want to manually change visibility after extraction in these cases:
+
+1. **Shared Services**: When the extracted class should be used by other classes:
+   ```csharp
+   // Change from internal to public after extraction
+   public class ValidationRules
+   {
+       public bool IsValid(string input) { /* ... */ }
+   }
+   ```
+
+2. **API Surface**: When the extracted class is part of your public API:
+   ```csharp
+   // Change from internal to public for API consumers
+   public class Configuration
+   {
+       public string ApiKey { get; set; }
+   }
+   ```
+
+3. **Testing**: When you need to unit test the extracted class directly:
+   ```csharp
+   // Change from internal to public for testing
+   // Or use InternalsVisibleTo attribute
+   public class CalculationEngine { /* ... */ }
+   ```
+
+**Note**: The refactoring always generates `internal` visibility as the safe default. You can manually change to `public` after reviewing the extracted class if needed for your specific use case.
+
+### Protected Methods and Inheritance Patterns
+
+**Important**: Protected methods become `internal` during extraction, which breaks inheritance patterns. If you're working with class hierarchies that rely on protected members, carefully consider whether Extract Class is the right refactoring.
+
+**Issue**: When extracting protected methods, they become `internal` in the new class, which prevents derived classes from accessing them:
+
+```csharp
+// Before extraction
+public class BaseService
+{
+    protected virtual void ValidateInput(string input)
+    {
+        if (string.IsNullOrEmpty(input))
+            throw new ArgumentException("Invalid input");
+    }
+}
+
+public class DerivedService : BaseService
+{
+    public void Process(string data)
+    {
+        ValidateInput(data);  // Can access protected method
+        // Process data
+    }
+}
+
+// After extracting ValidateInput - BREAKS INHERITANCE
+public class BaseService
+{
+    private readonly Validator _validator = new Validator();
+    // ValidateInput no longer accessible to derived classes
+}
+
+internal class Validator
+{
+    internal void ValidateInput(string input)  // Now internal, not protected
+    {
+        if (string.IsNullOrEmpty(input))
+            throw new ArgumentException("Invalid input");
+    }
+}
+
+public class DerivedService : BaseService
+{
+    public void Process(string data)
+    {
+        ValidateInput(data);  // ERROR: Cannot access ValidateInput
+        // Process data
+    }
+}
+```
+
+**When to Use Extract Class** (Composition Pattern):
+- Original class uses composition, not inheritance
+- Extracted functionality doesn't need to be inherited
+- Breaking down large classes into focused services
+- Creating stateless helper classes
+
+**When NOT to Use Extract Class** (Use Extract Superclass Instead):
+- Class hierarchy relies on protected members
+- Derived classes need to override or access the extracted methods
+- Working with template method patterns
+- Maintaining inheritance-based polymorphism
+
+**Alternative**: If you need to extract protected methods while preserving inheritance, consider:
+1. **Extract Superclass**: Move protected members to a base class (not yet implemented)
+2. **Manual Refactoring**: Create a protected composition field that derived classes can access
+3. **Strategy Pattern**: Replace inheritance with composition using interfaces
+
+**Example - Manual Workaround for Protected Access**:
+```csharp
+// Manually expose extracted class to derived classes
+public class BaseService
+{
+    protected readonly Validator Validator = new Validator();  // Protected field
+}
+
+public class Validator  // Make public instead of internal
+{
+    public virtual void ValidateInput(string input)  // Public for access
+    {
+        if (string.IsNullOrEmpty(input))
+            throw new ArgumentException("Invalid input");
+    }
+}
+
+public class DerivedService : BaseService
+{
+    public void Process(string data)
+    {
+        Validator.ValidateInput(data);  // Can access through protected field
+        // Process data
+    }
+}
+```
+
 ### Best Practices
 
 1. **Group related fields and methods** - Extract cohesive groups that represent a single concept (e.g., all address-related members).

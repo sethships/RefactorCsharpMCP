@@ -83,7 +83,7 @@ public class PassgenIntegrationTests
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class CharacterSets");
+        result.RefactoredCode.Should().Contain("internal class CharacterSets");
         result.RefactoredCode.Should().Contain("DEFAULT_SPECIALS");
         result.RefactoredCode.Should().Contain("DEFAULT_UPPERS");
         result.RefactoredCode.Should().Contain("DEFAULT_LOWERS");

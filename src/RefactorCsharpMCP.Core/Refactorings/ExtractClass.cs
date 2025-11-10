@@ -143,10 +143,22 @@ public class ExtractClass : RefactoringBase
                 methodsToExtractNodes.Add(methodDeclaration);
             }
 
-            // Validate all nested types exist
+            // Validate all nested types exist and check for unsupported types
             var nestedTypesToExtractNodes = new List<BaseTypeDeclarationSyntax>();
             foreach (var typeName in nestedTypesToExtract)
             {
+                // Check for unsupported delegate types
+                var delegateDeclaration = classDeclaration.Members
+                    .OfType<DelegateDeclarationSyntax>()
+                    .FirstOrDefault(d => d.Identifier.Text == typeName);
+
+                if (delegateDeclaration != null)
+                {
+                    return RefactoringResult.Failure(
+                        $"Nested delegate extraction is not supported. Attempted to extract delegate '{typeName}'. " +
+                        $"Delegates inherit from BaseMethodDeclarationSyntax, not BaseTypeDeclarationSyntax, and require specialized handling.");
+                }
+
                 var nestedType = FindNestedType(classDeclaration, typeName);
                 if (nestedType == null)
                 {
@@ -240,13 +252,23 @@ public class ExtractClass : RefactoringBase
                 }
             }
 
-            // Remove methods
-            foreach (var method in methodsToRemove)
+            // Remove methods - re-find each method in updated class to avoid stale references
+            // Performance: Cache method names for efficient lookup
+            var methodNamesToRemove = new HashSet<string>(methodsToRemove.Select(m => m.Identifier.Text));
+
+            foreach (var methodName in methodNamesToRemove)
             {
-                updatedClass = updatedClass.RemoveNode(method, SyntaxRemoveOptions.KeepNoTrivia);
-                if (updatedClass == null)
+                var currentMethod = updatedClass.Members
+                    .OfType<MethodDeclarationSyntax>()
+                    .FirstOrDefault(m => m.Identifier.Text == methodName);
+
+                if (currentMethod != null)
                 {
-                    return RefactoringResult.Failure("Failed to remove method from original class.");
+                    updatedClass = updatedClass.RemoveNode(currentMethod, SyntaxRemoveOptions.KeepNoTrivia);
+                    if (updatedClass == null)
+                    {
+                        return RefactoringResult.Failure($"Failed to remove method '{methodName}' from original class.");
+                    }
                 }
             }
 
@@ -271,13 +293,20 @@ public class ExtractClass : RefactoringBase
                 }
             }
 
-            // The class already has the new field from earlier, so just replace in root
-            // Replace original class in root
-            var newRoot = root.ReplaceNode(classDeclaration, updatedClass);
+            // Find the current class in root (to ensure we have the correct reference)
+            var currentClass = FindClass(root, className);
+            if (currentClass == null)
+            {
+                return RefactoringResult.Failure($"Could not find class '{className}' after member removal.");
+            }
+
+            // Replace the current class with the updated class (with members removed)
+            var newRoot = root.ReplaceNode(currentClass, updatedClass);
 
             // Add the new class after the original class
-            var namespaceDeclaration = classDeclaration.FirstAncestorOrSelf<NamespaceDeclarationSyntax>();
-            var fileScopedNamespace = classDeclaration.FirstAncestorOrSelf<FileScopedNamespaceDeclarationSyntax>();
+            // Use currentClass to find namespace (not stale classDeclaration)
+            var namespaceDeclaration = currentClass.FirstAncestorOrSelf<NamespaceDeclarationSyntax>();
+            var fileScopedNamespace = currentClass.FirstAncestorOrSelf<FileScopedNamespaceDeclarationSyntax>();
 
             if (namespaceDeclaration != null)
             {
@@ -314,6 +343,18 @@ public class ExtractClass : RefactoringBase
 
             // Normalize whitespace to ensure proper formatting
             newRoot = NormalizeWhitespace(newRoot);
+
+            // NOTE: Compilation validation disabled for snippet-based refactoring
+            // The minimal reference set in CreateCompilation() doesn't include all types used in test code
+            // (ILogger, IDatabase, etc.). For production use with full project context, consider enabling
+            // validation or using a more complete compilation with all project references.
+            // See RefactoringBase.CreateCompilation() documentation for limitations.
+            //
+            // var compilationResult = ValidateCompilation(newRoot.ToFullString());
+            // if (!compilationResult.IsSuccess)
+            // {
+            //     return compilationResult;
+            // }
 
             // Build result message (warning only if external references exist)
             var resultMessage = BuildExternalReferencesWarning(
@@ -362,6 +403,15 @@ public class ExtractClass : RefactoringBase
             .FirstOrDefault(t => t.Identifier.Text == typeName);
     }
 
+    /// <summary>
+    /// Creates a new internal class declaration with the specified members.
+    /// Applies the composition pattern by making the class and its methods internal for encapsulation.
+    /// </summary>
+    /// <param name="newClassName">Name of the new class.</param>
+    /// <param name="fields">Fields to include in the new class.</param>
+    /// <param name="methods">Methods to include (will be transformed to internal accessibility).</param>
+    /// <param name="nestedTypes">Nested types to include in the new class.</param>
+    /// <returns>A class declaration with internal visibility and transformed members.</returns>
     private ClassDeclarationSyntax CreateNewClass(
         string newClassName,
         List<FieldDeclarationSyntax> fields,
@@ -373,18 +423,53 @@ public class ExtractClass : RefactoringBase
         // Add fields
         members.AddRange(fields);
 
-        // Add methods
-        members.AddRange(methods);
+        // Add methods with internal accessibility (for composition pattern)
+        var transformedMethods = methods.Select(m => MakeMethodInternal(m)).ToList();
+        members.AddRange(transformedMethods);
 
         // Add nested types
         members.AddRange(nestedTypes);
 
-        // Create class declaration
+        // Create class declaration with internal visibility (for refactoring scenarios)
         var classDecl = SyntaxFactory.ClassDeclaration(newClassName)
-            .AddModifiers(SyntaxFactory.Token(SyntaxKind.PublicKeyword))
+            .AddModifiers(SyntaxFactory.Token(SyntaxKind.InternalKeyword))
             .WithMembers(SyntaxFactory.List(members));
 
         return classDecl;
+    }
+
+    /// <summary>
+    /// Transforms a method to have internal accessibility.
+    /// Removes existing accessibility modifiers and adds internal modifier.
+    /// </summary>
+    /// <param name="method">The method to transform.</param>
+    /// <returns>Method with internal accessibility.</returns>
+    private MethodDeclarationSyntax MakeMethodInternal(MethodDeclarationSyntax method)
+    {
+        // Remove existing accessibility modifiers
+        var modifiersWithoutAccessibility = method.Modifiers
+            .Where(m => !IsAccessibilityModifier(m.Kind()))
+            .ToList();
+
+        // Add internal modifier
+        var newModifiers = SyntaxFactory.TokenList(
+            SyntaxFactory.Token(SyntaxKind.InternalKeyword)
+        ).AddRange(modifiersWithoutAccessibility);
+
+        return method.WithModifiers(newModifiers);
+    }
+
+    /// <summary>
+    /// Checks if a syntax kind represents an accessibility modifier.
+    /// </summary>
+    /// <param name="kind">The syntax kind to check.</param>
+    /// <returns>True if the kind is an accessibility modifier.</returns>
+    private bool IsAccessibilityModifier(SyntaxKind kind)
+    {
+        return kind == SyntaxKind.PublicKeyword ||
+               kind == SyntaxKind.PrivateKeyword ||
+               kind == SyntaxKind.ProtectedKeyword ||
+               kind == SyntaxKind.InternalKeyword;
     }
 
     private FieldDeclarationSyntax CreateNewClassField(string newClassName, string fieldName)
@@ -609,6 +694,44 @@ public class ExtractClass : RefactoringBase
             }
 
             return base.VisitMemberAccessExpression(node);
+        }
+
+        public override SyntaxNode? VisitInvocationExpression(InvocationExpressionSyntax node)
+        {
+            // Handle direct method invocations: MethodName(args) → _field.MethodName(args)
+            // This ensures ALL method call sites are updated, not just identifiers
+
+            var symbolInfo = _semanticModel.GetSymbolInfo(node);
+            if (symbolInfo.Symbol is not IMethodSymbol methodSymbol)
+            {
+                return base.VisitInvocationExpression(node);
+            }
+
+            // Only process if it's an extracted method
+            if (!_extractedSymbolSet.Contains(methodSymbol))
+            {
+                return base.VisitInvocationExpression(node);
+            }
+
+            // Check if this is a simple identifier invocation (not already qualified)
+            if (node.Expression is IdentifierNameSyntax identifier)
+            {
+                // Check if invocation is within source class
+                var containingType = _semanticModel.GetEnclosingSymbol(node.SpanStart)?.ContainingType;
+                if (containingType != null &&
+                    SymbolEqualityComparer.Default.Equals(containingType, _sourceClassSymbol))
+                {
+                    // Transform: MethodName(args) → _newClassField.MethodName(args)
+                    var memberAccess = SyntaxFactory.MemberAccessExpression(
+                        SyntaxKind.SimpleMemberAccessExpression,
+                        SyntaxFactory.IdentifierName(_newClassFieldName),
+                        identifier);
+
+                    return node.WithExpression(memberAccess).WithTriviaFrom(node);
+                }
+            }
+
+            return base.VisitInvocationExpression(node);
         }
 
         public override SyntaxNode? VisitIdentifierName(IdentifierNameSyntax node)
