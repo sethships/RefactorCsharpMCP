@@ -118,55 +118,20 @@ public class ExtractClass : RefactoringBase
                 return RefactoringResult.Failure($"Class '{className}' not found in source code.");
             }
 
-            // Validate all fields exist
-            var fieldsToExtractNodes = new List<FieldDeclarationSyntax>();
-            foreach (var fieldName in fieldsToExtract)
+            // Validate and find all members to extract
+            var memberValidation = ValidateAndFindMembers(
+                classDeclaration,
+                className,
+                fieldsToExtract,
+                methodsToExtract,
+                nestedTypesToExtract,
+                out var fieldsToExtractNodes,
+                out var methodsToExtractNodes,
+                out var nestedTypesToExtractNodes);
+
+            if (memberValidation != null) // null = success, non-null = failure
             {
-                var fieldDeclaration = FindFieldDeclaration(classDeclaration, fieldName);
-                if (fieldDeclaration == null)
-                {
-                    return RefactoringResult.Failure($"Field '{fieldName}' not found in class '{className}'.");
-                }
-                fieldsToExtractNodes.Add(fieldDeclaration);
-            }
-
-            // Validate all methods exist
-            var methodsToExtractNodes = new List<MethodDeclarationSyntax>();
-            foreach (var methodName in methodsToExtract)
-            {
-                var methodDeclaration = classDeclaration.DescendantNodes()
-                    .OfType<MethodDeclarationSyntax>()
-                    .FirstOrDefault(m => m.Identifier.Text == methodName);
-
-                if (methodDeclaration == null)
-                {
-                    return RefactoringResult.Failure($"Method '{methodName}' not found in class '{className}'.");
-                }
-                methodsToExtractNodes.Add(methodDeclaration);
-            }
-
-            // Validate all nested types exist and check for unsupported types
-            var nestedTypesToExtractNodes = new List<BaseTypeDeclarationSyntax>();
-            foreach (var typeName in nestedTypesToExtract)
-            {
-                // Check for unsupported delegate types
-                var delegateDeclaration = classDeclaration.Members
-                    .OfType<DelegateDeclarationSyntax>()
-                    .FirstOrDefault(d => d.Identifier.Text == typeName);
-
-                if (delegateDeclaration != null)
-                {
-                    return RefactoringResult.Failure(
-                        $"Nested delegate extraction is not supported. Attempted to extract delegate '{typeName}'. " +
-                        $"Delegates inherit from BaseMethodDeclarationSyntax, not BaseTypeDeclarationSyntax, and require specialized handling.");
-                }
-
-                var nestedType = FindNestedType(classDeclaration, typeName);
-                if (nestedType == null)
-                {
-                    return RefactoringResult.Failure($"Nested type '{typeName}' not found in class '{className}'.");
-                }
-                nestedTypesToExtractNodes.Add(nestedType);
+                return memberValidation;
             }
 
             // Get symbols for extracted members BEFORE any modifications
@@ -206,28 +171,11 @@ public class ExtractClass : RefactoringBase
             // This will be added by the transformer in a single pass
             var newClassField = CompositionFieldGenerator.CreateCompositionField(newClassName, newClassFieldName);
 
-            // Re-find the fields and methods in the updated class (since we can't use nodes from the old tree)
-            var fieldsToRemove = new List<FieldDeclarationSyntax>();
-            foreach (var fieldName in fieldsToExtract)
-            {
-                var field = FindFieldDeclaration(classDeclaration, fieldName);
-                if (field != null)
-                {
-                    fieldsToRemove.Add(field);
-                }
-            }
-
-            var methodsToRemove = new List<MethodDeclarationSyntax>();
-            foreach (var methodName in methodsToExtract)
-            {
-                var method = classDeclaration.DescendantNodes()
-                    .OfType<MethodDeclarationSyntax>()
-                    .FirstOrDefault(m => m.Identifier.Text == methodName);
-                if (method != null)
-                {
-                    methodsToRemove.Add(method);
-                }
-            }
+            // Re-find members in the updated class (fresh nodes from mutated tree)
+            var (fieldsToRemove, methodsToRemove) = RefindMembersInUpdatedClass(
+                classDeclaration,
+                fieldsToExtract,
+                methodsToExtract);
 
             // Create extraction context and select strategy
             var context = new ExtractionContext(
@@ -308,6 +256,128 @@ public class ExtractClass : RefactoringBase
             .Select(n => n.Trim())
             .Where(n => !string.IsNullOrWhiteSpace(n))
             .ToList();
+    }
+
+    /// <summary>
+    /// Validates that all specified members exist in the class and returns their syntax nodes.
+    /// </summary>
+    /// <param name="classDeclaration">The class declaration to search.</param>
+    /// <param name="className">The class name for error messages.</param>
+    /// <param name="fieldNames">Field names to find.</param>
+    /// <param name="methodNames">Method names to find.</param>
+    /// <param name="nestedTypeNames">Nested type names to find.</param>
+    /// <param name="fieldNodes">Output parameter for found field declarations.</param>
+    /// <param name="methodNodes">Output parameter for found method declarations.</param>
+    /// <param name="nestedTypeNodes">Output parameter for found nested type declarations.</param>
+    /// <returns>Null if all members found successfully, or RefactoringResult.Failure with error message.</returns>
+    private RefactoringResult? ValidateAndFindMembers(
+        ClassDeclarationSyntax classDeclaration,
+        string className,
+        List<string> fieldNames,
+        List<string> methodNames,
+        List<string> nestedTypeNames,
+        out List<FieldDeclarationSyntax> fieldNodes,
+        out List<MethodDeclarationSyntax> methodNodes,
+        out List<BaseTypeDeclarationSyntax> nestedTypeNodes)
+    {
+        fieldNodes = new List<FieldDeclarationSyntax>();
+        methodNodes = new List<MethodDeclarationSyntax>();
+        nestedTypeNodes = new List<BaseTypeDeclarationSyntax>();
+
+        // Validate and find fields
+        foreach (var fieldName in fieldNames)
+        {
+            var fieldDeclaration = FindFieldDeclaration(classDeclaration, fieldName);
+            if (fieldDeclaration == null)
+            {
+                return RefactoringResult.Failure($"Field '{fieldName}' not found in class '{className}'.");
+            }
+            fieldNodes.Add(fieldDeclaration);
+        }
+
+        // Validate and find methods
+        foreach (var methodName in methodNames)
+        {
+            var methodDeclaration = classDeclaration.DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .FirstOrDefault(m => m.Identifier.Text == methodName);
+
+            if (methodDeclaration == null)
+            {
+                return RefactoringResult.Failure($"Method '{methodName}' not found in class '{className}'.");
+            }
+            methodNodes.Add(methodDeclaration);
+        }
+
+        // Validate and find nested types (with unsupported delegate check)
+        foreach (var typeName in nestedTypeNames)
+        {
+            // Check for unsupported delegate types
+            var delegateDeclaration = classDeclaration.Members
+                .OfType<DelegateDeclarationSyntax>()
+                .FirstOrDefault(d => d.Identifier.Text == typeName);
+
+            if (delegateDeclaration != null)
+            {
+                return RefactoringResult.Failure(
+                    $"Nested delegate extraction is not supported. Attempted to extract delegate '{typeName}'. " +
+                    $"Delegates inherit from BaseMethodDeclarationSyntax, not BaseTypeDeclarationSyntax, and require specialized handling.");
+            }
+
+            var nestedType = FindNestedType(classDeclaration, typeName);
+            if (nestedType == null)
+            {
+                return RefactoringResult.Failure($"Nested type '{typeName}' not found in class '{className}'.");
+            }
+            nestedTypeNodes.Add(nestedType);
+        }
+
+        return null; // Success - all members found
+    }
+
+    /// <summary>
+    /// Re-finds members in an updated class declaration after tree mutations.
+    /// Used to obtain fresh syntax nodes from a mutated syntax tree.
+    /// </summary>
+    /// <param name="classDeclaration">The updated class declaration.</param>
+    /// <param name="fieldNames">Field names to re-find.</param>
+    /// <param name="methodNames">Method names to re-find.</param>
+    /// <returns>Tuple of field and method syntax nodes found in the updated class.</returns>
+    /// <remarks>
+    /// This method does not validate - it assumes members exist (validation happens earlier).
+    /// It silently skips members not found, which should not occur in normal flow.
+    /// </remarks>
+    private (List<FieldDeclarationSyntax> Fields, List<MethodDeclarationSyntax> Methods) RefindMembersInUpdatedClass(
+        ClassDeclarationSyntax classDeclaration,
+        List<string> fieldNames,
+        List<string> methodNames)
+    {
+        var fields = new List<FieldDeclarationSyntax>();
+        var methods = new List<MethodDeclarationSyntax>();
+
+        // Re-find fields
+        foreach (var fieldName in fieldNames)
+        {
+            var field = FindFieldDeclaration(classDeclaration, fieldName);
+            if (field != null)
+            {
+                fields.Add(field);
+            }
+        }
+
+        // Re-find methods
+        foreach (var methodName in methodNames)
+        {
+            var method = classDeclaration.DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .FirstOrDefault(m => m.Identifier.Text == methodName);
+            if (method != null)
+            {
+                methods.Add(method);
+            }
+        }
+
+        return (fields, methods);
     }
 
     private FieldDeclarationSyntax? FindFieldDeclaration(ClassDeclarationSyntax classDeclaration, string fieldName)
