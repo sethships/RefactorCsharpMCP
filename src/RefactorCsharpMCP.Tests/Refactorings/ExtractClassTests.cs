@@ -346,14 +346,14 @@ public class Service
         result.RefactoredCode.Should().Contain("_address._city");
         result.RefactoredCode.Should().Contain("_address._state");
 
-        // Verify that _city field was removed from UserService
-        // (it should only exist in the Address class now)
+        // Verify that both _city and _state fields were removed from UserService
+        // (they should only exist in the Address class now)
         var userServiceSection = result.RefactoredCode.Substring(
             result.RefactoredCode.IndexOf("public class UserService"),
             result.RefactoredCode.IndexOf("internal class Address") - result.RefactoredCode.IndexOf("public class UserService"));
 
         userServiceSection.Should().NotContain("private string _city");
-        userServiceSection.Should().Contain("private string _state"); // _state should remain
+        userServiceSection.Should().NotContain("private string _state"); // Both fields extracted
 
         // Should indicate references were updated
         result.Message.Should().Contain("automatically updated");

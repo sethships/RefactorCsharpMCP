@@ -203,17 +203,8 @@ public class ExtractClass : RefactoringBase
             classDeclaration = FindClass(root, className)!;
 
             // Create a field in the original class for the new class instance
+            // This will be added by the transformer in a single pass
             var newClassField = CompositionFieldGenerator.CreateCompositionField(newClassName, newClassFieldName);
-
-            // Add the new class field to the original class
-            var membersWithField = classDeclaration.Members.Insert(0, newClassField);
-            var classWithNewField = classDeclaration.WithMembers(membersWithField);
-
-            // Replace the class in the root to get an updated root
-            root = root.ReplaceNode(classDeclaration, classWithNewField);
-
-            // Now find the updated class in the new root
-            classDeclaration = FindClass(root, className)!;
 
             // Re-find the fields and methods in the updated class (since we can't use nodes from the old tree)
             var fieldsToRemove = new List<FieldDeclarationSyntax>();
@@ -260,106 +251,20 @@ public class ExtractClass : RefactoringBase
                 .WithContext(context)
                 .Build();
 
-            // Remove extracted members from the updated class
-            var updatedClass = classDeclaration;
+            // Single-pass transformation: removes extracted members, adds composition field, and adds extracted class
+            // This eliminates stale reference issues from multi-mutation approach
+            var transformer = new ExtractClassTransformer(
+                className,
+                fieldsToRemove,
+                methodsToRemove,
+                nestedTypesToExtract,
+                newClassField,
+                newClass);
 
-            // Remove fields
-            foreach (var field in fieldsToRemove)
+            var newRoot = transformer.Visit(root);
+            if (newRoot == null)
             {
-                updatedClass = updatedClass.RemoveNode(field, SyntaxRemoveOptions.KeepNoTrivia);
-                if (updatedClass == null)
-                {
-                    return RefactoringResult.Failure("Failed to remove field from original class.");
-                }
-            }
-
-            // Remove methods - re-find each method in updated class to avoid stale references
-            // Performance: Cache method names for efficient lookup
-            var methodNamesToRemove = new HashSet<string>(methodsToRemove.Select(m => m.Identifier.Text));
-
-            foreach (var methodName in methodNamesToRemove)
-            {
-                var currentMethod = updatedClass.Members
-                    .OfType<MethodDeclarationSyntax>()
-                    .FirstOrDefault(m => m.Identifier.Text == methodName);
-
-                if (currentMethod != null)
-                {
-                    updatedClass = updatedClass.RemoveNode(currentMethod, SyntaxRemoveOptions.KeepNoTrivia);
-                    if (updatedClass == null)
-                    {
-                        return RefactoringResult.Failure($"Failed to remove method '{methodName}' from original class.");
-                    }
-                }
-            }
-
-            // Re-find and remove nested types from the updated class
-            var nestedTypesToRemove = new List<BaseTypeDeclarationSyntax>();
-            foreach (var typeName in nestedTypesToExtract)
-            {
-                var nestedType = FindNestedType(updatedClass, typeName);
-                if (nestedType != null)
-                {
-                    nestedTypesToRemove.Add(nestedType);
-                }
-            }
-
-            // Remove nested types
-            foreach (var nestedType in nestedTypesToRemove)
-            {
-                updatedClass = updatedClass.RemoveNode(nestedType, SyntaxRemoveOptions.KeepNoTrivia);
-                if (updatedClass == null)
-                {
-                    return RefactoringResult.Failure("Failed to remove nested type from original class.");
-                }
-            }
-
-            // Find the current class in root (to ensure we have the correct reference)
-            var currentClass = FindClass(root, className);
-            if (currentClass == null)
-            {
-                return RefactoringResult.Failure($"Could not find class '{className}' after member removal.");
-            }
-
-            // Replace the current class with the updated class (with members removed)
-            var newRoot = root.ReplaceNode(currentClass, updatedClass);
-
-            // Add the new class after the original class
-            // Use currentClass to find namespace (not stale classDeclaration)
-            var namespaceDeclaration = currentClass.FirstAncestorOrSelf<NamespaceDeclarationSyntax>();
-            var fileScopedNamespace = currentClass.FirstAncestorOrSelf<FileScopedNamespaceDeclarationSyntax>();
-
-            if (namespaceDeclaration != null)
-            {
-                var updatedNamespaceDecl = newRoot.DescendantNodes()
-                    .OfType<NamespaceDeclarationSyntax>()
-                    .FirstOrDefault(n => n.Name.ToString() == namespaceDeclaration.Name.ToString());
-
-                if (updatedNamespaceDecl != null)
-                {
-                    var membersWithNewClass = updatedNamespaceDecl.Members.Add(newClass);
-                    var finalNamespace = updatedNamespaceDecl.WithMembers(membersWithNewClass);
-                    newRoot = newRoot.ReplaceNode(updatedNamespaceDecl, finalNamespace);
-                }
-            }
-            else if (fileScopedNamespace != null)
-            {
-                var updatedFileScopedNs = newRoot.DescendantNodes()
-                    .OfType<FileScopedNamespaceDeclarationSyntax>()
-                    .FirstOrDefault();
-
-                if (updatedFileScopedNs != null)
-                {
-                    var membersWithNewClass = updatedFileScopedNs.Members.Add(newClass);
-                    var finalNamespace = updatedFileScopedNs.WithMembers(membersWithNewClass);
-                    newRoot = newRoot.ReplaceNode(updatedFileScopedNs, finalNamespace);
-                }
-            }
-            else
-            {
-                // No namespace - add class at compilation unit level
-                var membersWithNewClass = newRoot.Members.Add(newClass);
-                newRoot = newRoot.WithMembers(membersWithNewClass);
+                return RefactoringResult.Failure("Failed to transform source tree during extraction.");
             }
 
             // Normalize whitespace to ensure proper formatting
