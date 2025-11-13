@@ -70,8 +70,31 @@ internal class ReferenceUpdater
     /// <summary>
     /// Finds references using syntax-based searching when semantic model is unavailable.
     /// Looks for identifier names and invocation expressions that match extracted member names.
-    /// Only matches methods and fields, not type symbols.
     /// </summary>
+    /// <param name="root">The syntax tree root to search.</param>
+    /// <param name="extractedSymbols">Symbols for extracted members (fields, methods, types).</param>
+    /// <param name="sourceClass">The source class containing the references.</param>
+    /// <returns>List of locations where extracted members are referenced.</returns>
+    /// <remarks>
+    /// <para><strong>IMPORTANT LIMITATION</strong>: This method only matches <see cref="IMethodSymbol"/>,
+    /// <see cref="IFieldSymbol"/>, and <see cref="IPropertySymbol"/>. Type symbols (<see cref="INamedTypeSymbol"/>)
+    /// are intentionally excluded to prevent incorrect transformations.</para>
+    ///
+    /// <para><strong>Why Type Symbols Are Excluded</strong>:</para>
+    /// <list type="bullet">
+    ///   <item>In simple identifier contexts, type names should NOT be qualified with the extracted class field.
+    ///         Example: <c>Config _field;</c> should remain <c>Config</c>, not become <c>_extracted.Config</c></item>
+    ///   <item>Type reference transformation requires different logic (qualified name updates, using directives, etc.)</item>
+    ///   <item>See Issue #120 for nested type extraction limitations and planned enhancements</item>
+    /// </list>
+    ///
+    /// <para><strong>Additional Filtering</strong>:</para>
+    /// <list type="bullet">
+    ///   <item>Skips method declaration identifiers (method names themselves)</item>
+    ///   <item>Skips member access right-hand side (already qualified references)</item>
+    ///   <item>Skips local variable declarations (prevents name collision false positives)</item>
+    /// </list>
+    /// </remarks>
     public List<Location> FindReferencesBySyntax(
         SyntaxNode root,
         List<ISymbol> extractedSymbols,
@@ -115,6 +138,13 @@ internal class ReferenceUpdater
             // Skip if it's the name part of a member access (right side of dot)
             if (identifier.Parent is MemberAccessExpressionSyntax memberAccess &&
                 memberAccess.Name == identifier)
+            {
+                continue;
+            }
+
+            // Skip if it's a local variable declaration
+            // This prevents false positives when local variables have same name as extracted members
+            if (identifier.Parent is VariableDeclaratorSyntax)
             {
                 continue;
             }

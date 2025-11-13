@@ -57,6 +57,17 @@ internal class ReferenceTransformer : CSharpSyntaxRewriter
     }
 
     /// <summary>
+    /// Checks if a syntax node's location matches a pre-found reference span.
+    /// Used for location-based matching when semantic model is unreliable (unresolved dependencies).
+    /// </summary>
+    /// <param name="node">The syntax node to check.</param>
+    /// <returns>True if the node's span is in the reference spans list, otherwise false.</returns>
+    private bool IsLocationInReferenceSpans(SyntaxNode node)
+    {
+        return _referenceSpans.Count > 0 && _referenceSpans.Contains(node.Span);
+    }
+
+    /// <summary>
     /// Visits member access expressions like <c>this._field</c> or <c>ClassName._field</c>
     /// and transforms them to route through the composition field.
     /// </summary>
@@ -111,22 +122,20 @@ internal class ReferenceTransformer : CSharpSyntaxRewriter
 
         // If we have pre-found reference locations, use location-based matching
         // This avoids semantic model lookup issues when the code has unresolved dependencies
+        if (node.Expression is IdentifierNameSyntax identifier && IsLocationInReferenceSpans(identifier))
+        {
+            // Transform: MethodName(args) → _newClassField.MethodName(args)
+            var memberAccess = SyntaxFactory.MemberAccessExpression(
+                SyntaxKind.SimpleMemberAccessExpression,
+                SyntaxFactory.IdentifierName(_newClassFieldName),
+                identifier);
+
+            return node.WithExpression(memberAccess).WithTriviaFrom(node);
+        }
+
+        // If we have reference spans but didn't find a match, skip transformation
         if (_referenceSpans.Count > 0)
         {
-            // Check if this invocation's expression span matches a pre-found reference
-            if (node.Expression is IdentifierNameSyntax identifier &&
-                _referenceSpans.Contains(identifier.Span))
-            {
-                // Transform: MethodName(args) → _newClassField.MethodName(args)
-                var memberAccess = SyntaxFactory.MemberAccessExpression(
-                    SyntaxKind.SimpleMemberAccessExpression,
-                    SyntaxFactory.IdentifierName(_newClassFieldName),
-                    identifier);
-
-                return node.WithExpression(memberAccess).WithTriviaFrom(node);
-            }
-
-            // Not a pre-found reference, skip transformation
             return base.VisitInvocationExpression(node);
         }
 
@@ -183,36 +192,35 @@ internal class ReferenceTransformer : CSharpSyntaxRewriter
     public override SyntaxNode? VisitIdentifierName(IdentifierNameSyntax node)
     {
         // If we have pre-found reference locations, use location-based matching
-        if (_referenceSpans.Count > 0)
+        if (IsLocationInReferenceSpans(node))
         {
-            // Check if this identifier matches a pre-found reference location
-            if (_referenceSpans.Contains(node.Span))
+            // Check if this identifier is already part of a member access expression
+            // (e.g., _address._city or this._city) - if so, don't transform it again
+            if (node.Parent is MemberAccessExpressionSyntax memberAccess &&
+                memberAccess.Name == node)
             {
-                // Check if this identifier is already part of a member access expression
-                // (e.g., _address._city or this._city) - if so, don't transform it again
-                if (node.Parent is MemberAccessExpressionSyntax memberAccess &&
-                    memberAccess.Name == node)
-                {
-                    return base.VisitIdentifierName(node);
-                }
-
-                // Check if this is part of an invocation expression - handled by VisitInvocationExpression
-                if (node.Parent is InvocationExpressionSyntax)
-                {
-                    return base.VisitIdentifierName(node);
-                }
-
-                // Transform: identifier -> _newClassField.identifier
-                var newFieldIdentifier = SyntaxFactory.IdentifierName(_newClassFieldName);
-                var memberAccessExpr = SyntaxFactory.MemberAccessExpression(
-                    SyntaxKind.SimpleMemberAccessExpression,
-                    newFieldIdentifier,
-                    node);
-
-                return memberAccessExpr.WithTriviaFrom(node);
+                return base.VisitIdentifierName(node);
             }
 
-            // Not a pre-found reference, skip transformation
+            // Check if this is part of an invocation expression - handled by VisitInvocationExpression
+            if (node.Parent is InvocationExpressionSyntax)
+            {
+                return base.VisitIdentifierName(node);
+            }
+
+            // Transform: identifier -> _newClassField.identifier
+            var newFieldIdentifier = SyntaxFactory.IdentifierName(_newClassFieldName);
+            var memberAccessExpr = SyntaxFactory.MemberAccessExpression(
+                SyntaxKind.SimpleMemberAccessExpression,
+                newFieldIdentifier,
+                node);
+
+            return memberAccessExpr.WithTriviaFrom(node);
+        }
+
+        // If we have reference spans but didn't find a match, skip transformation
+        if (_referenceSpans.Count > 0)
+        {
             return base.VisitIdentifierName(node);
         }
 

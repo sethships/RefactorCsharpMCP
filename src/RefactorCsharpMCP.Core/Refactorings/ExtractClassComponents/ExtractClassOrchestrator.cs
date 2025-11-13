@@ -91,6 +91,13 @@ internal class ExtractClassOrchestrator
             return RefactoringResult.Failure($"Could not resolve symbol for class '{className}'.");
         }
 
+        // Defensive validation: Ensure newClassName is not empty before creating field name
+        // Note: ExtractClass.cs validates at line 120, but orchestrator validates for defensive programming
+        if (string.IsNullOrEmpty(newClassName))
+        {
+            return RefactoringResult.Failure("New class name cannot be empty.");
+        }
+
         // Create a field name for the new class instance
         var newClassFieldName = $"_{char.ToLower(newClassName[0])}{newClassName.Substring(1)}";
 

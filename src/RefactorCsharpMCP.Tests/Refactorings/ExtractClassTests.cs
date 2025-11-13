@@ -2102,5 +2102,98 @@ public class ApiController
         result.Message.Should().Contain("automatically updated");
     }
 
+    [Fact]
+    public void Execute_WithZeroReferences_ShouldSucceedWithoutErrors()
+    {
+        // Arrange - Edge case: extracted method has no call sites (neither semantic nor syntax finds references)
+        var sourceCode = @"public class TestClass
+{
+    private string _field;
+
+    public void TestMethod()
+    {
+        _field = ""test"";
+    }
+
+    // Method with no callers - should extract without errors
+    private void UnusedHelper(string input)
+    {
+        _field = input.ToUpper();
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "TestClass", "HelperClass", null, "UnusedHelper");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+
+        // Should contain the new class field
+        result.RefactoredCode.Should().Contain("private readonly HelperClass _helperClass = new HelperClass();");
+
+        // Should contain extracted method in new class
+        result.RefactoredCode.Should().Contain("internal class HelperClass");
+        result.RefactoredCode.Should().Contain("public void UnusedHelper(string input)");
+
+        // Message should indicate 0 references were found
+        result.Message.Should().Contain("Extracted 1 method(s)");
+    }
+
+    [Fact]
+    public void Execute_WithMixedSemanticAndSyntaxReferences_ShouldUpdateAllReferences()
+    {
+        // Arrange - Edge case: some references found by semantic, others by syntax fallback
+        // This simulates partial dependency resolution
+        var sourceCode = @"public class TestClass
+{
+    private string _field;
+
+    public void Method1()
+    {
+        // Simple method call - found by both semantic and syntax
+        Helper(""test1"");
+    }
+
+    public void Method2()
+    {
+        // Method call with complex expression - may only be found by syntax
+        Helper($""test2-{_field}"");
+    }
+
+    public void Method3()
+    {
+        // Method call in lambda - semantic should find this
+        var action = () => Helper(""test3"");
+    }
+
+    private void Helper(string input)
+    {
+        _field = input;
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "TestClass", "HelperClass", null, "Helper");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+
+        // Should contain the new class field
+        result.RefactoredCode.Should().Contain("private readonly HelperClass _helperClass = new HelperClass();");
+
+        // All three call sites should be updated
+        result.RefactoredCode.Should().Contain("_helperClass.Helper(\"test1\")");
+        result.RefactoredCode.Should().Contain("_helperClass.Helper($\"test2-{_field}\")");
+        result.RefactoredCode.Should().Contain("_helperClass.Helper(\"test3\")");
+
+        // Should not contain direct calls
+        result.RefactoredCode.Should().NotContain("() => Helper(");
+
+        // Message should indicate references were updated
+        result.Message.Should().Contain("automatically updated");
+    }
+
     #endregion
 }

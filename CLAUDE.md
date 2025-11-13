@@ -112,6 +112,15 @@ The **ExtractClass** refactoring implements a clean facade pattern (Issue #91), 
 **Key Design Decision (Issue #118):**
 The syntax-based fallback in ReferenceUpdater addresses scenarios where semantic analysis fails (missing type references, unresolved dependencies). This dual-strategy approach ensures ExtractClass works reliably on incomplete codebases during incremental refactoring.
 
+**Known Limitations:**
+- **Nested Type Extraction** (Issue #120): Type reference transformation is not fully implemented. When extracting nested types (classes, records, structs, enums, interfaces), type references in field declarations, return types, and qualified names are not automatically updated. The syntax-based fallback intentionally excludes `INamedTypeSymbol` to prevent incorrect transformations. See Issue #120 for planned enhancements.
+- **Local Variable Name Collisions**: Syntax-based fallback includes filtering to skip local variable declarations, preventing false positives when local variables have the same name as extracted members.
+
+**Performance Characteristics:**
+- **Semantic-Based (Primary)**: O(1) symbol lookup + O(n) references via Roslyn's indexed search. Highly efficient for well-formed code with resolved dependencies.
+- **Syntax-Based (Fallback)**: O(n) tree traversal per extracted symbol where n = number of syntax nodes in source class. Only triggers when semantic search returns zero results (typically due to unresolved dependencies).
+- **Trade-off**: Syntax fallback sacrifices precision (name-based matching) for robustness (works without complete type information). Performance impact is minimal as it only activates when semantic analysis is unavailable.
+
 ## Build and Development
 
 ### Building the Project
