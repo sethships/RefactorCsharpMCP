@@ -140,3 +140,7 @@ sbom-output/
 
 # Build output / publish directory
 app/
+publish/
+
+# Test harness temporary output
+TestBug118/refactored-output.cs
