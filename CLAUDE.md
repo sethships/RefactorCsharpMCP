@@ -14,7 +14,7 @@ The project is organized into three main components:
 
 - **RefactorCsharpMCP.Server**: MCP server with stdio transport, implements MCP tools for refactoring operations
 - **RefactorCsharpMCP.Core**: Core refactoring logic using Roslyn, analysis utilities, and refactoring algorithms
-- **RefactorCsharpMCP.Tests**: Comprehensive test suite with 165 tests covering unit, component, and integration testing
+- **RefactorCsharpMCP.Tests**: Comprehensive test suite with 1054 tests covering unit, component, and integration testing (1031 passing, 97.8%)
 
 ### Shared Refactoring Infrastructure
 
@@ -69,6 +69,58 @@ The Core project includes a shared infrastructure layer that eliminates boilerpl
 
 This infrastructure has reduced refactoring implementation boilerplate by an average of 29% (275+ lines eliminated across the five refactorings), making it faster to implement new refactorings while maintaining consistency, code quality, and observability.
 
+### ExtractClass Facade Pattern Architecture
+
+The **ExtractClass** refactoring implements a clean facade pattern (Issue #91), decomposing a 661-line monolithic orchestrator into specialized components:
+
+- **ExtractClass.cs** (176 lines, facade): Thin orchestration layer providing input validation and delegation
+  - Input validation for source code, class names, and member lists
+  - Exception handling with structured error contexts
+  - Delegation to ExtractClassOrchestrator for core logic
+  - Optional async wrapper with framework-aware compilation validation
+
+- **ExtractClassOrchestrator** (200 lines): Core orchestration workflow
+  - Coordinates member validation, symbol resolution, and reference updates
+  - Manages semantic analysis and tree transformation sequence
+  - Preserves SyntaxTree identity for accurate symbol resolution
+  - Located in `src/RefactorCsharpMCP.Core/Refactorings/ExtractClassComponents/`
+
+- **MemberSelector** (163 lines): Member name parsing and validation
+  - Parses comma/semicolon-separated member names
+  - Validates field, method, and nested type existence
+  - Supports delegate type detection and error reporting
+  - Re-finds members after tree mutations for fresh syntax nodes
+
+- **ReferenceUpdater** (246 lines): Reference finding and transformation coordinator
+  - Resolves symbols for extracted members using semantic model
+  - Categorizes references (same-class vs external) for targeted updates
+  - **Syntax-based fallback** (Issue #118): When semantic analysis fails due to unresolved dependencies, falls back to identifier matching
+  - Builds warning messages for external references requiring manual updates
+
+- **ReferenceTransformer** (CSharpSyntaxRewriter): Syntax tree rewriter
+  - Transforms member access expressions to route through composition field
+  - Handles method invocations, identifier references, and qualified type names
+  - **Location-based matching** (Issue #118): Uses TextSpan for robust reference updates when semantic model is unreliable
+
+**Benefits of Facade Pattern:**
+- 73% reduction in main file size (661 → 176 lines, 485 lines eliminated)
+- Clear separation of concerns: validation, orchestration, member selection, reference updates
+- Independent testing and optimization of each component
+- Simplified maintenance with focused responsibilities
+- Robust handling of code with unresolved dependencies (Issue #118)
+
+**Key Design Decision (Issue #118):**
+The syntax-based fallback in ReferenceUpdater addresses scenarios where semantic analysis fails (missing type references, unresolved dependencies). This dual-strategy approach ensures ExtractClass works reliably on incomplete codebases during incremental refactoring.
+
+**Known Limitations:**
+- **Nested Type Extraction** (Issue #120): Type reference transformation is not fully implemented. When extracting nested types (classes, records, structs, enums, interfaces), type references in field declarations, return types, and qualified names are not automatically updated. The syntax-based fallback intentionally excludes `INamedTypeSymbol` to prevent incorrect transformations. See Issue #120 for planned enhancements.
+- **Local Variable Name Collisions**: Syntax-based fallback includes filtering to skip local variable declarations, preventing false positives when local variables have the same name as extracted members.
+
+**Performance Characteristics:**
+- **Semantic-Based (Primary)**: O(1) symbol lookup + O(n) references via Roslyn's indexed search. Highly efficient for well-formed code with resolved dependencies.
+- **Syntax-Based (Fallback)**: O(n) tree traversal per extracted symbol where n = number of syntax nodes in source class. Only triggers when semantic search returns zero results (typically due to unresolved dependencies).
+- **Trade-off**: Syntax fallback sacrifices precision (name-based matching) for robustness (works without complete type information). Performance impact is minimal as it only activates when semantic analysis is unavailable.
+
 ## Build and Development
 
 ### Building the Project
@@ -101,7 +153,8 @@ dotnet test
 dotnet test --collect:"XPlat Code Coverage"
 
 # Current test coverage: ~87% lines, ~83% branches (estimated)
-# Total: 491 tests (463 unit + 20 component + 8 integration)
+# Total: 1054 tests (1031 passing, 18 skipped, 5 known issues)
+# ExtractClass: 57 tests (53 passing, 4 nested type issues)
 # Includes 39 InlineMethod tests (38 passing, 1 skipped for net48)
 ```
 
