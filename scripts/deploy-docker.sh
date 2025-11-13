@@ -12,6 +12,7 @@
 #   -t, --test                  Run post-deployment validation tests
 #   --skip-tests                Skip pre-deployment test suite
 #   --skip-security             Skip security scanning (not recommended)
+#   -c, --clean                 Clean up all existing containers and images before deployment
 #   -p, --push                  Push image to registry after build
 #   -r, --registry REGISTRY     Docker registry to push to
 #   --register-gateway          Register with Docker MCP Gateway after deployment
@@ -21,6 +22,7 @@
 # Examples:
 #   ./deploy-docker.sh -v 0.4.0 -s -t
 #   ./deploy-docker.sh --skip-security
+#   ./deploy-docker.sh -c -v latest  # Clean up and deploy
 #   ./deploy-docker.sh -v 0.4.0 -p -r myregistry.io/myuser
 #   ./deploy-docker.sh -v 1.0.0 --register-gateway
 #   ./deploy-docker.sh --register-gateway --catalog production
@@ -41,6 +43,7 @@ SECURITY_SCAN=false
 RUN_TESTS=false
 SKIP_TESTS=false
 SKIP_SECURITY=false
+CLEAN=false
 PUSH_IMAGE=false
 REGISTRY=""
 REGISTER_GATEWAY=false
@@ -114,6 +117,10 @@ while [[ $# -gt 0 ]]; do
             SKIP_SECURITY=true
             shift
             ;;
+        -c|--clean)
+            CLEAN=true
+            shift
+            ;;
         -p|--push)
             PUSH_IMAGE=true
             shift
@@ -170,6 +177,144 @@ success ".NET SDK found: $DOTNET_VERSION"
 
 # Change to project directory
 cd "$PROJECT_ROOT"
+
+# Step 1.5: Clean up existing containers and images (if requested)
+if [ "$CLEAN" = true ]; then
+    header "Cleaning Up Existing Containers and Images"
+
+    # Find all containers (running and stopped) - search by command pattern
+    # This catches containers even if the image was rebuilt and only shows as image ID
+    info "Finding all RefactorCsharpMCP containers..."
+    ALL_CONTAINERS=$(docker ps -a --format "{{.ID}} {{.Status}}" 2>/dev/null | while read -r id status rest; do
+        cmd=$(docker inspect --format='{{.Config.Cmd}}' "$id" 2>/dev/null)
+        if [[ "$cmd" =~ RefactorCsha ]]; then
+            echo "$id $status"
+        fi
+    done)
+
+    if [ -n "$ALL_CONTAINERS" ]; then
+        CONTAINER_IDS=()
+        RUNNING_COUNT=0
+        STOPPED_COUNT=0
+
+        while IFS= read -r line; do
+            if [[ $line =~ ^([a-f0-9]+)[[:space:]](.*)$ ]]; then
+                CONTAINER_ID="${BASH_REMATCH[1]}"
+                STATUS="${BASH_REMATCH[2]}"
+                CONTAINER_IDS+=("$CONTAINER_ID")
+
+                if [[ $STATUS =~ Up ]]; then
+                    ((RUNNING_COUNT++))
+                else
+                    ((STOPPED_COUNT++))
+                fi
+            fi
+        done <<< "$ALL_CONTAINERS"
+
+        if [ ${#CONTAINER_IDS[@]} -gt 0 ]; then
+            info "Found ${#CONTAINER_IDS[@]} container(s): $RUNNING_COUNT running, $STOPPED_COUNT stopped"
+
+            # Stop running containers with timeout and fallback to kill
+            if [ $RUNNING_COUNT -gt 0 ]; then
+                info "Stopping running containers (10 second timeout)..."
+
+                # Try stop with timeout
+                if timeout 15 docker stop --time 10 "${CONTAINER_IDS[@]}" > /dev/null 2>&1; then
+                    success "Stopped $RUNNING_COUNT running container(s)"
+                else
+                    warning "Stop command timed out or failed, forcing kill..."
+                    if docker kill "${CONTAINER_IDS[@]}" > /dev/null 2>&1; then
+                        success "Force killed $RUNNING_COUNT container(s)"
+                    else
+                        error "Failed to kill containers"
+                        warning "Some containers may require manual cleanup via Docker Desktop"
+                    fi
+                fi
+            fi
+
+            # Remove all containers
+            info "Removing containers..."
+            if docker rm -f "${CONTAINER_IDS[@]}" > /dev/null 2>&1; then
+                success "Removed ${#CONTAINER_IDS[@]} container(s)"
+            else
+                error "Failed to remove some containers"
+                warning "Check Docker Desktop for remaining containers"
+            fi
+        else
+            info "No containers found using ${IMAGE_NAME}"
+        fi
+    else
+        info "No containers found using ${IMAGE_NAME}"
+    fi
+
+    # Remove all images with this name (including untagged/dangling ones from rebuilds)
+    info "Removing all ${IMAGE_NAME} images..."
+    ALL_IMAGES=$(docker images -a --format "{{.ID}} {{.Repository}}" 2>/dev/null | grep "${IMAGE_NAME}" | awk '{print $1}')
+
+    if [ -n "$ALL_IMAGES" ]; then
+        IMAGE_IDS=()
+        while IFS= read -r image_id; do
+            IMAGE_IDS+=("$image_id")
+        done <<< "$ALL_IMAGES"
+
+        if [ ${#IMAGE_IDS[@]} -gt 0 ]; then
+            # Get unique image IDs
+            UNIQUE_IMAGE_IDS=($(printf '%s\n' "${IMAGE_IDS[@]}" | sort -u))
+            info "Found ${#UNIQUE_IMAGE_IDS[@]} image(s) to remove"
+
+            if docker rmi -f "${UNIQUE_IMAGE_IDS[@]}" > /dev/null 2>&1; then
+                success "Removed ${#UNIQUE_IMAGE_IDS[@]} image(s)"
+            else
+                warning "Failed to remove some images, continuing cleanup..."
+            fi
+        else
+            info "No images found with name ${IMAGE_NAME}"
+        fi
+    else
+        info "No images found with name ${IMAGE_NAME}"
+    fi
+
+    # Clean up dangling images
+    info "Cleaning up dangling images..."
+    DANGLING_IMAGES=$(docker images -f "dangling=true" -q 2>/dev/null)
+    if [ -n "$DANGLING_IMAGES" ]; then
+        IMAGE_COUNT=$(echo "$DANGLING_IMAGES" | wc -l)
+        docker rmi $DANGLING_IMAGES > /dev/null 2>&1
+        success "Removed $IMAGE_COUNT dangling image(s)"
+    else
+        info "No dangling images found"
+    fi
+
+    CLEANUP_END=$(date +%s)
+    CLEANUP_DURATION=$((CLEANUP_END - START_TIME))
+    success "Cleanup completed in ${CLEANUP_DURATION} seconds"
+
+    # Check if this is cleanup-only mode by examining if version was explicitly set
+    # or if any action flags were specified
+    HAS_ACTION_FLAG=false
+
+    # Check if any action flags besides -c/--clean were used
+    # We check if we're still using defaults for key parameters
+    if [ "$SECURITY_SCAN" = true ] || [ "$RUN_TESTS" = true ] || \
+       [ "$SKIP_TESTS" = true ] || [ "$SKIP_SECURITY" = true ] || \
+       [ "$PUSH_IMAGE" = true ] || [ "$REGISTER_GATEWAY" = true ]; then
+        HAS_ACTION_FLAG=true
+    fi
+
+    # Also check if version was explicitly provided (not default)
+    # This is tricky in bash, so we'll use a marker approach
+    # If user provided ANY other flag, we should deploy
+    if [ "${VERSION}" != "latest" ] || [ -n "${REGISTRY}" ]; then
+        HAS_ACTION_FLAG=true
+    fi
+
+    if [ "$HAS_ACTION_FLAG" = false ]; then
+        echo ""
+        echo -e "${CYAN}Cleanup-only mode - skipping deployment${NC}"
+        echo -e "${GRAY}To deploy after cleanup, specify version or add other flags (e.g., -v latest)${NC}"
+        exit 0
+    fi
+fi
 
 # Step 2: Run tests (unless skipped)
 if [ "$SKIP_TESTS" = false ]; then
