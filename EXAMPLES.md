@@ -923,7 +923,7 @@ const result = await use_mcp_tool({
     fieldNames: "",
     methodNames: "ValidateData,FormatData",
     targetFramework: "net8.0",      // Default: "net8.0"
-    validateCompilation: true        // Default: true
+    validateCompilation: true        // Default: false (explicitly enabled here)
   }
 });
 
@@ -1153,8 +1153,8 @@ When validation fails, you receive detailed error information:
 
 #### Best Practices for Validation
 
-1. **Keep validation enabled by default** - Provides safety net for BCL-only code
-2. **Disable for custom types** - Use `validateCompilation: false` when code uses non-BCL types
+1. **Enable validation for BCL-only code** - Use `validateCompilation: true` to catch compilation errors with BCL types
+2. **Validation disabled by default** - Provides better experience when testing with custom types
 3. **Match your project's framework** - Use same `targetFramework` as your .csproj
 4. **Review validation errors** - Error messages help identify compatibility issues
 5. **Test after refactoring** - Validation doesn't replace unit tests
@@ -1168,7 +1168,7 @@ When validation fails, you receive detailed error information:
 5. **Test after refactoring** - Run your tests to ensure all references were updated correctly.
 6. **Consider partial classes** - References in all parts of a partial class are automatically updated.
 7. **Encapsulation** - After extraction, consider making extracted fields private and adding public properties/methods as needed.
-8. **Use compilation validation** - Keep `validateCompilation: true` (default) for BCL-only code to catch compilation errors early.
+8. **Use compilation validation** - Set `validateCompilation: true` for BCL-only code to catch compilation errors early.
 
 ## Combined Refactoring Workflow
 

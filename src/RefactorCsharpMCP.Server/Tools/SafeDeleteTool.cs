@@ -2,6 +2,7 @@ using RefactorCsharpMCP.Core;
 using System.ComponentModel;
 using ModelContextProtocol.Server;
 using RefactorCsharpMCP.Core.Refactorings;
+using RefactorCsharpMCP.Server.Utilities;
 
 namespace RefactorCsharpMCP.Server.Tools;
 
@@ -25,47 +26,15 @@ public class SafeDeleteTool
         [Description("The name of the class containing the method")] string className,
         [Description("The name of the method to delete")] string methodName)
     {
-        // Input validation
-        if (string.IsNullOrWhiteSpace(sourceCode))
-        {
-            return Task.FromResult<object>(new
-            {
-                success = false,
-                error = "Source code cannot be empty",
-                message = "Refactoring failed: Source code cannot be empty"
-            });
-        }
+        // Input validation using shared validator
+        var validation = ToolInputValidator.ValidateSourceCode(sourceCode, "Refactoring")
+                         ?? ToolInputValidator.ValidateSourceCodeSize(sourceCode, "Refactoring")
+                         ?? ToolInputValidator.ValidateIdentifier(className, "class name", "Refactoring")
+                         ?? ToolInputValidator.ValidateIdentifier(methodName, "method name", "Refactoring");
 
-        if (sourceCode.Length > McpToolConstants.MAX_SOURCE_CODE_SIZE)
+        if (validation != null)
         {
-            return Task.FromResult<object>(new
-            {
-                success = false,
-                error = "Source code exceeds 1MB limit",
-                message = "Refactoring failed: Source code exceeds 1MB limit"
-            });
-        }
-
-        if (string.IsNullOrWhiteSpace(className) ||
-            !McpToolConstants.CSharpIdentifierRegex.IsMatch(className))
-        {
-            return Task.FromResult<object>(new
-            {
-                success = false,
-                error = "Class name must be a valid C# identifier",
-                message = "Refactoring failed: Class name must be a valid C# identifier"
-            });
-        }
-
-        if (string.IsNullOrWhiteSpace(methodName) ||
-            !McpToolConstants.CSharpIdentifierRegex.IsMatch(methodName))
-        {
-            return Task.FromResult<object>(new
-            {
-                success = false,
-                error = "Method name must be a valid C# identifier",
-                message = "Refactoring failed: Method name must be a valid C# identifier"
-            });
+            return Task.FromResult<object>(validation);
         }
 
         // Execute the refactoring

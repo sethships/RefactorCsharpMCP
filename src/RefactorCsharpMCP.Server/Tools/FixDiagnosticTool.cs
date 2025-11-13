@@ -4,6 +4,7 @@ using ModelContextProtocol.Server;
 using RefactorCsharpMCP.Core.Refactorings;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using RefactorCsharpMCP.Server.Utilities;
 
 namespace RefactorCsharpMCP.Server.Tools;
 
@@ -31,27 +32,17 @@ public class FixDiagnosticTool
         [Description("The column number where the diagnostic occurs (1-based)")] int column,
         [Description("The target .NET framework (e.g., 'net8.0', 'net48', 'netstandard2.0')")] string targetFramework)
     {
-        // Input validation
-        if (string.IsNullOrWhiteSpace(sourceCode))
+        // Input validation using shared validator
+        var validation = ToolInputValidator.ValidateSourceCode(sourceCode, "Fix")
+                         ?? ToolInputValidator.ValidateSourceCodeSize(sourceCode, "Fix")
+                         ?? ToolInputValidator.ValidateTargetFramework(targetFramework, "Fix");
+
+        if (validation != null)
         {
-            return new
-            {
-                success = false,
-                error = "Source code cannot be empty",
-                message = "Fix failed: Source code cannot be empty"
-            };
+            return validation;
         }
 
-        if (sourceCode.Length > McpToolConstants.MAX_SOURCE_CODE_SIZE)
-        {
-            return new
-            {
-                success = false,
-                error = "Source code exceeds 1MB limit",
-                message = "Fix failed: Source code exceeds 1MB limit"
-            };
-        }
-
+        // Validate diagnostic ID (tool-specific validation)
         if (string.IsNullOrWhiteSpace(diagnosticId))
         {
             return new
@@ -70,16 +61,6 @@ public class FixDiagnosticTool
                 success = false,
                 error = validationError,
                 message = $"Fix failed: {validationError}"
-            };
-        }
-
-        if (string.IsNullOrWhiteSpace(targetFramework))
-        {
-            return new
-            {
-                success = false,
-                error = "Target framework cannot be empty",
-                message = "Fix failed: Target framework cannot be empty"
             };
         }
 

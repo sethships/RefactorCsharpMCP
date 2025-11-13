@@ -86,7 +86,7 @@ public class RenameSymbolToolTests
         var json = JsonSerializer.Serialize(result);
         var doc = JsonDocument.Parse(json);
         doc.RootElement.GetProperty("success").GetBoolean().Should().BeFalse();
-        doc.RootElement.GetProperty("error").GetString().Should().Contain("Line number must be >= 1");
+        doc.RootElement.GetProperty("error").GetString().Should().Contain("Line number must be between 1 and 100000");
     }
 
     [Fact]
@@ -104,7 +104,7 @@ public class RenameSymbolToolTests
         var json = JsonSerializer.Serialize(result);
         var doc = JsonDocument.Parse(json);
         doc.RootElement.GetProperty("success").GetBoolean().Should().BeFalse();
-        doc.RootElement.GetProperty("error").GetString().Should().Contain("Column number must be >= 1");
+        doc.RootElement.GetProperty("error").GetString().Should().Contain("Column number must be between 1 and 10000");
     }
 
     [Fact]
