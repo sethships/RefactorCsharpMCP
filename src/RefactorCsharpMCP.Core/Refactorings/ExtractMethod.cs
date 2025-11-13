@@ -15,6 +15,7 @@ public class ExtractMethod : RefactoringBase
 {
     private readonly CodeSelectionAnalyzer _codeSelector = new CodeSelectionAnalyzer();
     private readonly ParameterExtractor _parameterExtractor;
+    private readonly MethodGenerator _methodGenerator = new MethodGenerator();
 
     /// <summary>
     /// Initializes a new instance of ExtractMethod with required dependencies.
@@ -159,7 +160,7 @@ public class ExtractMethod : RefactoringBase
             }
 
             // Build the new extracted method
-            var extractedMethod = BuildExtractedMethod(
+            var extractedMethod = _methodGenerator.BuildExtractedMethod(
                 newMethodName,
                 statementsToExtract,
                 dataFlowAnalysis,
@@ -168,7 +169,7 @@ public class ExtractMethod : RefactoringBase
             );
 
             // Build the method call to replace the extracted statements
-            var methodCall = BuildMethodCall(newMethodName, dataFlowAnalysis.Parameters, dataFlowAnalysis.ReturnInfo);
+            var methodCall = _methodGenerator.BuildMethodCall(newMethodName, dataFlowAnalysis.Parameters, dataFlowAnalysis.ReturnInfo);
 
             // Find the containing class to insert the new method
             var containingClass = containingMethod.FirstAncestorOrSelf<ClassDeclarationSyntax>();
@@ -178,7 +179,7 @@ public class ExtractMethod : RefactoringBase
             }
 
             // Replace statements with method call and add extracted method to class
-            var updatedMethod = ReplaceStatementsWithMethodCall(containingMethod, statementsToExtract, methodCall);
+            var updatedMethod = _methodGenerator.ReplaceStatementsWithMethodCall(containingMethod, statementsToExtract, methodCall);
             var updatedClass = containingClass.ReplaceNode(containingMethod, updatedMethod);
 
             // Find the position of the original method by name
