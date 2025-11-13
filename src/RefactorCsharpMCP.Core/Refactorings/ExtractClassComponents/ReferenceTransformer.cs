@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
 
 namespace RefactorCsharpMCP.Core.Refactorings.ExtractClassComponents;
 
@@ -26,6 +27,7 @@ internal class ReferenceTransformer : CSharpSyntaxRewriter
     private readonly string _newClassFieldName;
     private readonly string _newClassName;
     private readonly INamedTypeSymbol _sourceClassSymbol;
+    private readonly HashSet<TextSpan> _referenceSpans;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ReferenceTransformer"/> class.
@@ -35,18 +37,34 @@ internal class ReferenceTransformer : CSharpSyntaxRewriter
     /// <param name="newClassFieldName">The name of the composition field in the source class (e.g., "_addressManager").</param>
     /// <param name="newClassName">The name of the extracted class (for qualified type name transformations).</param>
     /// <param name="sourceClassSymbol">The symbol for the source class containing the composition field.</param>
+    /// <param name="referenceLocations">Optional list of pre-found reference locations to transform. When provided, only these locations are transformed.</param>
     public ReferenceTransformer(
         SemanticModel semanticModel,
         List<ISymbol> extractedSymbols,
         string newClassFieldName,
         string newClassName,
-        INamedTypeSymbol sourceClassSymbol)
+        INamedTypeSymbol sourceClassSymbol,
+        List<Location>? referenceLocations = null)
     {
         _semanticModel = semanticModel;
         _extractedSymbolSet = extractedSymbols.ToHashSet(SymbolEqualityComparer.Default);
         _newClassFieldName = newClassFieldName;
         _newClassName = newClassName;
         _sourceClassSymbol = sourceClassSymbol;
+
+        // Pre-compute spans from locations for fast lookup
+        _referenceSpans = referenceLocations?.Select(loc => loc.SourceSpan).ToHashSet() ?? new HashSet<TextSpan>();
+    }
+
+    /// <summary>
+    /// Checks if a syntax node's location matches a pre-found reference span.
+    /// Used for location-based matching when semantic model is unreliable (unresolved dependencies).
+    /// </summary>
+    /// <param name="node">The syntax node to check.</param>
+    /// <returns>True if the node's span is in the reference spans list, otherwise false.</returns>
+    private bool IsLocationInReferenceSpans(SyntaxNode node)
+    {
+        return _referenceSpans.Count > 0 && _referenceSpans.Contains(node.Span);
     }
 
     /// <summary>
@@ -102,7 +120,28 @@ internal class ReferenceTransformer : CSharpSyntaxRewriter
         // Handle direct method invocations: MethodName(args) → _field.MethodName(args)
         // This ensures ALL method call sites are updated, not just identifiers
 
+        // If we have pre-found reference locations, use location-based matching
+        // This avoids semantic model lookup issues when the code has unresolved dependencies
+        if (node.Expression is IdentifierNameSyntax identifier && IsLocationInReferenceSpans(identifier))
+        {
+            // Transform: MethodName(args) → _newClassField.MethodName(args)
+            var memberAccess = SyntaxFactory.MemberAccessExpression(
+                SyntaxKind.SimpleMemberAccessExpression,
+                SyntaxFactory.IdentifierName(_newClassFieldName),
+                identifier);
+
+            return node.WithExpression(memberAccess).WithTriviaFrom(node);
+        }
+
+        // If we have reference spans but didn't find a match, skip transformation
+        if (_referenceSpans.Count > 0)
+        {
+            return base.VisitInvocationExpression(node);
+        }
+
+        // Fallback to semantic-based approach when no reference locations provided
         var symbolInfo = _semanticModel.GetSymbolInfo(node);
+
         if (symbolInfo.Symbol is not IMethodSymbol methodSymbol)
         {
             return base.VisitInvocationExpression(node);
@@ -115,10 +154,11 @@ internal class ReferenceTransformer : CSharpSyntaxRewriter
         }
 
         // Check if this is a simple identifier invocation (not already qualified)
-        if (node.Expression is IdentifierNameSyntax identifier)
+        if (node.Expression is IdentifierNameSyntax identifier2)
         {
             // Check if invocation is within source class
             var containingType = _semanticModel.GetEnclosingSymbol(node.SpanStart)?.ContainingType;
+
             if (containingType != null &&
                 SymbolEqualityComparer.Default.Equals(containingType, _sourceClassSymbol))
             {
@@ -126,7 +166,7 @@ internal class ReferenceTransformer : CSharpSyntaxRewriter
                 var memberAccess = SyntaxFactory.MemberAccessExpression(
                     SyntaxKind.SimpleMemberAccessExpression,
                     SyntaxFactory.IdentifierName(_newClassFieldName),
-                    identifier);
+                    identifier2);
 
                 return node.WithExpression(memberAccess).WithTriviaFrom(node);
             }
@@ -151,6 +191,40 @@ internal class ReferenceTransformer : CSharpSyntaxRewriter
     /// </remarks>
     public override SyntaxNode? VisitIdentifierName(IdentifierNameSyntax node)
     {
+        // If we have pre-found reference locations, use location-based matching
+        if (IsLocationInReferenceSpans(node))
+        {
+            // Check if this identifier is already part of a member access expression
+            // (e.g., _address._city or this._city) - if so, don't transform it again
+            if (node.Parent is MemberAccessExpressionSyntax memberAccess &&
+                memberAccess.Name == node)
+            {
+                return base.VisitIdentifierName(node);
+            }
+
+            // Check if this is part of an invocation expression - handled by VisitInvocationExpression
+            if (node.Parent is InvocationExpressionSyntax)
+            {
+                return base.VisitIdentifierName(node);
+            }
+
+            // Transform: identifier -> _newClassField.identifier
+            var newFieldIdentifier = SyntaxFactory.IdentifierName(_newClassFieldName);
+            var memberAccessExpr = SyntaxFactory.MemberAccessExpression(
+                SyntaxKind.SimpleMemberAccessExpression,
+                newFieldIdentifier,
+                node);
+
+            return memberAccessExpr.WithTriviaFrom(node);
+        }
+
+        // If we have reference spans but didn't find a match, skip transformation
+        if (_referenceSpans.Count > 0)
+        {
+            return base.VisitIdentifierName(node);
+        }
+
+        // Fallback to semantic-based approach when no reference locations provided
         // Get the symbol for this identifier
         var symbolInfo = _semanticModel.GetSymbolInfo(node);
         if (symbolInfo.Symbol == null)
@@ -178,8 +252,8 @@ internal class ReferenceTransformer : CSharpSyntaxRewriter
 
         // Check if this identifier is already part of a member access expression
         // (e.g., _address._city or this._city) - if so, don't transform it again
-        if (node.Parent is MemberAccessExpressionSyntax memberAccess &&
-            memberAccess.Name == node)
+        if (node.Parent is MemberAccessExpressionSyntax memberAccess2 &&
+            memberAccess2.Name == node)
         {
             return base.VisitIdentifierName(node);
         }
@@ -193,13 +267,13 @@ internal class ReferenceTransformer : CSharpSyntaxRewriter
         }
 
         // Transform: identifier -> _newClassField.identifier
-        var newFieldIdentifier = SyntaxFactory.IdentifierName(_newClassFieldName);
-        var memberAccessExpr = SyntaxFactory.MemberAccessExpression(
+        var newFieldIdentifier2 = SyntaxFactory.IdentifierName(_newClassFieldName);
+        var memberAccessExpr2 = SyntaxFactory.MemberAccessExpression(
             SyntaxKind.SimpleMemberAccessExpression,
-            newFieldIdentifier,
+            newFieldIdentifier2,
             node);
 
-        return memberAccessExpr.WithTriviaFrom(node);
+        return memberAccessExpr2.WithTriviaFrom(node);
     }
 
     /// <summary>

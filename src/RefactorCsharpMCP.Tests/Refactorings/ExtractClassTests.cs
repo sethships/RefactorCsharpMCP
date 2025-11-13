@@ -1955,5 +1955,245 @@ public class ApiController
         result.ErrorMessage.Should().Contain("BaseMethodDeclarationSyntax");
     }
 
+    [Fact]
+    public void Execute_WithOutParameters_ShouldUpdateCallSites()
+    {
+        // Arrange - Bug #118 reproduction
+        var sourceCode = @"public class TestClass
+{
+    private string _field;
+
+    public void TestMethod()
+    {
+        var result = Helper(""test"", out var output, out var status);
+        System.Console.WriteLine(result);
+    }
+
+    private bool Helper(string input, out string output, out int status)
+    {
+        output = input.ToUpper();
+        status = 1;
+        return true;
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "TestClass", "HelperClass", null, "Helper");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+
+        // Should contain the new class field
+        result.RefactoredCode.Should().Contain("private readonly HelperClass _helperClass = new HelperClass();");
+
+        // Should update method call with out parameters to use the new class
+        result.RefactoredCode.Should().Contain("_helperClass.Helper");
+
+        // Should NOT contain direct method call (bug #118 - currently fails)
+        result.RefactoredCode.Should().NotContain("var result = Helper(\"test\"");
+
+        // Should indicate references were updated
+        result.Message.Should().Contain("automatically updated");
+    }
+
+    [Fact]
+    public void Execute_WithTupleDeconstruction_ShouldUpdateCallSites()
+    {
+        // Arrange - Bug #118 reproduction
+        var sourceCode = @"public class TestClass
+{
+    private string _field;
+
+    public void TestMethod()
+    {
+        var (firstName, lastName) = GetNames();
+        System.Console.WriteLine($""{firstName} {lastName}"");
+    }
+
+    private (string, string) GetNames()
+    {
+        return (""John"", ""Doe"");
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "TestClass", "NameHelper", null, "GetNames");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+
+        // Should contain the new class field
+        result.RefactoredCode.Should().Contain("private readonly NameHelper _nameHelper = new NameHelper();");
+
+        // Should update tuple deconstruction call to use the new class
+        result.RefactoredCode.Should().Contain("_nameHelper.GetNames()");
+
+        // Should NOT contain direct method call (bug #118 - currently fails)
+        result.RefactoredCode.Should().NotContain("var (firstName, lastName) = GetNames()");
+
+        // Should indicate references were updated
+        result.Message.Should().Contain("automatically updated");
+    }
+
+    [Fact]
+    public void Execute_WithMultipleMethodsIncludingOutAndTuple_ShouldUpdateAllCallSites()
+    {
+        // Arrange - Bug #118 reproduction: Real-world scenario with 5 methods
+        var sourceCode = @"public class SourceClass
+{
+    private string _field;
+
+    public void ParentMethod()
+    {
+        // Simple method call (3 times) - WORKS
+        var fields = ParseNames(""field1,field2"");
+        var methods = ParseNames(""method1,method2"");
+        var types = ParseNames(""type1,type2"");
+
+        // Method with out parameters - Bug #118 Pattern 6
+        var validation = ValidateMembers(fields, out var fieldNodes, out var methodNodes);
+
+        // Tuple deconstruction - Bug #118 Pattern 7
+        var (list1, list2) = RefindMembers(fields, methods);
+    }
+
+    private List<string> ParseNames(string names)
+    {
+        return names.Split(',').ToList();
+    }
+
+    private bool ValidateMembers(List<string> names, out List<string> fields, out List<string> methods)
+    {
+        fields = new List<string>();
+        methods = new List<string>();
+        return true;
+    }
+
+    private (List<string>, List<string>) RefindMembers(List<string> f, List<string> m)
+    {
+        return (f, m);
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act - Extract all 3 methods at once (similar to MemberSelector extraction)
+        var result = refactoring.Execute(sourceCode, "SourceClass", "Helper", null, "ParseNames,ValidateMembers,RefindMembers");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+
+        // Should contain the new class field
+        result.RefactoredCode.Should().Contain("private readonly Helper _helper = new Helper();");
+
+        // Simple method calls should be updated (ParseNames x3)
+        result.RefactoredCode.Should().Contain("_helper.ParseNames");
+
+        // Method with out parameters should be updated
+        result.RefactoredCode.Should().Contain("_helper.ValidateMembers");
+        result.RefactoredCode.Should().NotContain("var validation = ValidateMembers(fields");
+
+        // Tuple deconstruction should be updated
+        result.RefactoredCode.Should().Contain("_helper.RefindMembers");
+        result.RefactoredCode.Should().NotContain("var (list1, list2) = RefindMembers(fields");
+
+        // Should indicate references were updated
+        result.Message.Should().Contain("automatically updated");
+    }
+
+    [Fact]
+    public void Execute_WithZeroReferences_ShouldSucceedWithoutErrors()
+    {
+        // Arrange - Edge case: extracted method has no call sites (neither semantic nor syntax finds references)
+        var sourceCode = @"public class TestClass
+{
+    private string _field;
+
+    public void TestMethod()
+    {
+        _field = ""test"";
+    }
+
+    // Method with no callers - should extract without errors
+    private void UnusedHelper(string input)
+    {
+        _field = input.ToUpper();
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "TestClass", "HelperClass", null, "UnusedHelper");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+
+        // Should contain the new class field
+        result.RefactoredCode.Should().Contain("private readonly HelperClass _helperClass = new HelperClass();");
+
+        // Should contain extracted method in new class
+        result.RefactoredCode.Should().Contain("internal class HelperClass");
+        result.RefactoredCode.Should().Contain("public void UnusedHelper(string input)");
+
+        // Message should indicate 0 references were found
+        result.Message.Should().Contain("Extracted 1 method(s)");
+    }
+
+    [Fact]
+    public void Execute_WithMixedSemanticAndSyntaxReferences_ShouldUpdateAllReferences()
+    {
+        // Arrange - Edge case: some references found by semantic, others by syntax fallback
+        // This simulates partial dependency resolution
+        var sourceCode = @"public class TestClass
+{
+    private string _field;
+
+    public void Method1()
+    {
+        // Simple method call - found by both semantic and syntax
+        Helper(""test1"");
+    }
+
+    public void Method2()
+    {
+        // Method call with complex expression - may only be found by syntax
+        Helper($""test2-{_field}"");
+    }
+
+    public void Method3()
+    {
+        // Method call in lambda - semantic should find this
+        var action = () => Helper(""test3"");
+    }
+
+    private void Helper(string input)
+    {
+        _field = input;
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "TestClass", "HelperClass", null, "Helper");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+
+        // Should contain the new class field
+        result.RefactoredCode.Should().Contain("private readonly HelperClass _helperClass = new HelperClass();");
+
+        // All three call sites should be updated
+        result.RefactoredCode.Should().Contain("_helperClass.Helper(\"test1\")");
+        result.RefactoredCode.Should().Contain("_helperClass.Helper($\"test2-{_field}\")");
+        result.RefactoredCode.Should().Contain("_helperClass.Helper(\"test3\")");
+
+        // Should not contain direct calls
+        result.RefactoredCode.Should().NotContain("() => Helper(");
+
+        // Message should indicate references were updated
+        result.Message.Should().Contain("automatically updated");
+    }
+
     #endregion
 }
