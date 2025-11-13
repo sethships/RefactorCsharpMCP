@@ -18,6 +18,7 @@ public class ExtractClass : RefactoringBase
     private readonly MemberSelector _memberSelector = new MemberSelector();
     private readonly ReferenceUpdater _referenceUpdater = new ReferenceUpdater();
     private readonly SymbolResolutionHelper _symbolHelper;
+    private readonly ExtractClassOrchestrator _orchestrator;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ExtractClass"/> class.
@@ -25,6 +26,7 @@ public class ExtractClass : RefactoringBase
     public ExtractClass()
     {
         _symbolHelper = new SymbolResolutionHelper();
+        _orchestrator = new ExtractClassOrchestrator(_memberSelector, _referenceUpdater, _symbolHelper);
     }
 
     /// <summary>
@@ -146,293 +148,29 @@ public class ExtractClass : RefactoringBase
                 return parseResult;
             }
 
-            // Create compilation and semantic model for symbol resolution
+            // Create compilation for semantic analysis
             var compilation = CreateCompilation(syntaxTree);
-            var semanticModel = compilation.GetSemanticModel(syntaxTree);
-
-            // Find the class declaration
-            var classDeclaration = FindClass(root, className);
-            if (classDeclaration == null)
-            {
-                return RefactoringResult.Failure($"Class '{className}' not found in source code.");
-            }
-
-            // Validate and find all members to extract
-            var memberValidation = _memberSelector.ValidateAndFindMembers(
-                classDeclaration,
-                className,
-                fieldsToExtract,
-                methodsToExtract,
-                nestedTypesToExtract,
-                out var fieldsToExtractNodes,
-                out var methodsToExtractNodes,
-                out var nestedTypesToExtractNodes);
-
-            if (memberValidation != null) // null = success, non-null = failure
-            {
-                return memberValidation;
-            }
-
-            // Get symbols for extracted members BEFORE any modifications
-            var extractedSymbols = _referenceUpdater.GetExtractedSymbols(semanticModel, fieldsToExtractNodes, methodsToExtractNodes, nestedTypesToExtractNodes);
-
-            // Get the source class symbol for semantic comparison
-            var sourceClassSymbol = semanticModel.GetDeclaredSymbol(classDeclaration);
-            if (sourceClassSymbol == null)
-            {
-                return RefactoringResult.Failure($"Could not resolve symbol for class '{className}'.");
-            }
-
-            // Create a field name for the new class instance
-            var newClassFieldName = $"_{char.ToLower(newClassName[0])}{newClassName.Substring(1)}";
-
-            // Find and categorize references BEFORE modifying the tree
-            var (sameClassReferences, externalReferences) = _referenceUpdater.FindAndCategorizeReferences(
-                extractedSymbols,
-                compilation,
-                sourceClassSymbol,
-                root,
-                classDeclaration);
-
-            // Update references to use the new class field BEFORE any tree mutations
-            // This preserves SyntaxTree identity for semantic analysis
-            root = _referenceUpdater.UpdateSameClassReferences(
-                (CompilationUnitSyntax)root,
-                sameClassReferences,
-                extractedSymbols,
-                newClassFieldName,
-                newClassName,
-                semanticModel,
-                sourceClassSymbol);
-
-            // NOW find the updated class in the modified root
-            classDeclaration = FindClass(root, className)!;
-
-            // Create a field in the original class for the new class instance
-            // This will be added by the transformer in a single pass
-            var newClassField = CompositionFieldGenerator.CreateCompositionField(newClassName, newClassFieldName);
-
-            // Re-find members in the updated class (fresh nodes from mutated tree)
-            var (fieldsToRemove, methodsToRemove) = _memberSelector.RefindMembersInUpdatedClass(
-                classDeclaration,
-                fieldsToExtract,
-                methodsToExtract);
-
-            // Create extraction context and select strategy
-            var context = new ExtractionContext(
-                classDeclaration,
-                newClassName,
-                fieldsToExtract,
-                methodsToExtract,
-                semanticModel,
-                ExtractionMode.Default);
-
-            var strategyFactory = new ExtractionStrategyFactory();
-            var strategy = strategyFactory.SelectStrategy(context);
-
-            // Create the new class with the ORIGINAL extracted member nodes using builder pattern
-            var newClass = new ExtractedClassBuilder()
-                .WithClassName(newClassName)
-                .WithFields(fieldsToExtractNodes)
-                .WithMethods(methodsToExtractNodes)
-                .WithNestedTypes(nestedTypesToExtractNodes)
-                .WithStrategy(strategy)
-                .WithContext(context)
-                .Build();
-
-            // Single-pass transformation: removes extracted members, adds composition field, and adds extracted class
-            // This eliminates stale reference issues from multi-mutation approach
-            var transformer = new ExtractClassTransformer(
-                className,
-                fieldsToRemove,
-                methodsToRemove,
-                nestedTypesToExtract,
-                newClassField,
-                newClass);
-
-            var newRoot = transformer.Visit(root);
-            if (newRoot == null)
-            {
-                return RefactoringResult.Failure("Failed to transform source tree during extraction.");
-            }
-
-            // Normalize whitespace to ensure proper formatting
-            newRoot = NormalizeWhitespace(newRoot);
 
             // NOTE: This synchronous Execute() method performs syntax validation only.
             // For comprehensive compilation validation with framework-specific BCL references,
             // use ExecuteAsync() with validateCompilation = true (default).
             // See ExecuteAsync() method documentation for details on validation options.
 
-            // Build result message (warning only if external references exist)
-            var resultMessage = _referenceUpdater.BuildExternalReferencesWarning(
-                externalReferences,
-                fieldsToExtract.Count,
-                methodsToExtract.Count,
-                nestedTypesToExtract.Count,
-                newClassName);
-
-            return RefactoringResult.Success(
-                newRoot.ToFullString(),
-                resultMessage
-            );
+            // Delegate to orchestrator for core extraction logic
+            return _orchestrator.ExecuteExtraction(
+                root,
+                syntaxTree,
+                compilation,
+                className,
+                newClassName,
+                fieldsToExtract,
+                methodsToExtract,
+                nestedTypesToExtract,
+                node => NormalizeWhitespace(node));
         }
         catch (Exception ex)
         {
             return HandleException(ex, "extract class");
         }
-    }
-}
-
-internal class MemberSelector
-{
-    internal List<string> ParseNames(string names)
-    {
-        return names
-            .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
-            .Select(n => n.Trim())
-            .Where(n => !string.IsNullOrWhiteSpace(n))
-            .ToList();
-    }
-
-    /// <summary>
-    /// Validates that all specified members exist in the class and returns their syntax nodes.
-    /// </summary>
-    /// <param name="classDeclaration">The class declaration to search.</param>
-    /// <param name="className">The class name for error messages.</param>
-    /// <param name="fieldNames">Field names to find.</param>
-    /// <param name="methodNames">Method names to find.</param>
-    /// <param name="nestedTypeNames">Nested type names to find.</param>
-    /// <param name="fieldNodes">Output parameter for found field declarations.</param>
-    /// <param name="methodNodes">Output parameter for found method declarations.</param>
-    /// <param name="nestedTypeNodes">Output parameter for found nested type declarations.</param>
-    /// <returns>Null if all members found successfully, or RefactoringResult.Failure with error message.</returns>
-    internal RefactoringResult? ValidateAndFindMembers(
-        ClassDeclarationSyntax classDeclaration,
-        string className,
-        List<string> fieldNames,
-        List<string> methodNames,
-        List<string> nestedTypeNames,
-        out List<FieldDeclarationSyntax> fieldNodes,
-        out List<MethodDeclarationSyntax> methodNodes,
-        out List<BaseTypeDeclarationSyntax> nestedTypeNodes)
-    {
-        fieldNodes = new List<FieldDeclarationSyntax>();
-        methodNodes = new List<MethodDeclarationSyntax>();
-        nestedTypeNodes = new List<BaseTypeDeclarationSyntax>();
-
-        // Validate and find fields
-        foreach (var fieldName in fieldNames)
-        {
-            var fieldDeclaration = FindFieldDeclaration(classDeclaration, fieldName);
-            if (fieldDeclaration == null)
-            {
-                return RefactoringResult.Failure($"Field '{fieldName}' not found in class '{className}'.");
-            }
-            fieldNodes.Add(fieldDeclaration);
-        }
-
-        // Validate and find methods
-        foreach (var methodName in methodNames)
-        {
-            var methodDeclaration = classDeclaration.DescendantNodes()
-                .OfType<MethodDeclarationSyntax>()
-                .FirstOrDefault(m => m.Identifier.Text == methodName);
-
-            if (methodDeclaration == null)
-            {
-                return RefactoringResult.Failure($"Method '{methodName}' not found in class '{className}'.");
-            }
-            methodNodes.Add(methodDeclaration);
-        }
-
-        // Validate and find nested types (with unsupported delegate check)
-        foreach (var typeName in nestedTypeNames)
-        {
-            // Check for unsupported delegate types
-            var delegateDeclaration = classDeclaration.Members
-                .OfType<DelegateDeclarationSyntax>()
-                .FirstOrDefault(d => d.Identifier.Text == typeName);
-
-            if (delegateDeclaration != null)
-            {
-                return RefactoringResult.Failure(
-                    $"Nested delegate extraction is not supported. Attempted to extract delegate '{typeName}'. " +
-                    $"Delegates inherit from BaseMethodDeclarationSyntax, not BaseTypeDeclarationSyntax, and require specialized handling.");
-            }
-
-            var nestedType = FindNestedType(classDeclaration, typeName);
-            if (nestedType == null)
-            {
-                return RefactoringResult.Failure($"Nested type '{typeName}' not found in class '{className}'.");
-            }
-            nestedTypeNodes.Add(nestedType);
-        }
-
-        return null; // Success - all members found
-    }
-
-    /// <summary>
-    /// Re-finds members in an updated class declaration after tree mutations.
-    /// Used to obtain fresh syntax nodes from a mutated syntax tree.
-    /// </summary>
-    /// <param name="classDeclaration">The updated class declaration.</param>
-    /// <param name="fieldNames">Field names to re-find.</param>
-    /// <param name="methodNames">Method names to re-find.</param>
-    /// <returns>Tuple of field and method syntax nodes found in the updated class.</returns>
-    /// <remarks>
-    /// This method does not validate - it assumes members exist (validation happens earlier).
-    /// It silently skips members not found, which should not occur in normal flow.
-    /// </remarks>
-    internal (List<FieldDeclarationSyntax> Fields, List<MethodDeclarationSyntax> Methods) RefindMembersInUpdatedClass(
-        ClassDeclarationSyntax classDeclaration,
-        List<string> fieldNames,
-        List<string> methodNames)
-    {
-        var fields = new List<FieldDeclarationSyntax>();
-        var methods = new List<MethodDeclarationSyntax>();
-
-        // Re-find fields
-        foreach (var fieldName in fieldNames)
-        {
-            var field = FindFieldDeclaration(classDeclaration, fieldName);
-            if (field != null)
-            {
-                fields.Add(field);
-            }
-        }
-
-        // Re-find methods
-        foreach (var methodName in methodNames)
-        {
-            var method = classDeclaration.DescendantNodes()
-                .OfType<MethodDeclarationSyntax>()
-                .FirstOrDefault(m => m.Identifier.Text == methodName);
-            if (method != null)
-            {
-                methods.Add(method);
-            }
-        }
-
-        return (fields, methods);
-    }
-
-    internal FieldDeclarationSyntax? FindFieldDeclaration(ClassDeclarationSyntax classDeclaration, string fieldName)
-    {
-        return classDeclaration.DescendantNodes()
-            .OfType<FieldDeclarationSyntax>()
-            .FirstOrDefault(f => f.Declaration.Variables.Any(v => v.Identifier.Text == fieldName));
-    }
-
-    /// <summary>
-    /// Finds a nested type declaration by name.
-    /// Uses BaseTypeDeclarationSyntax for polymorphism (supports class, struct, record, enum, interface).
-    /// NOTE: Does not support nested delegate types as they inherit from BaseMethodDeclarationSyntax, not BaseTypeDeclarationSyntax.
-    /// </summary>
-    internal BaseTypeDeclarationSyntax? FindNestedType(ClassDeclarationSyntax classDeclaration, string typeName)
-    {
-        return classDeclaration.Members
-            .OfType<BaseTypeDeclarationSyntax>()
-            .FirstOrDefault(t => t.Identifier.Text == typeName);
     }
 }
