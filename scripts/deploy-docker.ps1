@@ -5,11 +5,15 @@
 .DESCRIPTION
     This script automates the complete Docker deployment process:
     - Runs test suite to validate code quality
-    - Builds optimized Docker image with multi-stage build
+    - Builds Docker image (fast local build or full multi-stage with SBOM)
     - Performs health checks on the container
     - Runs security scans (Docker Scout and Trivy)
     - Validates stdio transport functionality
     - Generates deployment report
+
+    Build Strategies:
+    - Dev/SkipSBOM: Two-step fast build (dotnet publish + runtime-only image, ~10-15 seconds)
+    - Production: Full multi-stage build with SBOM generation (~2-5 minutes)
 
 .PARAMETER Version
     Version tag for the Docker image (e.g., "0.4.0"). Defaults to "latest".
@@ -25,6 +29,16 @@
 
 .PARAMETER SkipSecurity
     Skip security scanning (not recommended for production).
+
+.PARAMETER SkipSBOM
+    Use fast two-step build (local publish + runtime-only image) instead of multi-stage build with SBOM.
+    Build time: ~10-15 seconds vs ~2-5 minutes. Not recommended for production.
+
+.PARAMETER Dev
+    Development mode: automatically enables -SkipSBOM, -SkipSecurity, and -Verbose for fastest local builds.
+
+.PARAMETER Clean
+    Clean up all existing containers and images for this project before deployment.
 
 .PARAMETER Push
     Push the image to a registry after successful build.
@@ -45,6 +59,15 @@
 .EXAMPLE
     .\deploy-docker.ps1 -SkipSecurity
     Quick deployment without security checks (dev only)
+
+.EXAMPLE
+    .\deploy-docker.ps1 -Dev
+    Development mode - equivalent to -SkipSBOM -SkipSecurity -Verbose
+    Uses fast two-step build (~10-15 seconds) for rapid local iteration
+
+.EXAMPLE
+    .\deploy-docker.ps1 -Dev -Clean
+    Development mode with cleanup of all existing containers and images
 
 .EXAMPLE
     .\deploy-docker.ps1 -Version "0.4.0" -Push -Registry "myregistry.io/myuser"
@@ -82,6 +105,15 @@ param(
     [switch]$SkipSecurity,
 
     [Parameter()]
+    [switch]$SkipSBOM,
+
+    [Parameter()]
+    [switch]$Dev,
+
+    [Parameter()]
+    [switch]$Clean,
+
+    [Parameter()]
     [switch]$Push,
 
     [Parameter()]
@@ -99,6 +131,14 @@ $executionPolicy = Get-ExecutionPolicy
 if ($executionPolicy -in @('Restricted', 'AllSigned')) {
     Write-Warning "Current execution policy: $executionPolicy"
     Write-Warning "Script may not run. Consider: Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser"
+}
+
+# Apply -Dev mode settings
+if ($Dev) {
+    Write-Host "Development mode enabled: -SkipSBOM -SkipSecurity -Verbose" -ForegroundColor Cyan
+    $SkipSBOM = $true
+    $SkipSecurity = $true
+    $VerbosePreference = 'Continue'
 }
 
 # Configuration
@@ -168,24 +208,183 @@ try {
     # Change to project directory
     Push-Location $ProjectRoot
 
+    # Step 1.5: Clean up existing containers and images (if requested)
+    if ($Clean) {
+        Write-Header "Cleaning Up Existing Containers and Images"
+
+        # Find all containers (running and stopped) - search by command pattern
+        # This catches containers even if the image was rebuilt and only shows as image ID
+        Write-Info "Finding all RefactorCsharpMCP containers..."
+        $allContainers = docker ps -a --format "{{.ID}} {{.Status}} {{.Command}}" 2>&1 | Where-Object { $_ -match "RefactorCsha" }
+
+        if ($allContainers -and $allContainers.Count -gt 0) {
+            $containerIds = @()
+            $runningCount = 0
+            $stoppedCount = 0
+
+            foreach ($line in $allContainers) {
+                # Format: ID STATUS COMMAND
+                if ($line -match '^([a-f0-9]+)\s+(.*?)\s+"') {
+                    $containerId = $Matches[1]
+                    $status = $Matches[2]
+                    $containerIds += $containerId
+
+                    if ($status -match 'Up') {
+                        $runningCount++
+                    } else {
+                        $stoppedCount++
+                    }
+                }
+            }
+
+            if ($containerIds.Count -gt 0) {
+                Write-Info "Found $($containerIds.Count) container(s): $runningCount running, $stoppedCount stopped"
+
+                # Stop running containers with timeout and fallback to kill
+                if ($runningCount -gt 0) {
+                    Write-Info "Stopping running containers (10 second timeout)..."
+                    $stopArgs = @('stop', '--time', '10') + $containerIds
+
+                    try {
+                        $stopJob = Start-Job -ScriptBlock { param($args) & docker $args 2>&1 } -ArgumentList (,$stopArgs)
+                        $stopJob | Wait-Job -Timeout 15 | Out-Null
+
+                        if ($stopJob.State -eq 'Running') {
+                            Write-Warning-Custom "Stop command timed out, forcing kill..."
+                            Stop-Job $stopJob
+                            Remove-Job $stopJob
+
+                            # Force kill
+                            $killArgs = @('kill') + $containerIds
+                            & docker $killArgs 2>&1 | Out-Null
+                            Write-Success "Force killed $runningCount container(s)"
+                        } else {
+                            Receive-Job $stopJob | Out-Null
+                            Remove-Job $stopJob
+                            Write-Success "Stopped $runningCount running container(s)"
+                        }
+                    } catch {
+                        Write-Warning-Custom "Failed to stop containers: $($_.Exception.Message)"
+                        Write-Info "Attempting force kill..."
+                        $killArgs = @('kill') + $containerIds
+                        & docker $killArgs 2>&1 | Out-Null
+                        Write-Success "Force killed containers"
+                    }
+                }
+
+                # Remove all containers
+                Write-Info "Removing containers..."
+                try {
+                    $rmArgs = @('rm', '-f') + $containerIds
+                    & docker $rmArgs 2>&1 | Out-Null
+                    Write-Success "Removed $($containerIds.Count) container(s)"
+                } catch {
+                    Write-Error-Custom "Failed to remove containers: $($_.Exception.Message)"
+                    Write-Warning-Custom "Some containers may require manual cleanup"
+                    throw "Container removal failed - please check Docker Desktop and try again"
+                }
+            } else {
+                Write-Info "No containers found using ${ImageName}"
+            }
+        } else {
+            Write-Info "No containers found using ${ImageName}"
+        }
+
+        # Remove all images with this name (including untagged/dangling ones from rebuilds)
+        Write-Info "Removing all ${ImageName} images..."
+        $allImages = docker images -a --format "{{.ID}} {{.Repository}}" 2>&1 | Where-Object { $_ -match "${ImageName}" }
+
+        if ($allImages -and $allImages.Count -gt 0) {
+            $imageIds = @()
+            foreach ($line in $allImages) {
+                if ($line -match '^([a-f0-9]+)\s+') {
+                    $imageIds += $Matches[1]
+                }
+            }
+
+            if ($imageIds.Count -gt 0) {
+                $uniqueImageIds = $imageIds | Select-Object -Unique
+                Write-Info "Found $($uniqueImageIds.Count) image(s) to remove"
+
+                try {
+                    $rmiArgs = @('rmi', '-f') + $uniqueImageIds
+                    & docker $rmiArgs 2>&1 | Out-Null
+                    Write-Success "Removed $($uniqueImageIds.Count) image(s)"
+                } catch {
+                    Write-Warning-Custom "Failed to remove some images: $($_.Exception.Message)"
+                    Write-Info "Continuing with cleanup..."
+                }
+            } else {
+                Write-Info "No images found with name ${ImageName}"
+            }
+        } else {
+            Write-Info "No images found with name ${ImageName}"
+        }
+
+        # Clean up dangling images
+        Write-Info "Cleaning up dangling images..."
+        $danglingImages = docker images -f "dangling=true" -q 2>&1
+        if ($danglingImages -and $danglingImages.GetType().Name -ne 'ErrorRecord' -and $danglingImages.Count -gt 0) {
+            $rmiDanglingArgs = @('rmi') + $danglingImages
+            & docker $rmiDanglingArgs 2>&1 | Out-Null
+            Write-Success "Removed $($danglingImages.Count) dangling image(s)"
+        } else {
+            Write-Info "No dangling images found"
+        }
+
+        $cleanupDuration = (Get-Date) - $StartTime
+        Write-Success "Cleanup completed in $($cleanupDuration.TotalSeconds.ToString('F2')) seconds"
+
+        # Check if this is cleanup-only mode (Clean specified but no other action flags)
+        # Count the bound parameters excluding Clean, Version, and Catalog (which are not action triggers)
+        $actionParams = @('SecurityScan', 'Test', 'SkipTests', 'SkipSecurity', 'SkipSBOM', 'Dev', 'Push', 'RegisterGateway')
+        $hasActionFlag = $false
+        foreach ($param in $actionParams) {
+            if ($PSBoundParameters.ContainsKey($param)) {
+                $hasActionFlag = $true
+                break
+            }
+        }
+
+        if (-not $hasActionFlag) {
+            Write-Host "`nCleanup-only mode - skipping deployment" -ForegroundColor Cyan
+            Write-Host "To deploy after cleanup, add deployment flags (e.g., -Dev, -SkipTests, etc.)" -ForegroundColor Gray
+            exit 0
+        }
+    }
+
     # Step 2: Run tests (unless skipped)
     if (-not $SkipTests) {
         Write-Header "Running Test Suite"
         Write-Info "Running dotnet test..."
 
-        $testOutput = dotnet test --configuration Release --verbosity minimal 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            Write-Error-Custom "Tests failed!"
-            Write-Host $testOutput -ForegroundColor Red
-            throw "Test suite must pass before deployment"
-        }
+        $testVerbosity = if ($VerbosePreference -eq 'Continue') { "normal" } else { "minimal" }
 
-        # Parse test results
-        $testOutput | ForEach-Object {
-            if ($_ -match "Passed!\s+-\s+Failed:\s+(\d+),\s+Passed:\s+(\d+)") {
-                $failed = $Matches[1]
-                $passed = $Matches[2]
-                Write-Success "Tests passed: $passed passed, $failed failed"
+        if ($VerbosePreference -eq 'Continue') {
+            # Dev mode: Stream output in real-time for immediate feedback
+            Write-Info "Test output streaming (real-time)..."
+            dotnet test --configuration Release --verbosity $testVerbosity
+            if ($LASTEXITCODE -ne 0) {
+                Write-Error-Custom "Tests failed!"
+                throw "Test suite must pass before deployment"
+            }
+            Write-Success "All tests passed"
+        } else {
+            # Non-verbose: Capture output and parse results
+            $testOutput = dotnet test --configuration Release --verbosity $testVerbosity 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                Write-Error-Custom "Tests failed!"
+                Write-Host $testOutput -ForegroundColor Red
+                throw "Test suite must pass before deployment"
+            }
+
+            # Parse test results
+            $testOutput | ForEach-Object {
+                if ($_ -match "Passed!\s+-\s+Failed:\s+(\d+),\s+Passed:\s+(\d+)") {
+                    $failed = $Matches[1]
+                    $passed = $Matches[2]
+                    Write-Success "Tests passed: $passed passed, $failed failed"
+                }
             }
         }
     } else {
@@ -193,21 +392,98 @@ try {
     }
 
     # Step 3: Clean previous builds
-    Write-Header "Cleaning Previous Builds"
-    Write-Info "Removing old images..."
+    if (-not $SkipSBOM) {
+        Write-Header "Cleaning Previous Builds"
+        Write-Info "Removing old images..."
 
-    $oldImages = docker images -q "${ImageName}:${Version}" 2>$null
-    if ($oldImages) {
-        docker rmi -f $oldImages 2>&1 | Out-Null
-        Write-Success "Removed previous image: ${ImageName}:${Version}"
+        $oldImages = docker images -q "${ImageName}:${Version}" 2>$null
+        if ($oldImages) {
+            docker rmi -f $oldImages 2>&1 | Out-Null
+            Write-Success "Removed previous image: ${ImageName}:${Version}"
+        }
+    } else {
+        Write-Info "Skipping image cleanup in fast build mode (Docker will replace automatically)"
     }
 
-    # Step 4: Build Docker image with SBOM generation
-    Write-Header "Building Docker Image with SBOM"
-    Write-Info "Building ${ImageName}:${Version}..."
+    # Step 4: Build Docker image
+    $buildStart = Get-Date
 
-    # Ensure buildx builder exists for SBOM support
-    Write-Info "Checking buildx builder..."
+    if ($SkipSBOM) {
+        Write-Header "Building Docker Image (Fast Local Build)"
+        Write-Info "Using two-step build process for faster local development..."
+        Write-Warning-Custom "SBOM generation skipped (not recommended for production)"
+
+        # Step 1: Publish locally
+        Write-Info "Step 1/2: Publishing project locally..."
+        $publishDir = Join-Path $ProjectRoot "app"
+
+        # Clean previous publish directory
+        if (Test-Path $publishDir) {
+            Remove-Item -Path $publishDir -Recurse -Force
+        }
+
+        $publishArgs = @(
+            "publish",
+            "src/RefactorCsharpMCP.Server/RefactorCsharpMCP.Server.csproj",
+            "-c", "Release",
+            "-o", $publishDir,
+            "--no-restore"
+        )
+
+        if ($VerbosePreference -eq 'Continue') {
+            $publishArgs += "-v", "normal"
+        } else {
+            $publishArgs += "-v", "quiet"
+        }
+
+        & dotnet $publishArgs
+        if ($LASTEXITCODE -ne 0) {
+            throw "dotnet publish failed (exit code: $LASTEXITCODE)"
+        }
+
+        Write-Success "Project published to $publishDir"
+
+        # Step 2: Build runtime-only Docker image
+        Write-Info "Step 2/2: Building Docker image from published artifacts..."
+
+        # Create temporary runtime-only Dockerfile
+        $runtimeDockerfile = Join-Path $ProjectRoot "Dockerfile.local"
+        $dockerfileContent = @"
+FROM mcr.microsoft.com/dotnet/aspnet:8.0
+
+WORKDIR /app
+COPY app/ .
+
+ENTRYPOINT ["dotnet", "RefactorCsharpMCP.Server.dll"]
+"@
+        Set-Content -Path $runtimeDockerfile -Value $dockerfileContent -Encoding UTF8
+
+        $buildArgs = @("build", "-f", "Dockerfile.local", "-t", "${ImageName}:${Version}", "-t", "${ImageName}:latest")
+        if ($VerbosePreference -eq 'Continue') {
+            $buildArgs += "--progress=plain"
+        }
+        $buildArgs += "."
+
+        & docker $buildArgs
+        if ($LASTEXITCODE -ne 0) {
+            throw "Docker build failed (exit code: $LASTEXITCODE)"
+        }
+
+        # Cleanup temporary files
+        if (Test-Path $runtimeDockerfile) {
+            Remove-Item -Path $runtimeDockerfile -Force
+        }
+
+        $buildDuration = (Get-Date) - $buildStart
+        Write-Success "Image built successfully in $($buildDuration.TotalSeconds.ToString('F2')) seconds"
+        Write-Info "Temporary artifacts (app/) can be cleaned up manually if desired"
+
+    } else {
+        Write-Header "Building Docker Image with SBOM"
+        Write-Info "Building ${ImageName}:${Version}..."
+
+        # Ensure buildx builder exists for SBOM support
+        Write-Info "Checking buildx builder..."
     $builderCheck = docker buildx ls 2>&1 | Select-String "sbom-builder"
     if (-not $builderCheck) {
         Write-Info "Creating buildx builder for SBOM support..."
@@ -227,8 +503,6 @@ try {
             Write-Success "Created buildx builder: sbom-builder"
         }
     }
-
-    $buildStart = Get-Date
 
     # NOTE: Dual-build strategy required because BuildKit cannot simultaneously export
     # SBOM to filesystem AND load image to local Docker daemon in a single build.
@@ -258,7 +532,9 @@ try {
 
     # Display build steps
     $buildOutput | ForEach-Object {
-        if ($_ -match "^#") {
+        if ($VerbosePreference -eq 'Continue') {
+            Write-Info $_
+        } elseif ($_ -match "^#") {
             Write-Info $_
         }
     }
@@ -368,7 +644,9 @@ try {
 
     # Display build steps
     $buildOutput2 | ForEach-Object {
-        if ($_ -match "^#") {
+        if ($VerbosePreference -eq 'Continue') {
+            Write-Info $_
+        } elseif ($_ -match "^#") {
             Write-Info $_
         }
     }
@@ -383,6 +661,8 @@ try {
 
     $buildDuration = (Get-Date) - $buildStart
     Write-Success "Image built successfully with SBOM in $($buildDuration.TotalSeconds.ToString('F2')) seconds"
+    }
+    # End of SBOM conditional build section
 
     # Step 5: Inspect image
     Write-Header "Image Inspection"
@@ -391,80 +671,84 @@ try {
     Write-Info "Image Size: ${imageSize} MB"
     Write-Info "Created: $($imageInfo[0].Created)"
 
-    # Step 6: Health check
-    Write-Header "Container Health Check"
-    Write-Info "Starting container for health check..."
+    # Step 6: Health check and CycloneDX SBOM generation (skip in dev mode)
+    if (-not $SkipSecurity) {
+        Write-Header "Container Health Check"
+        Write-Info "Starting container for health check..."
 
-    $containerId = docker run -d "${ImageName}:${Version}" 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to start container"
-    }
+        $containerId = docker run -d "${ImageName}:${Version}" 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to start container"
+        }
 
-    Write-Info "Container ID: $containerId"
-    Start-Sleep -Seconds 5
+        Write-Info "Container ID: $containerId"
+        Start-Sleep -Seconds 5
 
-    $healthStatus = docker inspect --format='{{.State.Health.Status}}' $containerId 2>&1
-    if ($healthStatus -match "healthy|starting") {
-        Write-Success "Container health check: $healthStatus"
-    } else {
-        Write-Warning-Custom "Container health status: $healthStatus"
-    }
+        $healthStatus = docker inspect --format='{{.State.Health.Status}}' $containerId 2>&1
+        if ($healthStatus -match "healthy|starting") {
+            Write-Success "Container health check: $healthStatus"
+        } else {
+            Write-Warning-Custom "Container health status: $healthStatus"
+        }
 
-    # Check if container is running
-    $containerStatus = docker inspect --format='{{.State.Status}}' $containerId 2>&1
-    if ($containerStatus -eq "running") {
-        Write-Success "Container is running"
-    } else {
-        Write-Warning-Custom "Container status: $containerStatus"
-    }
+        # Check if container is running
+        $containerStatus = docker inspect --format='{{.State.Status}}' $containerId 2>&1
+        if ($containerStatus -eq "running") {
+            Write-Success "Container is running"
+        } else {
+            Write-Warning-Custom "Container status: $containerStatus"
+        }
 
-    # Cleanup test container
-    docker stop $containerId 2>&1 | Out-Null
-    docker rm $containerId 2>&1 | Out-Null
-    Write-Info "Test container cleaned up"
+        # Cleanup test container
+        docker stop $containerId 2>&1 | Out-Null
+        docker rm $containerId 2>&1 | Out-Null
+        Write-Info "Test container cleaned up"
 
-    # Step 6.5: CycloneDX SBOM Generation (Optional)
-    Write-Header "CycloneDX SBOM Generation"
+        # Step 6.5: CycloneDX SBOM Generation (Optional)
+        Write-Header "CycloneDX SBOM Generation"
 
-    # Check for Syft
-    $syftAvailable = Get-Command syft -ErrorAction SilentlyContinue
-    if ($syftAvailable) {
-        Write-Info "Generating CycloneDX SBOM with Syft..."
-        try {
-            syft "${ImageName}:${Version}" -o cyclonedx-json | Out-File -Encoding utf8 "${ProjectRoot}\sbom.cyclonedx.json"
-            if ($LASTEXITCODE -eq 0 -and (Test-Path "${ProjectRoot}\sbom.cyclonedx.json")) {
-                Write-Success "CycloneDX SBOM generated: sbom.cyclonedx.json"
+        # Check for Syft
+        $syftAvailable = Get-Command syft -ErrorAction SilentlyContinue
+        if ($syftAvailable) {
+            Write-Info "Generating CycloneDX SBOM with Syft..."
+            try {
+                syft "${ImageName}:${Version}" -o cyclonedx-json | Out-File -Encoding utf8 "${ProjectRoot}\sbom.cyclonedx.json"
+                if ($LASTEXITCODE -eq 0 -and (Test-Path "${ProjectRoot}\sbom.cyclonedx.json")) {
+                    Write-Success "CycloneDX SBOM generated: sbom.cyclonedx.json"
 
-                # Validate CycloneDX SBOM size
-                $cycloneDxFile = Get-Item "${ProjectRoot}\sbom.cyclonedx.json"
-                if ($cycloneDxFile.Length -gt 1KB) {
-                    Write-Info "CycloneDX SBOM size: $([math]::Round($cycloneDxFile.Length / 1KB, 2)) KB"
+                    # Validate CycloneDX SBOM size
+                    $cycloneDxFile = Get-Item "${ProjectRoot}\sbom.cyclonedx.json"
+                    if ($cycloneDxFile.Length -gt 1KB) {
+                        Write-Info "CycloneDX SBOM size: $([math]::Round($cycloneDxFile.Length / 1KB, 2)) KB"
+                    } else {
+                        Write-Warning-Custom "CycloneDX SBOM file seems too small, may be incomplete"
+                    }
                 } else {
-                    Write-Warning-Custom "CycloneDX SBOM file seems too small, may be incomplete"
+                    Write-Warning-Custom "Syft CycloneDX generation failed"
                 }
-            } else {
-                Write-Warning-Custom "Syft CycloneDX generation failed"
+            } catch {
+                Write-Warning-Custom "Error generating CycloneDX SBOM: $($_.Exception.Message)"
             }
-        } catch {
-            Write-Warning-Custom "Error generating CycloneDX SBOM: $($_.Exception.Message)"
+        } else {
+            Write-Warning-Custom "Syft not installed, skipping CycloneDX generation"
+            Write-Info "Install with: choco install syft"
+        }
+
+        # Check for Trivy as alternative/additional scanner
+        $trivyAvailable = Get-Command trivy -ErrorAction SilentlyContinue
+        if ($trivyAvailable) {
+            Write-Info "Generating additional CycloneDX SBOM with Trivy..."
+            try {
+                trivy image --format cyclonedx "${ImageName}:${Version}" | Out-File -Encoding utf8 "${ProjectRoot}\sbom.cyclonedx-trivy.json"
+                if ($LASTEXITCODE -eq 0 -and (Test-Path "${ProjectRoot}\sbom.cyclonedx-trivy.json")) {
+                    Write-Success "Trivy CycloneDX SBOM generated: sbom.cyclonedx-trivy.json"
+                }
+            } catch {
+                Write-Warning-Custom "Trivy CycloneDX generation failed: $($_.Exception.Message)"
+            }
         }
     } else {
-        Write-Warning-Custom "Syft not installed, skipping CycloneDX generation"
-        Write-Info "Install with: choco install syft"
-    }
-
-    # Check for Trivy as alternative/additional scanner
-    $trivyAvailable = Get-Command trivy -ErrorAction SilentlyContinue
-    if ($trivyAvailable) {
-        Write-Info "Generating additional CycloneDX SBOM with Trivy..."
-        try {
-            trivy image --format cyclonedx "${ImageName}:${Version}" | Out-File -Encoding utf8 "${ProjectRoot}\sbom.cyclonedx-trivy.json"
-            if ($LASTEXITCODE -eq 0 -and (Test-Path "${ProjectRoot}\sbom.cyclonedx-trivy.json")) {
-                Write-Success "Trivy CycloneDX SBOM generated: sbom.cyclonedx-trivy.json"
-            }
-        } catch {
-            Write-Warning-Custom "Trivy CycloneDX generation failed: $($_.Exception.Message)"
-        }
+        Write-Warning-Custom "Container health check and CycloneDX SBOM generation skipped in dev mode"
     }
 
     # Step 7: Security scanning
