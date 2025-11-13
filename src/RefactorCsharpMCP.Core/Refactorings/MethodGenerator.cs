@@ -33,7 +33,7 @@ internal class MethodGenerator
     /// <returns>The generated method declaration</returns>
     public MethodDeclarationSyntax BuildExtractedMethod(
         string methodName,
-        ParameterExtractor.DataFlowInfo dataFlowInfo,
+        DataFlowInfo dataFlowInfo,
         List<StatementSyntax> statementsToExtract,
         bool isStatic,
         string? targetFramework)
@@ -50,7 +50,7 @@ internal class MethodGenerator
     /// <returns>The method call statement</returns>
     public StatementSyntax BuildMethodCall(
         string methodName,
-        ParameterExtractor.DataFlowInfo dataFlowInfo)
+        DataFlowInfo dataFlowInfo)
     {
         // TODO: Extract from ExtractMethod.cs lines 400-454
         throw new System.NotImplementedException("To be extracted from ExtractMethod.cs");

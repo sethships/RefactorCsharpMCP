@@ -13,6 +13,17 @@ namespace RefactorCsharpMCP.Core.Refactorings;
 /// </summary>
 public class ExtractMethod : RefactoringBase
 {
+    private readonly CodeSelectionAnalyzer _codeSelector = new CodeSelectionAnalyzer();
+    private readonly ParameterExtractor _parameterExtractor;
+
+    /// <summary>
+    /// Initializes a new instance of ExtractMethod with required dependencies.
+    /// </summary>
+    public ExtractMethod() : base()
+    {
+        _parameterExtractor = new ParameterExtractor(new ReturnValueAnalyzer(Logger), Logger);
+    }
+
     /// <summary>
     /// Extracts the specified lines of code into a new method with framework-aware validation.
     /// </summary>
@@ -99,14 +110,14 @@ public class ExtractMethod : RefactoringBase
             }
 
             // Find the method containing the lines to extract
-            var containingMethod = FindContainingMethod(root, startLine, endLine);
+            var containingMethod = _codeSelector.FindContainingMethod(root, startLine, endLine);
             if (containingMethod == null)
             {
                 return RefactoringResult.Failure($"No method found containing lines {startLine}-{endLine}.");
             }
 
             // Find statements to extract based on line range
-            var statementsToExtract = FindStatementsInLineRange(containingMethod, startLine, endLine);
+            var statementsToExtract = _codeSelector.FindStatementsInLineRange(containingMethod, startLine, endLine);
             if (!statementsToExtract.Any())
             {
                 return RefactoringResult.Failure($"No statements found in line range {startLine}-{endLine}.");
@@ -117,7 +128,7 @@ public class ExtractMethod : RefactoringBase
             var semanticModel = compilation.GetSemanticModel(syntaxTree);
 
             // Analyze data flow for the selected statements
-            var dataFlowAnalysis = AnalyzeDataFlow(semanticModel, statementsToExtract, containingMethod);
+            var dataFlowAnalysis = _parameterExtractor.AnalyzeDataFlow(semanticModel, statementsToExtract, containingMethod);
 
             // Validate return info was successfully analyzed (CR Issue #3)
             if (dataFlowAnalysis.ReturnInfo == null)
@@ -196,120 +207,6 @@ public class ExtractMethod : RefactoringBase
         {
             return HandleException(ex, "extract method");
         }
-    }
-
-    private MethodDeclarationSyntax? FindContainingMethod(CompilationUnitSyntax root, int startLine, int endLine)
-    {
-        return root.DescendantNodes()
-            .OfType<MethodDeclarationSyntax>()
-            .FirstOrDefault(method =>
-            {
-                var methodSpan = method.GetLocation().GetLineSpan();
-                return methodSpan.StartLinePosition.Line + 1 <= startLine &&
-                       methodSpan.EndLinePosition.Line + 1 >= endLine;
-            });
-    }
-
-    private List<StatementSyntax> FindStatementsInLineRange(MethodDeclarationSyntax method, int startLine, int endLine)
-    {
-        if (method.Body == null) return new List<StatementSyntax>();
-
-        return method.Body.Statements
-            .Where(statement =>
-            {
-                var stmtSpan = statement.GetLocation().GetLineSpan();
-                var stmtStart = stmtSpan.StartLinePosition.Line + 1;
-                var stmtEnd = stmtSpan.EndLinePosition.Line + 1;
-
-                // Statement is within or overlaps the line range
-                return (stmtStart >= startLine && stmtStart <= endLine) ||
-                       (stmtEnd >= startLine && stmtEnd <= endLine) ||
-                       (stmtStart <= startLine && stmtEnd >= endLine);
-            })
-            .ToList();
-    }
-
-    private DataFlowInfo AnalyzeDataFlow(
-        SemanticModel semanticModel,
-        List<StatementSyntax> statements,
-        MethodDeclarationSyntax containingMethod)
-    {
-        var dataFlow = new DataFlowInfo();
-
-        if (!statements.Any()) return dataFlow;
-
-        try
-        {
-            var firstStatement = statements.First();
-            var lastStatement = statements.Last();
-
-            var analysis = semanticModel.AnalyzeDataFlow(firstStatement, lastStatement);
-
-            if (analysis == null || !analysis.Succeeded)
-            {
-                return dataFlow;
-            }
-
-            // Variables that flow into the selection (need to be parameters)
-            // Exclude instance members (fields, properties) - they're accessible from the new method
-            // Exclude 'this' parameter - instance methods have access to instance members
-            dataFlow.Parameters = analysis.DataFlowsIn
-                .Where(symbol => !analysis.VariablesDeclared.Contains(symbol))
-                .Where(symbol => symbol is ILocalSymbol or IParameterSymbol) // Only locals and parameters
-                .Where(symbol => symbol is not IParameterSymbol param || !param.IsThis) // Exclude 'this'
-                .Select(symbol => new ParameterInfo
-                {
-                    Name = symbol.Name,
-                    Type = SymbolTypeFormatter.GetSymbolType(symbol)
-                })
-                .ToList();
-
-            // Variables that flow out (might need return value or out parameter)
-            // Include variables that are assigned within the region but declared outside
-            var outputSymbols = analysis.DataFlowsOut
-                .Where(symbol => symbol is ILocalSymbol) // Only local variables can flow out
-                .Cast<ILocalSymbol>()
-                .ToList();
-
-            dataFlow.OutputVariableSymbols = outputSymbols;
-            dataFlow.OutputVariables = outputSymbols.Select(s => s.Name).ToList();
-
-            // Verify that symbol and variable lists stay synchronized (CR Issue #2)
-            Debug.Assert(
-                dataFlow.OutputVariableSymbols.Count == dataFlow.OutputVariables.Count,
-                "OutputVariableSymbols and OutputVariables must have the same count");
-
-            // Variables declared outside but assigned inside need to be captured
-            // Exclude variables already in the parameter list to avoid duplicates
-            dataFlow.AssignedOutsideVariables = analysis.WrittenInside
-                .Where(symbol => !analysis.VariablesDeclared.Contains(symbol))
-                .Where(symbol => !analysis.DataFlowsIn.Contains(symbol)) // Exclude parameters
-                .Where(symbol => symbol is ILocalSymbol)
-                .Select(symbol => new ParameterInfo
-                {
-                    Name = symbol.Name,
-                    Type = SymbolTypeFormatter.GetSymbolType(symbol)
-                })
-                .ToList();
-        }
-        catch (Exception ex)
-        {
-            // Data flow analysis failed - return error instead of silent degradation (CR Issue #7)
-            Logger?.LogError(ex, "Data flow analysis failed");
-            dataFlow.ReturnInfo = new ReturnTypeInfo
-            {
-                Kind = ReturnKind.Error,
-                ErrorMessage = "Failed to analyze data flow for the selected code."
-            };
-            return dataFlow;
-        }
-
-        // Detect return type based on data flow and control flow
-        var returnAnalyzer = new ReturnValueAnalyzer(Logger);
-        var position = statements.First().SpanStart;
-        dataFlow.ReturnInfo = returnAnalyzer.DetectReturnType(dataFlow, statements, semanticModel, position);
-
-        return dataFlow;
     }
 
     private MethodDeclarationSyntax BuildExtractedMethod(
@@ -557,25 +454,4 @@ public class ExtractMethod : RefactoringBase
         throw new InvalidOperationException("Cannot generate return statement for void return type");
     }
 
-}
-
-/// <summary>
-/// Contains data flow analysis results for code extraction.
-/// </summary>
-internal class DataFlowInfo
-{
-    public List<ParameterInfo> Parameters { get; set; } = new();
-    public List<ILocalSymbol> OutputVariableSymbols { get; set; } = new();
-    public List<string> OutputVariables { get; set; } = new();
-    public List<ParameterInfo> AssignedOutsideVariables { get; set; } = new();
-    public ReturnTypeInfo? ReturnInfo { get; set; }
-}
-
-/// <summary>
-/// Represents a parameter with its name and type.
-/// </summary>
-internal class ParameterInfo
-{
-    public string Name { get; set; } = string.Empty;
-    public string Type { get; set; } = "object";
 }
