@@ -660,6 +660,505 @@ const result = await use_mcp_tool({
 - Method calls automatically updated within same class
 - Perfect for decomposing large classes into smaller, focused services
 
+### Encapsulation Through Internal Visibility
+
+Extract Class automatically creates extracted classes and methods with `internal` visibility to enforce proper encapsulation through the composition pattern. This design prevents external code from directly accessing implementation details.
+
+**Design Rationale:**
+- **Encapsulation**: Extracted classes are implementation details of the original class
+- **Composition Pattern**: Access should always go through the composition field (`_extractedClass._field`)
+- **Flexibility**: You can manually change visibility to `public` after extraction if needed
+
+**Example - Internal Class Visibility:**
+```csharp
+// Before extraction
+public class UserService
+{
+    private string _username;
+    private IDatabase _database;
+
+    public void SaveUser()
+    {
+        _database.Save(_username);
+    }
+}
+
+// After extracting _username into UserProfile
+public class UserService
+{
+    private readonly UserProfile _userProfile = new UserProfile();
+    private IDatabase _database;
+
+    public void SaveUser()
+    {
+        _database.Save(_userProfile._username);
+    }
+}
+
+// Extracted class is internal (not public)
+internal class UserProfile
+{
+    internal string _username;
+}
+```
+
+**Example - Internal Method Accessibility:**
+```csharp
+// Before extraction
+public class OrderService
+{
+    private decimal _total;
+
+    private decimal CalculateTax()
+    {
+        return _total * 0.08m;
+    }
+
+    private decimal CalculateShipping()
+    {
+        return _total > 100 ? 0 : 10;
+    }
+
+    public decimal GetFinalTotal()
+    {
+        return _total + CalculateTax() + CalculateShipping();
+    }
+}
+
+// After extracting calculation methods
+public class OrderService
+{
+    private decimal _total;
+    private readonly PricingCalculator _pricingCalculator = new PricingCalculator();
+
+    public decimal GetFinalTotal()
+    {
+        return _total + _pricingCalculator.CalculateTax() + _pricingCalculator.CalculateShipping();
+    }
+}
+
+// Extracted methods are internal (not public)
+internal class PricingCalculator
+{
+    internal decimal CalculateTax()
+    {
+        // Tax calculation logic
+    }
+
+    internal decimal CalculateShipping()
+    {
+        // Shipping calculation logic
+    }
+}
+```
+
+**When to Make Extracted Classes Public:**
+
+You may want to manually change visibility after extraction in these cases:
+
+1. **Shared Services**: When the extracted class should be used by other classes:
+   ```csharp
+   // Change from internal to public after extraction
+   public class ValidationRules
+   {
+       public bool IsValid(string input) { /* ... */ }
+   }
+   ```
+
+2. **API Surface**: When the extracted class is part of your public API:
+   ```csharp
+   // Change from internal to public for API consumers
+   public class Configuration
+   {
+       public string ApiKey { get; set; }
+   }
+   ```
+
+3. **Testing**: When you need to unit test the extracted class directly:
+   ```csharp
+   // Change from internal to public for testing
+   // Or use InternalsVisibleTo attribute
+   public class CalculationEngine { /* ... */ }
+   ```
+
+**Note**: The refactoring always generates `internal` visibility as the safe default. You can manually change to `public` after reviewing the extracted class if needed for your specific use case.
+
+### Protected Methods and Inheritance Patterns
+
+**Important**: Protected methods become `internal` during extraction, which breaks inheritance patterns. If you're working with class hierarchies that rely on protected members, carefully consider whether Extract Class is the right refactoring.
+
+**Issue**: When extracting protected methods, they become `internal` in the new class, which prevents derived classes from accessing them:
+
+```csharp
+// Before extraction
+public class BaseService
+{
+    protected virtual void ValidateInput(string input)
+    {
+        if (string.IsNullOrEmpty(input))
+            throw new ArgumentException("Invalid input");
+    }
+}
+
+public class DerivedService : BaseService
+{
+    public void Process(string data)
+    {
+        ValidateInput(data);  // Can access protected method
+        // Process data
+    }
+}
+
+// After extracting ValidateInput - BREAKS INHERITANCE
+public class BaseService
+{
+    private readonly Validator _validator = new Validator();
+    // ValidateInput no longer accessible to derived classes
+}
+
+internal class Validator
+{
+    internal void ValidateInput(string input)  // Now internal, not protected
+    {
+        if (string.IsNullOrEmpty(input))
+            throw new ArgumentException("Invalid input");
+    }
+}
+
+public class DerivedService : BaseService
+{
+    public void Process(string data)
+    {
+        ValidateInput(data);  // ERROR: Cannot access ValidateInput
+        // Process data
+    }
+}
+```
+
+**When to Use Extract Class** (Composition Pattern):
+- Original class uses composition, not inheritance
+- Extracted functionality doesn't need to be inherited
+- Breaking down large classes into focused services
+- Creating stateless helper classes
+
+**When NOT to Use Extract Class** (Use Extract Superclass Instead):
+- Class hierarchy relies on protected members
+- Derived classes need to override or access the extracted methods
+- Working with template method patterns
+- Maintaining inheritance-based polymorphism
+
+**Alternative**: If you need to extract protected methods while preserving inheritance, consider:
+1. **Extract Superclass**: Move protected members to a base class (not yet implemented)
+2. **Manual Refactoring**: Create a protected composition field that derived classes can access
+3. **Strategy Pattern**: Replace inheritance with composition using interfaces
+
+**Example - Manual Workaround for Protected Access**:
+```csharp
+// Manually expose extracted class to derived classes
+public class BaseService
+{
+    protected readonly Validator Validator = new Validator();  // Protected field
+}
+
+public class Validator  // Make public instead of internal
+{
+    public virtual void ValidateInput(string input)  // Public for access
+    {
+        if (string.IsNullOrEmpty(input))
+            throw new ArgumentException("Invalid input");
+    }
+}
+
+public class DerivedService : BaseService
+{
+    public void Process(string data)
+    {
+        Validator.ValidateInput(data);  // Can access through protected field
+        // Process data
+    }
+}
+```
+
+### Compilation Validation (V1.3+)
+
+Starting with V1.3, Extract Class includes **optional compilation validation** that ensures the extracted code compiles successfully with framework-specific BCL references. **Validation is enabled by default.**
+
+#### Example 1: Validation Enabled by Default (Recommended)
+
+**Before:**
+```csharp
+public class DataProcessor
+{
+    private string _data;
+
+    private void ValidateData()
+    {
+        if (string.IsNullOrEmpty(_data))
+            throw new ArgumentException("Invalid data");
+    }
+
+    private string FormatData(string input)
+    {
+        return input.ToUpper();
+    }
+
+    public void Process()
+    {
+        ValidateData();
+        var formatted = FormatData(_data);
+        Console.WriteLine(formatted);
+    }
+}
+```
+
+**MCP Tool Usage (validation enabled by default):**
+```javascript
+const result = await use_mcp_tool({
+  server_name: "refactor-csharp-mcp",
+  tool_name: "extract_class",
+  arguments: {
+    sourceCode: "...",
+    className: "DataProcessor",
+    newClassName: "DataValidator",
+    fieldNames: "",
+    methodNames: "ValidateData,FormatData",
+    targetFramework: "net8.0",      // Default: "net8.0"
+    validateCompilation: true        // Default: true
+  }
+});
+
+// Result includes validation confirmation:
+// "Extracted 2 method(s) into new class 'DataValidator'.
+//  Compilation validation passed for framework net8.0."
+```
+
+**After (with validation confirmation):**
+```csharp
+public class DataProcessor
+{
+    private string _data;
+    private readonly DataValidator _dataValidator = new DataValidator();
+
+    public void Process()
+    {
+        _dataValidator.ValidateData();
+        var formatted = _dataValidator.FormatData(_data);
+        Console.WriteLine(formatted);
+    }
+}
+
+internal class DataValidator
+{
+    internal void ValidateData()
+    {
+        if (string.IsNullOrEmpty(_data))
+            throw new ArgumentException("Invalid data");
+    }
+
+    internal string FormatData(string input)
+    {
+        return input.ToUpper();
+    }
+}
+```
+
+#### Example 2: Disabling Validation for Custom Types
+
+When extracting code that uses types not available in the BCL (e.g., custom classes, third-party libraries), you may need to disable validation:
+
+**Before:**
+```csharp
+public class UserService
+{
+    private ILogger _logger;          // Custom interface
+    private IDatabase _database;      // Custom interface
+    private string _username;
+
+    public void SaveUser()
+    {
+        _logger.LogInformation("Saving user");
+        _database.Save(_username);
+    }
+}
+```
+
+**MCP Tool Usage (validation disabled for custom types):**
+```javascript
+const result = await use_mcp_tool({
+  server_name: "refactor-csharp-mcp",
+  tool_name: "extract_class",
+  arguments: {
+    sourceCode: "...",
+    className: "UserService",
+    newClassName: "UserContext",
+    fieldNames: "_username",
+    validateCompilation: false  // Disable - uses custom ILogger/IDatabase
+  }
+});
+
+// Result without validation:
+// "Extracted 1 field(s) into new class 'UserContext'."
+```
+
+#### Example 3: Framework-Specific Validation
+
+Different target frameworks support different language features. Validation ensures compatibility:
+
+**Code with Modern C# 12 Syntax:**
+```csharp
+public class Calculator
+{
+    private int[] _numbers = [1, 2, 3];  // Collection expression (C# 12)
+
+    public int Sum()
+    {
+        return _numbers.Sum();
+    }
+}
+```
+
+**Validation with net8.0 (C# 12 supported):**
+```javascript
+const result = await use_mcp_tool({
+  server_name: "refactor-csharp-mcp",
+  tool_name: "extract_class",
+  arguments: {
+    sourceCode: "...",
+    className: "Calculator",
+    newClassName: "NumberStore",
+    fieldNames: "_numbers",
+    targetFramework: "net8.0",      // Supports C# 12
+    validateCompilation: true
+  }
+});
+
+// ✅ Success - C# 12 syntax supported in net8.0
+```
+
+**Validation with net48 (C# 7.3 only):**
+```javascript
+const result = await use_mcp_tool({
+  server_name: "refactor-csharp-mcp",
+  tool_name: "extract_class",
+  arguments: {
+    sourceCode: "...",
+    className: "Calculator",
+    newClassName: "NumberStore",
+    fieldNames: "_numbers",
+    targetFramework: "net48",       // Only supports C# 7.3
+    validateCompilation: true
+  }
+});
+
+// ❌ Failure - Collection expressions not supported in net48
+// Error: "Generated code has compilation errors for framework net48"
+// Solution: Either use net8.0 or change collection expression to:
+//   private int[] _numbers = new int[] { 1, 2, 3 };
+```
+
+#### Example 4: Validation with Complex Refactoring
+
+For complex refactorings with multiple fields and methods, validation provides confidence:
+
+```csharp
+public class OrderProcessor
+{
+    private string _street;
+    private string _city;
+    private string _state;
+    private decimal _taxRate;
+
+    private decimal CalculateTax(decimal amount)
+    {
+        return amount * _taxRate;
+    }
+
+    private string FormatAddress()
+    {
+        return $"{_street}, {_city}, {_state}";
+    }
+
+    public decimal ProcessOrder(decimal orderAmount)
+    {
+        var tax = CalculateTax(orderAmount);
+        var address = FormatAddress();
+        Console.WriteLine($"Shipping to: {address}");
+        return orderAmount + tax;
+    }
+}
+```
+
+**MCP Tool Usage (validates both fields and methods):**
+```javascript
+const result = await use_mcp_tool({
+  server_name: "refactor-csharp-mcp",
+  tool_name: "extract_class",
+  arguments: {
+    sourceCode: "...",
+    className: "OrderProcessor",
+    newClassName: "OrderContext",
+    fieldNames: "_street,_city,_state,_taxRate",
+    methodNames: "CalculateTax,FormatAddress",
+    targetFramework: "net8.0",
+    validateCompilation: true  // Validates entire refactored code
+  }
+});
+
+// ✅ Success with validation confirmation:
+// "Extracted 4 field(s) and 2 method(s) into new class 'OrderContext'.
+//  Compilation validation passed for framework net8.0."
+```
+
+#### When to Disable Validation
+
+**Disable validation when:**
+1. **Custom Types**: Code uses custom classes, interfaces, or third-party libraries not in BCL
+2. **External Dependencies**: Code references types from NuGet packages or project references
+3. **Performance Critical**: Very large files where validation overhead is not acceptable
+4. **Known Compatibility**: You're confident the extracted code is valid for your framework
+
+**Example - Disabling for Custom Types:**
+```javascript
+// Code uses ILogger, IDatabase, IEmailService (custom interfaces)
+const result = await use_mcp_tool({
+  server_name: "refactor-csharp-mcp",
+  tool_name: "extract_class",
+  arguments: {
+    sourceCode: "...",
+    className: "Service",
+    newClassName: "ServiceContext",
+    fieldNames: "_logger,_database,_emailService",
+    validateCompilation: false  // Skip validation - custom types
+  }
+});
+```
+
+#### Validation Error Messages
+
+When validation fails, you receive detailed error information:
+
+```javascript
+// Example validation failure
+{
+  "success": false,
+  "message": "Generated code has compilation errors for framework net8.0: (5,15): error CS0246: The type or namespace name 'ICustomService' could not be found",
+  "error": "Compilation validation failed"
+}
+```
+
+**Common Validation Errors:**
+- **CS0246**: Type or namespace not found → Disable validation for custom types
+- **CS1061**: Type doesn't contain definition → Check framework compatibility
+- **CS0103**: Name doesn't exist in context → Check field/method references
+
+#### Best Practices for Validation
+
+1. **Keep validation enabled by default** - Provides safety net for BCL-only code
+2. **Disable for custom types** - Use `validateCompilation: false` when code uses non-BCL types
+3. **Match your project's framework** - Use same `targetFramework` as your .csproj
+4. **Review validation errors** - Error messages help identify compatibility issues
+5. **Test after refactoring** - Validation doesn't replace unit tests
+
 ### Best Practices
 
 1. **Group related fields and methods** - Extract cohesive groups that represent a single concept (e.g., all address-related members).
@@ -669,6 +1168,7 @@ const result = await use_mcp_tool({
 5. **Test after refactoring** - Run your tests to ensure all references were updated correctly.
 6. **Consider partial classes** - References in all parts of a partial class are automatically updated.
 7. **Encapsulation** - After extraction, consider making extracted fields private and adding public properties/methods as needed.
+8. **Use compilation validation** - Keep `validateCompilation: true` (default) for BCL-only code to catch compilation errors early.
 
 ## Combined Refactoring Workflow
 

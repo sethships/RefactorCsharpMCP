@@ -78,7 +78,7 @@ public class BackupToolIntegrationTests
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class FileConfiguration");
+        result.RefactoredCode.Should().Contain("internal class FileConfiguration");
         result.RefactoredCode.Should().Contain("OUT_FILE");
         result.RefactoredCode.Should().Contain("LOG_FILE");
         result.RefactoredCode.Should().Contain("private readonly FileConfiguration _fileConfiguration");

@@ -49,6 +49,11 @@ RefactorCsharpMCP/
 
 **Optional:**
 - Docker Desktop 4.42.0+ (for Docker deployment)
+- **Pester 5.x** (for PowerShell script validation tests)
+  ```powershell
+  Install-Module -Name Pester -Force -SkipPublisherCheck -Scope CurrentUser
+  ```
+  **Note**: Windows includes Pester 3.4.0 by default. The SBOM validation test suite requires Pester 5.x for `BeforeAll`/`AfterAll` test lifecycle support.
 
 **Important for WSL users**: .NET SDK must be installed **inside** the WSL distribution, not just on the Windows host. See [E2E-TESTING.md](E2E-TESTING.md#wsl-specific-requirements) for WSL installation instructions.
 
@@ -276,6 +281,80 @@ docker scout cves refactor-csharp-mcp:latest
 trivy image refactor-csharp-mcp:latest
 ```
 
+#### Software Bill of Materials (SBOM)
+
+RefactorCsharpMCP automatically generates Software Bill of Materials (SBOM) during Docker builds for supply chain security and compliance.
+
+**SBOM Features:**
+- **Automatic Generation**: SBOM created during every Docker build using BuildKit
+- **Multi-Stage Scanning**: Captures both build-time (NuGet packages) and runtime dependencies
+- **Dual Format Support**: SPDX (native) and CycloneDX (optional with Syft/Trivy)
+- **Validation**: Automated checks for expected NuGet packages and license coverage
+
+**Requirements:**
+- Docker Desktop >= 4.24 or BuildKit >= 0.12
+- Docker Buildx with `docker-container` driver
+
+**Build with SBOM:**
+```bash
+# Using deployment script (recommended)
+.\scripts\deploy-docker.ps1
+
+# Manual build (exports SBOM to filesystem)
+docker buildx build --sbom=true --output type=local,dest=./sbom-output .
+
+# The deploy script performs dual-build:
+# 1. Export SBOM to sbom.spdx.json
+# 2. Load image to local Docker daemon
+```
+
+**SBOM Files Generated:**
+- `sbom.spdx.json` - SPDX format SBOM (always generated)
+- `sbom.cyclonedx.json` - CycloneDX format (if Syft installed)
+- `sbom-packages-{version}-{timestamp}.csv` - Package summary
+
+**Validate SBOM:**
+```powershell
+# Basic validation
+.\scripts\validate-sbom.ps1
+
+# Validate specific file
+.\scripts\validate-sbom.ps1 -SbomPath "sbom.cyclonedx.json" -Format cyclonedx
+
+# Verbose output with package details
+.\scripts\validate-sbom.ps1 -Verbose
+```
+
+**Validation Checks:**
+- ✅ Valid JSON structure
+- ✅ Format compliance (SPDX 2.3+ or CycloneDX 1.4+)
+- ✅ Minimum package count (default: 80 packages)
+- ✅ Expected NuGet packages present (Microsoft.CodeAnalysis.CSharp, ModelContextProtocol, etc.)
+- ✅ License coverage percentage
+- ✅ Base image dependencies included
+
+**Install Optional Tools (for CycloneDX):**
+```bash
+# Syft (Anchore SBOM generator)
+choco install syft
+
+# Trivy (Security scanner with SBOM generation)
+choco install trivy
+```
+
+**Performance Impact:**
+- First-time builds: 5-10 minutes (buildkit-syft-scanner download ~14 MB)
+- Subsequent builds: +30-50% build time overhead
+- Cached builds: Minimal impact due to BuildKit layer caching
+
+**NTIA Compliance:**
+The generated SBOM includes all components required for NTIA minimum elements:
+- Component names and versions
+- Dependency relationships
+- Author/supplier information (where available)
+- License information
+- Timestamps
+
 **Image Reproducibility:**
 - Base images are pinned to SHA256 digests for reproducible builds
 - Update digests quarterly or when security patches are released
@@ -418,7 +497,7 @@ Replaces all uses of a local variable with its initialization expression, then r
 ```
 
 #### Extract Class
-Extracts fields and methods into a new class with automatic reference updating within the same class.
+Extracts fields and methods into a new class with automatic reference updating within the same class. **Includes optional compilation validation with framework-specific BCL references (enabled by default).**
 
 ```bash
 # Parameters:
@@ -427,6 +506,9 @@ Extracts fields and methods into a new class with automatic reference updating w
 - newClassName: Name for the new extracted class
 - fieldNames: Comma or semicolon-separated field names to extract
 - methodNames: Comma or semicolon-separated method names to extract (optional)
+- nestedTypeNames: Comma or semicolon-separated nested type names to extract (optional)
+- targetFramework: Target .NET framework for validation (default: "net8.0")
+- validateCompilation: Enable compilation validation (default: true)
 
 # Features:
 - Automatic reference updating for same-class references (field accesses, method calls)
@@ -435,6 +517,8 @@ Extracts fields and methods into a new class with automatic reference updating w
 - Composition pattern with readonly field and instantiation
 - External reference warnings for manual updates
 - Handles qualified member access (this._field)
+- Compilation validation with framework-specific BCL references (enabled by default)
+- Framework-aware validation ensures extracted code compiles successfully
 ```
 
 **Automatic transformations:**

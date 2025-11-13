@@ -350,6 +350,132 @@ public abstract class RefactoringBase
     }
 
     /// <summary>
+    /// Validates that refactored code compiles without errors.
+    /// This method performs semantic validation by creating a compilation and checking for error diagnostics.
+    /// Excludes CS5001 (missing Main entry point) as refactored code is typically a snippet, not a complete program.
+    /// </summary>
+    /// <param name="sourceCode">The refactored source code to validate.</param>
+    /// <returns>A RefactoringResult indicating success or describing compilation errors.</returns>
+    protected RefactoringResult ValidateCompilation(string sourceCode)
+    {
+        try
+        {
+            CurrentPhase = "Compilation Validation";
+
+            var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);
+            var compilation = CreateCompilation(syntaxTree);
+
+            // Filter compilation errors, excluding CS5001 (missing Main method)
+            // Refactored code is typically a snippet, not a complete program
+            var errors = compilation.GetDiagnostics()
+                .Where(d => d.Severity == DiagnosticSeverity.Error &&
+                            d.Id != "CS5001") // Exclude "Program does not contain a static 'Main' method"
+                .ToList();
+
+            if (errors.Any())
+            {
+                var errorSummary = string.Join("; ",
+                    errors.Take(3).Select(d => $"{d.Id}: {d.GetMessage()}"));
+
+                Logger?.LogError("Compilation validation failed with {Count} errors: {Errors}",
+                    errors.Count, errorSummary);
+
+                return RefactoringResult.Failure(
+                    $"Generated code has compilation errors: {errorSummary}. Total errors: {errors.Count}");
+            }
+
+            Logger?.LogDebug("Compilation validation passed");
+            return RefactoringResult.Success(sourceCode, "Compilation validation passed");
+        }
+        catch (Exception ex)
+        {
+            return HandleException(ex, "compilation validation");
+        }
+    }
+
+    /// <summary>
+    /// Validates that refactored code compiles without errors using framework-specific reference assemblies.
+    /// This method performs comprehensive semantic validation by creating a compilation with full BCL references
+    /// for the specified target framework, ensuring compatibility and catching semantic errors that basic syntax
+    /// validation would miss.
+    /// </summary>
+    /// <param name="sourceCode">The refactored source code to validate.</param>
+    /// <param name="targetFramework">The target .NET framework moniker (e.g., "net8.0", "net48", "netstandard2.0").</param>
+    /// <param name="additionalReferences">Optional metadata references for custom assemblies not in the BCL. Reserved for future use.</param>
+    /// <returns>A RefactoringResult indicating success or describing compilation errors with framework context.</returns>
+    /// <remarks>
+    /// <para><strong>Validation Strategy:</strong></para>
+    /// <para>
+    /// This method uses <see cref="SyntaxValidator"/> to perform framework-aware validation with complete BCL references.
+    /// Unlike <see cref="ValidateCompilation"/>, which uses only minimal references, this method includes all framework-specific
+    /// assemblies via <see cref="Infrastructure.FrameworkSupport.ReferenceAssemblyResolver"/>.
+    /// </para>
+    /// <para><strong>Supported Frameworks:</strong></para>
+    /// <list type="bullet">
+    ///   <item>.NET 8.0, 7.0, 6.0 (net8.0, net7.0, net6.0)</item>
+    ///   <item>.NET Framework 4.8, 4.7.2, 4.6.2, 4.6.1 (net48, net472, net462, net461)</item>
+    ///   <item>.NET Standard 2.1, 2.0 (netstandard2.1, netstandard2.0)</item>
+    /// </list>
+    /// <para><strong>Limitations:</strong></para>
+    /// <list type="bullet">
+    ///   <item>Currently does not support additionalReferences parameter (reserved for future enhancement)</item>
+    ///   <item>Requires network access on first use to download reference assemblies from NuGet</item>
+    ///   <item>Reference assemblies are cached locally after first download</item>
+    /// </list>
+    /// <para><strong>Use Cases:</strong></para>
+    /// <para>
+    /// Prefer this method over <see cref="ValidateCompilation"/> when:
+    /// <list type="bullet">
+    ///   <item>Refactoring production code that must compile in a specific framework</item>
+    ///   <item>Extracting classes that use framework-specific APIs</item>
+    ///   <item>Validating cross-file refactorings with type dependencies</item>
+    ///   <item>Ensuring semantic correctness beyond syntax validation</item>
+    /// </list>
+    /// </para>
+    /// </remarks>
+    protected async Task<RefactoringResult> ValidateCompilationWithFrameworkAsync(
+        string sourceCode,
+        string targetFramework,
+        IEnumerable<MetadataReference>? additionalReferences = null)
+    {
+        try
+        {
+            CurrentPhase = "Compilation Validation (Framework-Aware)";
+
+            // Note: additionalReferences parameter is reserved for future use
+            // Current implementation delegates to SyntaxValidator which uses ReferenceAssemblyResolver
+            // for complete BCL references
+            if (additionalReferences != null && additionalReferences.Any())
+            {
+                Logger?.LogWarning(
+                    "additionalReferences parameter is not yet supported and will be ignored. " +
+                    "Validation will use BCL references for framework {Framework} only.",
+                    targetFramework);
+            }
+
+            using var validator = new SyntaxValidator();
+            var validationResult = await validator.ValidateOutputAsync(sourceCode, targetFramework);
+
+            if (!validationResult.IsValid)
+            {
+                Logger?.LogError(
+                    "Framework-aware compilation validation failed for {Framework}: {Error}",
+                    targetFramework, validationResult.ErrorMessage);
+
+                return RefactoringResult.Failure(
+                    $"Generated code has compilation errors for framework {targetFramework}: {validationResult.ErrorMessage}");
+            }
+
+            Logger?.LogDebug("Framework-aware compilation validation passed for {Framework}", targetFramework);
+            return RefactoringResult.Success(sourceCode, $"Compilation validation passed for framework {targetFramework}");
+        }
+        catch (Exception ex)
+        {
+            return HandleException(ex, "framework-aware compilation validation");
+        }
+    }
+
+    /// <summary>
     /// Normalizes whitespace in a syntax node to ensure proper formatting, or preserves original formatting based on options.
     /// </summary>
     /// <param name="node">The syntax node to process.</param>

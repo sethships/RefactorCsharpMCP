@@ -41,6 +41,9 @@ bld/
 # Claude Code
 .claude/
 
+# Code review feedback files
+review-feedback*.md
+
 # Rider
 .idea/
 
@@ -132,3 +135,5 @@ security-recommendations*.txt
 image-layers*.txt
 sbom*.json
 sbom*.xml
+sbom*.csv
+sbom-output/

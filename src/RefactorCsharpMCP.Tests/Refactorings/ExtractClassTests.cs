@@ -29,7 +29,7 @@ public class ExtractClassTests
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class LoggingContext");
+        result.RefactoredCode.Should().Contain("internal class LoggingContext");
         result.RefactoredCode.Should().Contain("private ILogger _logger;");
         result.RefactoredCode.Should().Contain("private readonly LoggingContext _loggingContext = new LoggingContext();");
         result.RefactoredCode.Should().Contain("private IDatabase _database;");
@@ -57,7 +57,7 @@ public class ExtractClassTests
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class Telemetry");
+        result.RefactoredCode.Should().Contain("internal class Telemetry");
         result.RefactoredCode.Should().Contain("private ILogger _logger;");
         result.RefactoredCode.Should().Contain("private IMetrics _metrics;");
         result.RefactoredCode.Should().Contain("private IDatabase _database;");
@@ -80,7 +80,7 @@ public class ExtractClassTests
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class Data");
+        result.RefactoredCode.Should().Contain("internal class Data");
         result.RefactoredCode.Should().Contain("private int _count;");
         result.RefactoredCode.Should().Contain("private string _name;");
     }
@@ -111,9 +111,9 @@ public class ExtractClassTests
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class Logger");
+        result.RefactoredCode.Should().Contain("internal class Logger");
         result.RefactoredCode.Should().Contain("private ILogger _logger;");
-        result.RefactoredCode.Should().Contain("private void Log(string msg)");
+        result.RefactoredCode.Should().Contain("internal void Log(string msg)");
         result.RefactoredCode.Should().Contain("public void Process()");
         result.RefactoredCode.Should().Contain("private string _message;");
     }
@@ -266,7 +266,7 @@ public class Service
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class LoggerContext");
+        result.RefactoredCode.Should().Contain("internal class LoggerContext");
         result.RefactoredCode.Should().Contain("private ILogger _logger;");
     }
 
@@ -286,7 +286,7 @@ public class Service
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class LoggerContext");
+        result.RefactoredCode.Should().Contain("internal class LoggerContext");
         result.RefactoredCode.Should().Contain("private ILogger _logger;");
         result.RefactoredCode.Should().Contain("private readonly LoggerContext _loggerContext");
     }
@@ -346,14 +346,14 @@ public class Service
         result.RefactoredCode.Should().Contain("_address._city");
         result.RefactoredCode.Should().Contain("_address._state");
 
-        // Verify that _city field was removed from UserService
-        // (it should only exist in the Address class now)
+        // Verify that both _city and _state fields were removed from UserService
+        // (they should only exist in the Address class now)
         var userServiceSection = result.RefactoredCode.Substring(
             result.RefactoredCode.IndexOf("public class UserService"),
-            result.RefactoredCode.IndexOf("public class Address") - result.RefactoredCode.IndexOf("public class UserService"));
+            result.RefactoredCode.IndexOf("internal class Address") - result.RefactoredCode.IndexOf("public class UserService"));
 
         userServiceSection.Should().NotContain("private string _city");
-        userServiceSection.Should().Contain("private string _state"); // _state should remain
+        userServiceSection.Should().NotContain("private string _state"); // Both fields extracted
 
         // Should indicate references were updated
         result.Message.Should().Contain("automatically updated");
@@ -490,7 +490,7 @@ public class Service
 
         // Should still succeed even with no references
         result.RefactoredCode.Should().Contain("private readonly UnusedData _unusedData");
-        result.RefactoredCode.Should().Contain("public class UnusedData");
+        result.RefactoredCode.Should().Contain("internal class UnusedData");
 
         // Should indicate no external references
         result.Message.Should().NotContain("WARNING");
@@ -529,7 +529,7 @@ public class Service
         result.IsSuccess.Should().BeTrue();
 
         // Should contain the extracted class with field
-        result.RefactoredCode.Should().Contain("public class Address");
+        result.RefactoredCode.Should().Contain("internal class Address");
         result.RefactoredCode.Should().Contain("private readonly Address _address");
 
         // Field reference in UseField should be transformed
@@ -581,7 +581,7 @@ public class Service
         result.IsSuccess.Should().BeTrue();
 
         // Should contain the extracted class
-        result.RefactoredCode.Should().Contain("public class Address");
+        result.RefactoredCode.Should().Contain("internal class Address");
         result.RefactoredCode.Should().Contain("private readonly Address _address");
 
         // Field reference in UseField should be transformed
@@ -634,7 +634,7 @@ public partial class UserService
         result.IsSuccess.Should().BeTrue();
 
         // Should contain the extracted class
-        result.RefactoredCode.Should().Contain("public class Address");
+        result.RefactoredCode.Should().Contain("internal class Address");
 
         // References in both partial class parts should be transformed
         result.RefactoredCode.Should().Contain("_address._city");
@@ -690,7 +690,7 @@ public class OtherService
         // Should contain both original classes and the new extracted class
         result.RefactoredCode.Should().Contain("public class UserService");
         result.RefactoredCode.Should().Contain("public class OtherService");
-        result.RefactoredCode.Should().Contain("public class Address");
+        result.RefactoredCode.Should().Contain("internal class Address");
 
         // UserService should have transformed reference
         var userServiceSection = result.RefactoredCode.Substring(
@@ -702,7 +702,7 @@ public class OtherService
         // OtherService should NOT have transformed reference
         var otherServiceSection = result.RefactoredCode.Substring(
             result.RefactoredCode.IndexOf("public class OtherService"),
-            result.RefactoredCode.IndexOf("public class Address") -
+            result.RefactoredCode.IndexOf("internal class Address") -
             result.RefactoredCode.IndexOf("public class OtherService"));
 
         // OtherService should still have its own _city field
@@ -738,7 +738,7 @@ public class OtherService
         result.IsSuccess.Should().BeTrue();
 
         // Should contain extracted class
-        result.RefactoredCode.Should().Contain("public class Address");
+        result.RefactoredCode.Should().Contain("internal class Address");
         result.RefactoredCode.Should().Contain("private readonly Address _address");
 
         // Qualified access should be transformed to: this._address._city
@@ -784,7 +784,7 @@ public class OtherService
         result.RefactoredCode.Should().Contain("// Display the full location");
 
         // Should contain the extracted class
-        result.RefactoredCode.Should().Contain("public class Address");
+        result.RefactoredCode.Should().Contain("internal class Address");
     }
 
     #endregion
@@ -822,9 +822,9 @@ public class OtherService
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class TypeChecker");
-        result.RefactoredCode.Should().Contain("private bool IsSimpleType(string typeName)");
-        result.RefactoredCode.Should().Contain("private bool IsRecursive(string methodName)");
+        result.RefactoredCode.Should().Contain("internal class TypeChecker");
+        result.RefactoredCode.Should().Contain("internal bool IsSimpleType(string typeName)");
+        result.RefactoredCode.Should().Contain("internal bool IsRecursive(string methodName)");
         result.RefactoredCode.Should().Contain("private readonly TypeChecker _typeChecker = new TypeChecker();");
         result.RefactoredCode.Should().Contain("_typeChecker.IsSimpleType(");
         result.RefactoredCode.Should().Contain("_typeChecker.IsRecursive(");
@@ -870,10 +870,10 @@ public class OtherService
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class UserValidator");
-        result.RefactoredCode.Should().Contain("private void ValidateUser(string user)");
-        result.RefactoredCode.Should().Contain("private string FormatUserName(string name)");
-        result.RefactoredCode.Should().Contain("private bool IsAdmin(string user)");
+        result.RefactoredCode.Should().Contain("internal class UserValidator");
+        result.RefactoredCode.Should().Contain("internal void ValidateUser(string user)");
+        result.RefactoredCode.Should().Contain("internal string FormatUserName(string name)");
+        result.RefactoredCode.Should().Contain("internal bool IsAdmin(string user)");
         result.RefactoredCode.Should().Contain("private readonly UserValidator _userValidator = new UserValidator();");
 
         // Verify method calls are updated
@@ -950,13 +950,13 @@ public interface ILogger { void Log(string msg); }";
         result.IsSuccess.Should().BeTrue();
 
         // Verify service class created
-        result.RefactoredCode.Should().Contain("public class MethodResolver");
+        result.RefactoredCode.Should().Contain("internal class MethodResolver");
 
         // Verify all methods extracted
-        result.RefactoredCode.Should().Contain("private MethodInfo? ExtractMethodInfo(string code)");
-        result.RefactoredCode.Should().Contain("private ValidationResult CanMethodBeInlined(MethodInfo method)");
-        result.RefactoredCode.Should().Contain("private bool IsRecursive(MethodInfo method)");
-        result.RefactoredCode.Should().Contain("private bool IsSimpleType(string typeName)");
+        result.RefactoredCode.Should().Contain("internal MethodInfo? ExtractMethodInfo(string code)");
+        result.RefactoredCode.Should().Contain("internal ValidationResult CanMethodBeInlined(MethodInfo method)");
+        result.RefactoredCode.Should().Contain("internal bool IsRecursive(MethodInfo method)");
+        result.RefactoredCode.Should().Contain("internal bool IsSimpleType(string typeName)");
 
         // Verify composition field created
         result.RefactoredCode.Should().Contain("private readonly MethodResolver _methodResolver = new MethodResolver();");
@@ -969,7 +969,7 @@ public interface ILogger { void Log(string msg); }";
 
         // Verify original fields remain in InlineMethod
         var inlineMethodStart = result.RefactoredCode.IndexOf("public class InlineMethod");
-        var methodResolverStart = result.RefactoredCode.IndexOf("public class MethodResolver");
+        var methodResolverStart = result.RefactoredCode.IndexOf("internal class MethodResolver");
         inlineMethodStart.Should().BeGreaterThan(-1);
         methodResolverStart.Should().BeGreaterThan(inlineMethodStart);
 
@@ -1005,8 +1005,8 @@ public class Service
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class Helper");
-        result.RefactoredCode.Should().Contain("private void HelperMethod()");
+        result.RefactoredCode.Should().Contain("internal class Helper");
+        result.RefactoredCode.Should().Contain("internal void HelperMethod()");
         result.RefactoredCode.Should().Contain("_helper.HelperMethod()");
     }
 
@@ -1043,8 +1043,8 @@ public class Service
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class Configuration");
-        result.RefactoredCode.Should().Contain("public class NestedConfig");
+        result.RefactoredCode.Should().Contain("internal class Configuration");
+        result.RefactoredCode.Should().Contain("public class NestedConfig"); // Nested type stays public (not part of bug fixes)
         result.RefactoredCode.Should().Contain("private readonly Configuration _configuration = new Configuration();");
         result.RefactoredCode.Should().NotContain("Container.NestedConfig"); // Should not remain in original class
     }
@@ -1075,7 +1075,7 @@ public class Service
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class Geometry");
+        result.RefactoredCode.Should().Contain("internal class Geometry");
         result.RefactoredCode.Should().Contain("public struct Point");
         result.RefactoredCode.Should().NotContain("DataProcessor.Point");
     }
@@ -1112,7 +1112,7 @@ public class Service
             Console.WriteLine($"ERROR: {result.ErrorMessage}");
         }
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class LogConfiguration");
+        result.RefactoredCode.Should().Contain("internal class LogConfiguration");
         result.RefactoredCode.Should().Contain("public enum LogLevel");
         result.RefactoredCode.Should().Contain("Debug");
         result.RefactoredCode.Should().Contain("Error");
@@ -1141,7 +1141,7 @@ public class Service
 
         // Assert
         result.IsSuccess.Should().BeTrue($"Refactoring should succeed, but failed with: {result.ErrorMessage}");
-        result.RefactoredCode.Should().Contain("public class UserData");
+        result.RefactoredCode.Should().Contain("internal class UserData");
         result.RefactoredCode.Should().Contain("public record UserInfo");
     }
 
@@ -1184,10 +1184,10 @@ public class Service
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class GameTypes");
+        result.RefactoredCode.Should().Contain("internal class GameTypes");
         result.RefactoredCode.Should().Contain("public enum GameState");
         result.RefactoredCode.Should().Contain("public struct Vector2D");
-        result.RefactoredCode.Should().Contain("public class Player");
+        result.RefactoredCode.Should().Contain("public class Player"); // Nested type stays public (not part of bug fixes)
         result.Message.Should().Contain("3 nested type(s)");
     }
 
@@ -1221,9 +1221,9 @@ public class Service
 
         // Assert
         result.IsSuccess.Should().BeTrue($"Refactoring should succeed, but failed with: {result.ErrorMessage}");
-        result.RefactoredCode.Should().Contain("public class PositionBasedResolver");
-        result.RefactoredCode.Should().Contain("public class SymbolResolutionResult");
-        result.RefactoredCode.Should().Contain("public SymbolResolutionResult GetSymbolAtPosition");
+        result.RefactoredCode.Should().Contain("internal class PositionBasedResolver");
+        result.RefactoredCode.Should().Contain("public class SymbolResolutionResult"); // Nested type stays public (not part of bug fixes)
+        result.RefactoredCode.Should().Contain("internal SymbolResolutionResult GetSymbolAtPosition");
         // The extracted method should use SymbolResolutionResult directly (it's in the same class now)
         result.RefactoredCode.Should().Contain("return new SymbolResolutionResult");
     }
@@ -1278,9 +1278,9 @@ public class Service
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class TaskProcessor");
+        result.RefactoredCode.Should().Contain("internal class TaskProcessor");
         result.RefactoredCode.Should().Contain("private ILogger _logger;");
-        result.RefactoredCode.Should().Contain("public void ProcessTask");
+        result.RefactoredCode.Should().Contain("internal void ProcessTask");
         result.RefactoredCode.Should().Contain("public enum Priority");
         result.Message.Should().Contain("1 field(s)");
         result.Message.Should().Contain("1 method(s)");
@@ -1313,7 +1313,7 @@ public class Service
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class Interfaces");
+        result.RefactoredCode.Should().Contain("internal class Interfaces");
         result.RefactoredCode.Should().Contain("public interface IProcessor");
         result.RefactoredCode.Should().Contain("void Process();");
         result.RefactoredCode.Should().Contain("string GetResult();");
@@ -1344,14 +1344,615 @@ public class Service
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public class Configuration");
-        result.RefactoredCode.Should().Contain("public class Config");
+        result.RefactoredCode.Should().Contain("internal class Configuration");
+        result.RefactoredCode.Should().Contain("internal class Config");
         // Critical: Field type reference should remain as 'Config', not '_configuration.Config'
         result.RefactoredCode.Should().Contain("private Config _config");
         result.RefactoredCode.Should().NotContain("private _configuration.Config");
         // Object creation should also use 'Config' directly
         result.RefactoredCode.Should().Contain("new Config()");
         result.RefactoredCode.Should().NotContain("new _configuration.Config()");
+    }
+
+    #endregion
+
+    #region Bug Fix Validation Tests (Issue #112)
+
+    [Fact]
+    public void Execute_ExtractedClassHasInternalVisibility_Bug4()
+    {
+        // Arrange - Bug #4: Extracted classes should be internal, not public
+        var sourceCode = @"public class UserService
+{
+    private ILogger _logger;
+    private IDatabase _database;
+
+    public void Process()
+    {
+        _logger.Log(""Processing"");
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "UserService", "LoggingContext", "_logger");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+
+        // Bug #4: Extracted class must have internal visibility for encapsulation
+        result.RefactoredCode.Should().Contain("internal class LoggingContext");
+        result.RefactoredCode.Should().NotContain("public class LoggingContext");
+
+        // Source class remains public
+        result.RefactoredCode.Should().Contain("public class UserService");
+    }
+
+    [Fact]
+    public void Execute_ExtractedMethodsHaveInternalAccessibility_Bug3()
+    {
+        // Arrange - Bug #3: Extracted methods need internal accessibility to be callable via composition
+        var sourceCode = @"public class DataProcessor
+{
+    private string _data;
+
+    private void ValidateData()
+    {
+        // Validation logic
+    }
+
+    private string TransformData(string input)
+    {
+        return input.ToUpper();
+    }
+
+    public void Process()
+    {
+        ValidateData();
+        var result = TransformData(_data);
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "DataProcessor", "DataValidator", null, "ValidateData,TransformData");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+
+        // Bug #3: Extracted methods must be internal to allow composition field access
+        result.RefactoredCode.Should().Contain("internal void ValidateData()");
+        result.RefactoredCode.Should().Contain("internal string TransformData(string input)");
+
+        // Methods should not remain private (would prevent composition field access)
+        result.RefactoredCode.Should().NotContain("private void ValidateData()");
+        result.RefactoredCode.Should().NotContain("private string TransformData(string input)");
+
+        // Verify composition field can call the methods
+        result.RefactoredCode.Should().Contain("_dataValidator.ValidateData()");
+        result.RefactoredCode.Should().Contain("_dataValidator.TransformData(");
+    }
+
+    [Fact]
+    public void Execute_ExtractedMethodsRemovedFromSourceClass_Bug1()
+    {
+        // Arrange - Bug #1: Methods must be removed from source class after extraction
+        var sourceCode = @"public class Calculator
+{
+    private int _value;
+
+    private int Add(int a, int b)
+    {
+        return a + b;
+    }
+
+    private int Multiply(int a, int b)
+    {
+        return a * b;
+    }
+
+    public int Calculate()
+    {
+        var sum = Add(5, 3);
+        var product = Multiply(sum, 2);
+        return product;
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "Calculator", "MathOperations", null, "Add,Multiply");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().NotBeNullOrEmpty();
+
+        // Bug #1: Methods should be removed from source class (stale tree reference bug)
+        var sourceClassStart = result.RefactoredCode.IndexOf("public class Calculator");
+        var extractedClassStart = result.RefactoredCode.IndexOf("internal class MathOperations");
+
+        sourceClassStart.Should().BeGreaterThanOrEqualTo(0, "source class should exist");
+        extractedClassStart.Should().BeGreaterThan(sourceClassStart, "extracted class should come after source class");
+
+        var sourceClassSection = result.RefactoredCode.Substring(
+            sourceClassStart,
+            extractedClassStart - sourceClassStart);
+
+        // Extracted methods should NOT appear in source class
+        sourceClassSection.Should().NotContain("int Add(int a, int b)");
+        sourceClassSection.Should().NotContain("int Multiply(int a, int b)");
+
+        // But should appear in extracted class
+        var extractedSection = result.RefactoredCode.Substring(extractedClassStart);
+        extractedSection.Should().Contain("internal int Add(int a, int b)");
+        extractedSection.Should().Contain("internal int Multiply(int a, int b)");
+
+        // Source class should delegate to composition field
+        sourceClassSection.Should().Contain("_mathOperations.Add(");
+        sourceClassSection.Should().Contain("_mathOperations.Multiply(");
+    }
+
+    [Fact]
+    public void Execute_AllMethodInvocationsUpdatedToDelegate_Bug2()
+    {
+        // Arrange - Bug #2: Direct method invocations must be updated to delegate through composition field
+        var sourceCode = @"public class Validator
+{
+    private string _input;
+
+    private bool IsValid(string value)
+    {
+        return !string.IsNullOrEmpty(value);
+    }
+
+    private bool IsNumeric(string value)
+    {
+        return int.TryParse(value, out _);
+    }
+
+    public void Validate()
+    {
+        // Direct method invocations - these need to be updated
+        if (IsValid(_input) && IsNumeric(_input))
+        {
+            var valid = IsValid(""test"");
+        }
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "Validator", "ValidationRules", null, "IsValid,IsNumeric");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().NotBeNullOrEmpty();
+
+        // Bug #2: All direct invocations should be updated to delegate
+        var sourceClassStart = result.RefactoredCode.IndexOf("public class Validator");
+        var extractedClassStart = result.RefactoredCode.IndexOf("internal class ValidationRules");
+
+        sourceClassStart.Should().BeGreaterThanOrEqualTo(0, "source class should exist");
+        extractedClassStart.Should().BeGreaterThan(sourceClassStart, "extracted class should come after source class");
+
+        var sourceClassSection = result.RefactoredCode.Substring(
+            sourceClassStart,
+            extractedClassStart - sourceClassStart);
+
+        // Should delegate through composition field
+        sourceClassSection.Should().Contain("_validationRules.IsValid(_input)");
+        sourceClassSection.Should().Contain("_validationRules.IsNumeric(_input)");
+        sourceClassSection.Should().Contain("_validationRules.IsValid(\"test\")");
+
+        // Should NOT have direct invocations
+        sourceClassSection.Should().NotContain("if (IsValid(_input)");
+        sourceClassSection.Should().NotContain("&& IsNumeric(_input)");
+        sourceClassSection.Should().NotContain("var valid = IsValid(\"test\")");
+    }
+
+    [Fact]
+    public void Execute_MultiMethodExtraction_GeneratesValidCode()
+    {
+        // Arrange - Integration test: Extract multiple methods and verify generated code structure
+        var sourceCode = @"public class Service
+{
+    private string _data;
+
+    private void Initialize()
+    {
+        _data = ""initialized"";
+    }
+
+    private void Cleanup()
+    {
+        _data = null;
+    }
+
+    private bool Validate()
+    {
+        return _data != null;
+    }
+
+    public void Run()
+    {
+        Initialize();
+        if (Validate())
+        {
+            // Process
+        }
+        Cleanup();
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "Service", "Lifecycle", null, "Initialize,Cleanup,Validate");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+
+        // Verify extracted class structure
+        result.RefactoredCode.Should().Contain("internal class Lifecycle");
+        result.RefactoredCode.Should().Contain("internal void Initialize()");
+        result.RefactoredCode.Should().Contain("internal void Cleanup()");
+        result.RefactoredCode.Should().Contain("internal bool Validate()");
+
+        // Verify composition field
+        result.RefactoredCode.Should().Contain("private readonly Lifecycle _lifecycle = new Lifecycle();");
+
+        // Verify all method calls delegated
+        result.RefactoredCode.Should().Contain("_lifecycle.Initialize()");
+        result.RefactoredCode.Should().Contain("_lifecycle.Validate()");
+        result.RefactoredCode.Should().Contain("_lifecycle.Cleanup()");
+
+        // Verify methods removed from source
+        var sourceClassStart = result.RefactoredCode.IndexOf("public class Service");
+        var extractedClassStart = result.RefactoredCode.IndexOf("internal class Lifecycle");
+
+        sourceClassStart.Should().BeGreaterThanOrEqualTo(0, "source class should exist");
+        extractedClassStart.Should().BeGreaterThan(sourceClassStart, "extracted class should come after source class");
+
+        var sourceClassSection = result.RefactoredCode.Substring(
+            sourceClassStart,
+            extractedClassStart - sourceClassStart);
+
+        sourceClassSection.Should().NotContain("void Initialize()");
+        sourceClassSection.Should().NotContain("void Cleanup()");
+        sourceClassSection.Should().NotContain("bool Validate()");
+    }
+
+    [Fact]
+    public void Execute_DogfoodingScenario_ExtractPositionBasedResolver()
+    {
+        // Arrange - Issue #91 dogfooding scenario: Extract PositionBasedResolver from SymbolResolutionHelper
+        var sourceCode = @"public class SymbolResolutionHelper
+{
+    private string _data;
+
+    public SymbolResolutionResult GetSymbolAtPosition(int line, int column)
+    {
+        return new SymbolResolutionResult
+        {
+            Success = true,
+            ErrorMessage = null
+        };
+    }
+
+    public class SymbolResolutionResult
+    {
+        public bool Success { get; init; }
+        public string ErrorMessage { get; init; }
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act - Extract method and nested type
+        var result = refactoring.Execute(
+            sourceCode,
+            "SymbolResolutionHelper",
+            "PositionBasedResolver",
+            null,
+            "GetSymbolAtPosition",
+            "SymbolResolutionResult");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+
+        // Verify extracted class is internal (Bug #4)
+        result.RefactoredCode.Should().Contain("internal class PositionBasedResolver");
+
+        // Verify extracted method is internal (Bug #3)
+        result.RefactoredCode.Should().Contain("internal SymbolResolutionResult GetSymbolAtPosition");
+
+        // Verify method removed from source (Bug #1)
+        var sourceClassStart = result.RefactoredCode.IndexOf("public class SymbolResolutionHelper");
+        var extractedClassStart = result.RefactoredCode.IndexOf("internal class PositionBasedResolver");
+
+        sourceClassStart.Should().BeGreaterThanOrEqualTo(0, "source class should exist");
+        extractedClassStart.Should().BeGreaterThan(sourceClassStart, "extracted class should come after source class");
+
+        var sourceClassSection = result.RefactoredCode.Substring(
+            sourceClassStart,
+            extractedClassStart - sourceClassStart);
+
+        sourceClassSection.Should().NotContain("GetSymbolAtPosition(int line, int column)");
+
+        // Verify composition field created
+        result.RefactoredCode.Should().Contain("private readonly PositionBasedResolver _positionBasedResolver = new PositionBasedResolver();");
+
+        // Verify nested type moved
+        result.RefactoredCode.Should().Contain("public class SymbolResolutionResult");
+
+        // Verify operation succeeded
+        result.Message.Should().Contain("Extracted");
+    }
+
+    [Fact]
+    public void Execute_ExtractsProtectedInternalMethod_MakesItInternal()
+    {
+        // Arrange - Issue #1: Missing accessibility modifier edge case (protected internal)
+        var sourceCode = @"public class DataProcessor
+{
+    protected internal void ProcessData(string data)
+    {
+        Console.WriteLine(data);
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "DataProcessor", "DataHandler", null, "ProcessData");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("internal class DataHandler");
+        result.RefactoredCode.Should().Contain("internal void ProcessData(string data)");
+        result.RefactoredCode.Should().NotContain("protected internal void ProcessData");
+    }
+
+    [Fact]
+    public void Execute_ExtractsPrivateProtectedMethod_MakesItInternal()
+    {
+        // Arrange - Issue #1: Missing accessibility modifier edge case (private protected)
+        var sourceCode = @"public class ServiceManager
+{
+    private protected void ManageService()
+    {
+        // Service logic
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "ServiceManager", "ServiceOperations", null, "ManageService");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("internal class ServiceOperations");
+        result.RefactoredCode.Should().Contain("internal void ManageService()");
+        result.RefactoredCode.Should().NotContain("private protected void ManageService");
+    }
+
+    [Fact]
+    public void Execute_ExtractsMixedAccessibilityMethods_AllBecomeInternal()
+    {
+        // Arrange - Issue #1: Comprehensive test for all accessibility modifiers
+        var sourceCode = @"public class MixedAccess
+{
+    public void PublicMethod() { }
+    private void PrivateMethod() { }
+    protected void ProtectedMethod() { }
+    internal void InternalMethod() { }
+    protected internal void ProtectedInternalMethod() { }
+    private protected void PrivateProtectedMethod() { }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(
+            sourceCode,
+            "MixedAccess",
+            "ExtractedMethods",
+            null,
+            "PublicMethod,PrivateMethod,ProtectedMethod,InternalMethod,ProtectedInternalMethod,PrivateProtectedMethod");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("internal class ExtractedMethods");
+
+        // All methods should be internal in extracted class
+        var extractedClassStart = result.RefactoredCode.IndexOf("internal class ExtractedMethods");
+        extractedClassStart.Should().BeGreaterThanOrEqualTo(0, "extracted class should exist");
+
+        var extractedSection = result.RefactoredCode.Substring(extractedClassStart);
+
+        extractedSection.Should().Contain("internal void PublicMethod()");
+        extractedSection.Should().Contain("internal void PrivateMethod()");
+        extractedSection.Should().Contain("internal void ProtectedMethod()");
+        extractedSection.Should().Contain("internal void InternalMethod()");
+        extractedSection.Should().Contain("internal void ProtectedInternalMethod()");
+        extractedSection.Should().Contain("internal void PrivateProtectedMethod()");
+
+        // No other accessibility modifiers should remain in extracted class
+        extractedSection.Should().NotContain("public void PublicMethod");
+        extractedSection.Should().NotContain("private void PrivateMethod");
+        extractedSection.Should().NotContain("protected void ProtectedMethod");
+        extractedSection.Should().NotContain("protected internal void");
+        extractedSection.Should().NotContain("private protected void");
+    }
+
+    [Fact]
+    public void Execute_ExtractStaticMethod_PreservesStaticModifier()
+    {
+        // Arrange - Issue #7: Edge case test for static method extraction
+        var sourceCode = @"public class MathHelper
+{
+    private static int _multiplier = 10;
+
+    public static int Calculate(int value)
+    {
+        return value * _multiplier;
+    }
+
+    private static int Square(int x)
+    {
+        return x * x;
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "MathHelper", "Calculator", "_multiplier", "Calculate,Square");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("internal class Calculator");
+
+        // Static methods should be preserved as static in extracted class
+        result.RefactoredCode.Should().Contain("internal static int Calculate(int value)");
+        result.RefactoredCode.Should().Contain("internal static int Square(int x)");
+
+        // Static field should also be preserved
+        result.RefactoredCode.Should().Contain("private static int _multiplier");
+    }
+
+    [Fact]
+    public void Execute_ExtractAsyncMethod_PreservesAsyncModifier()
+    {
+        // Arrange - Issue #7: Edge case test for async method extraction
+        var sourceCode = @"using System.Threading.Tasks;
+
+public class DataService
+{
+    private string _apiUrl;
+
+    private async Task<string> FetchDataAsync()
+    {
+        await Task.Delay(100);
+        return ""data"";
+    }
+
+    public async Task ProcessAsync()
+    {
+        var data = await FetchDataAsync();
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "DataService", "ApiClient", "_apiUrl", "FetchDataAsync");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("internal class ApiClient");
+
+        // Async modifier should be preserved
+        result.RefactoredCode.Should().Contain("internal async Task<string> FetchDataAsync()");
+
+        // Verify delegation in source class
+        result.RefactoredCode.Should().Contain("await _apiClient.FetchDataAsync()");
+    }
+
+    [Fact]
+    public void Execute_ExtractGenericMethod_PreservesTypeConstraints()
+    {
+        // Arrange - Issue #7: Edge case test for generic method with constraints
+        var sourceCode = @"using System.Collections.Generic;
+
+public class DataProcessor
+{
+    private List<string> _data = new List<string>();
+
+    private TResult Transform<TResult>(TResult defaultValue) where TResult : class
+    {
+        return defaultValue;
+    }
+
+    public void Process()
+    {
+        var result = Transform<string>(""default"");
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "DataProcessor", "Transformer", null, "Transform");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("internal class Transformer");
+
+        // Generic method with constraints should be preserved
+        result.RefactoredCode.Should().Contain("where TResult : class");
+        result.RefactoredCode.Should().Contain("internal TResult Transform<TResult>");
+    }
+
+    [Fact]
+    public void Execute_ExtractMethodWithAttributes_PreservesAttributes()
+    {
+        // Arrange - Issue #7: Edge case test for method with attributes
+        var sourceCode = @"using System;
+
+public class ApiController
+{
+    [Obsolete(""Use NewMethod instead"")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(""Style"", ""IDE0060"")]
+    private string OldMethod(string param)
+    {
+        return param.ToUpper();
+    }
+
+    public void Execute()
+    {
+        var result = OldMethod(""test"");
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "ApiController", "LegacyMethods", null, "OldMethod");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("internal class LegacyMethods");
+
+        // Attributes should be preserved on extracted method
+        result.RefactoredCode.Should().Contain("[Obsolete(\"Use NewMethod instead\")]");
+        result.RefactoredCode.Should().Contain("[System.Diagnostics.CodeAnalysis.SuppressMessage(\"Style\", \"IDE0060\")]");
+        result.RefactoredCode.Should().Contain("internal string OldMethod(string param)");
+    }
+
+    [Fact]
+    public void Execute_ExtractNestedDelegate_ReturnsError()
+    {
+        // Arrange - Issue #3: Validate that delegate extraction is not supported
+        var sourceCode = @"public class EventManager
+{
+    public delegate void EventHandler(string message);
+
+    private EventHandler _handler;
+
+    public void RaiseEvent(string msg)
+    {
+        _handler?.Invoke(msg);
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act - Attempt to extract a nested delegate type
+        var result = refactoring.Execute(
+            sourceCode,
+            "EventManager",
+            "EventHandlers",
+            null,
+            null,
+            "EventHandler");
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorMessage.Should().Contain("Nested delegate extraction is not supported");
+        result.ErrorMessage.Should().Contain("EventHandler");
+        result.ErrorMessage.Should().Contain("BaseMethodDeclarationSyntax");
     }
 
     #endregion

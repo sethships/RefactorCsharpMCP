@@ -23,14 +23,19 @@ public class ExtractClassToolTests
 }";
 
         // Act
-        var result = await tool.ExtractClass(sourceCode, "Service", "LoggingContext", "_logger");
+        var result = await tool.ExtractClass(
+            sourceCode: sourceCode,
+            className: "Service",
+            newClassName: "LoggingContext",
+            fieldNames: "_logger",
+            validateCompilation: false); // Disable validation - uses undefined ILogger/IDatabase types
 
         // Assert
         result.Should().NotBeNull();
         var json = JsonSerializer.Serialize(result);
         var doc = JsonDocument.Parse(json);
         doc.RootElement.GetProperty("success").GetBoolean().Should().BeTrue();
-        doc.RootElement.GetProperty("refactoredCode").GetString().Should().Contain("public class LoggingContext");
+        doc.RootElement.GetProperty("refactoredCode").GetString().Should().Contain("internal class LoggingContext");
     }
 
     [Fact]
@@ -41,7 +46,11 @@ public class ExtractClassToolTests
         var sourceCode = "public class Test { }";
 
         // Act
-        var result = await tool.ExtractClass(sourceCode, "123Invalid", "NewClass", "_field");
+        var result = await tool.ExtractClass(
+            sourceCode: sourceCode,
+            className: "123Invalid",
+            newClassName: "NewClass",
+            fieldNames: "_field");
 
         // Assert
         result.Should().NotBeNull();
@@ -58,7 +67,11 @@ public class ExtractClassToolTests
         var tool = new ExtractClassTool();
 
         // Act
-        var result = await tool.ExtractClass("", "Test", "NewClass", "_field");
+        var result = await tool.ExtractClass(
+            sourceCode: "",
+            className: "Test",
+            newClassName: "NewClass",
+            fieldNames: "_field");
 
         // Assert
         result.Should().NotBeNull();
@@ -79,7 +92,12 @@ public class ExtractClassToolTests
 }";
 
         // Act
-        var result = await tool.ExtractClass(sourceCode, "Service", "NewClass", "_missing");
+        var result = await tool.ExtractClass(
+            sourceCode: sourceCode,
+            className: "Service",
+            newClassName: "NewClass",
+            fieldNames: "_missing",
+            validateCompilation: false); // Disable validation - uses undefined ILogger type
 
         // Assert
         result.Should().NotBeNull();
@@ -116,7 +134,13 @@ public class ExtractClassToolTests
 }";
 
         // Act - Extract methods only, no fields
-        var result = await tool.ExtractClass(sourceCode, "Service", "DataValidator", "", "ValidateData,FormatData");
+        var result = await tool.ExtractClass(
+            sourceCode: sourceCode,
+            className: "Service",
+            newClassName: "DataValidator",
+            fieldNames: "",
+            methodNames: "ValidateData,FormatData",
+            validateCompilation: true); // Keep validation enabled - uses only BCL types
 
         // Assert
         result.Should().NotBeNull();
@@ -125,9 +149,9 @@ public class ExtractClassToolTests
         doc.RootElement.GetProperty("success").GetBoolean().Should().BeTrue();
 
         var refactoredCode = doc.RootElement.GetProperty("refactoredCode").GetString();
-        refactoredCode.Should().Contain("public class DataValidator");
-        refactoredCode.Should().Contain("private void ValidateData()");
-        refactoredCode.Should().Contain("private string FormatData(string input)");
+        refactoredCode.Should().Contain("internal class DataValidator");
+        refactoredCode.Should().Contain("internal void ValidateData()");
+        refactoredCode.Should().Contain("internal string FormatData(string input)");
         refactoredCode.Should().Contain("private readonly DataValidator _dataValidator");
         refactoredCode.Should().Contain("_dataValidator.ValidateData()");
         refactoredCode.Should().Contain("_dataValidator.FormatData(");
@@ -141,7 +165,12 @@ public class ExtractClassToolTests
         var sourceCode = "public class Test { private int _field; }";
 
         // Act - Both fieldNames and methodNames are empty/null
-        var result = await tool.ExtractClass(sourceCode, "Test", "NewClass", "", null);
+        var result = await tool.ExtractClass(
+            sourceCode: sourceCode,
+            className: "Test",
+            newClassName: "NewClass",
+            fieldNames: "",
+            methodNames: null);
 
         // Assert
         result.Should().NotBeNull();
@@ -159,7 +188,12 @@ public class ExtractClassToolTests
         var sourceCode = "public class Test { private int _field; }";
 
         // Act - Both fieldNames and methodNames are empty strings
-        var result = await tool.ExtractClass(sourceCode, "Test", "NewClass", "", "");
+        var result = await tool.ExtractClass(
+            sourceCode: sourceCode,
+            className: "Test",
+            newClassName: "NewClass",
+            fieldNames: "",
+            methodNames: "");
 
         // Assert
         result.Should().NotBeNull();
@@ -200,7 +234,13 @@ public class InlineMethod
 public interface ILogger { }";
 
         // Act - Extract service class with methods only
-        var result = await tool.ExtractClass(sourceCode, "InlineMethod", "TypeChecker", "", "IsSimpleType,IsRecursive");
+        var result = await tool.ExtractClass(
+            sourceCode: sourceCode,
+            className: "InlineMethod",
+            newClassName: "TypeChecker",
+            fieldNames: "",
+            methodNames: "IsSimpleType,IsRecursive",
+            validateCompilation: true); // Keep validation enabled - ILogger is defined in source code
 
         // Assert
         result.Should().NotBeNull();
@@ -209,9 +249,9 @@ public interface ILogger { }";
         doc.RootElement.GetProperty("success").GetBoolean().Should().BeTrue();
 
         var refactoredCode = doc.RootElement.GetProperty("refactoredCode").GetString();
-        refactoredCode.Should().Contain("public class TypeChecker");
-        refactoredCode.Should().Contain("private bool IsSimpleType(string typeName)");
-        refactoredCode.Should().Contain("private bool IsRecursive(string methodName)");
+        refactoredCode.Should().Contain("internal class TypeChecker");
+        refactoredCode.Should().Contain("internal bool IsSimpleType(string typeName)");
+        refactoredCode.Should().Contain("internal bool IsRecursive(string methodName)");
         refactoredCode.Should().Contain("private readonly TypeChecker _typeChecker");
 
         // Verify original field remains in InlineMethod
