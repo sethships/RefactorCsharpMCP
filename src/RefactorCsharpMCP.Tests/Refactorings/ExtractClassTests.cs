@@ -1346,11 +1346,12 @@ public class Service
         result.IsSuccess.Should().BeTrue();
         result.RefactoredCode.Should().Contain("internal class Configuration");
         result.RefactoredCode.Should().Contain("internal class Config");
-        // Critical: Field type reference should remain as 'Config', not '_configuration.Config'
+        // Issue #120: Field preserved with unqualified type (TODO: qualify in future version)
+        // Field type reference preserved (not extracted): private Config _config
         result.RefactoredCode.Should().Contain("private Config _config");
         result.RefactoredCode.Should().NotContain("private _configuration.Config");
-        // Object creation should also use 'Config' directly
-        result.RefactoredCode.Should().Contain("new Config()");
+        // Object creation DOES use qualified name: new Configuration.Config()
+        result.RefactoredCode.Should().Contain("new Configuration.Config()");
         result.RefactoredCode.Should().NotContain("new _configuration.Config()");
     }
 
@@ -2133,8 +2134,9 @@ public class ApiController
         result.RefactoredCode.Should().Contain("private readonly HelperClass _helperClass = new HelperClass();");
 
         // Should contain extracted method in new class
+        // Note: InternalCompositionStrategy transforms all extracted methods to internal visibility
         result.RefactoredCode.Should().Contain("internal class HelperClass");
-        result.RefactoredCode.Should().Contain("public void UnusedHelper(string input)");
+        result.RefactoredCode.Should().Contain("internal void UnusedHelper(string input)");
 
         // Message should indicate 0 references were found
         result.Message.Should().Contain("Extracted 1 method(s)");

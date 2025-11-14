@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace RefactorCsharpMCP.Core.Validation;
 
 /// <summary>
@@ -9,28 +11,42 @@ public class ValidationResult
     /// <summary>
     /// Gets a value indicating whether the validation succeeded.
     /// </summary>
+    [JsonPropertyName("success")]
     public bool IsValid { get; init; }
 
     /// <summary>
     /// Gets the error code if validation failed; otherwise, null.
     /// </summary>
+    [JsonIgnore] // Internal use only, not serialized to MCP
     public ErrorCode? ErrorCode { get; init; }
 
     /// <summary>
     /// Gets the human-readable error message if validation failed; otherwise, null.
+    /// Serializes as "message" for MCP compatibility.
     /// </summary>
+    [JsonPropertyName("message")]
     public string? ErrorMessage { get; init; }
+
+    /// <summary>
+    /// Gets the brief error description.
+    /// For MCP tool validation, this returns the same as ErrorMessage.
+    /// For framework validation, this can be customized.
+    /// </summary>
+    [JsonPropertyName("error")]
+    public string? Error => ErrorMessage;
 
     /// <summary>
     /// Gets the suggested action to resolve the error; otherwise, null.
     /// Example: "Update targetFramework to net8.0 or modify input code to use compatible syntax."
     /// </summary>
+    [JsonIgnore] // For framework validation only, not needed in MCP tool responses
     public string? SuggestedAction { get; init; }
 
     /// <summary>
     /// Gets additional contextual information about the error.
     /// May include detected C# features, framework versions, line numbers, etc.
     /// </summary>
+    [JsonIgnore] // For framework validation only, not needed in MCP tool responses
     public Dictionary<string, object>? ErrorContext { get; init; }
 
     /// <summary>
@@ -135,5 +151,19 @@ public class ValidationResult
         var action = "Fix syntax errors in source code before attempting refactoring.";
 
         return Failure(Validation.ErrorCode.SYNTAX_ERROR, message, action);
+    }
+
+    /// <summary>
+    /// Creates a simple tool input validation failure.
+    /// Simplified factory method for MCP tool input validation (Issue #122).
+    /// </summary>
+    /// <param name="errorCode">The error code for the validation failure.</param>
+    /// <param name="error">Brief error description.</param>
+    /// <param name="operationName">Name of the operation that failed.</param>
+    /// <returns>A ValidationResult indicating tool input validation failure.</returns>
+    public static ValidationResult ToolInputError(ErrorCode errorCode, string error, string operationName)
+    {
+        var message = $"{operationName} failed: {error}";
+        return Failure(errorCode, message);
     }
 }
