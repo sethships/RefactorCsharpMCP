@@ -2,7 +2,7 @@ using RefactorCsharpMCP.Core;
 using System.ComponentModel;
 using ModelContextProtocol.Server;
 using RefactorCsharpMCP.Core.Refactorings;
-using RefactorCsharpMCP.Server.Utilities;
+using RefactorCsharpMCP.Core.Validation;
 
 namespace RefactorCsharpMCP.Server.Tools;
 

@@ -1,6 +1,6 @@
 using RefactorCsharpMCP.Core;
 
-namespace RefactorCsharpMCP.Server.Utilities;
+namespace RefactorCsharpMCP.Core.Validation;
 
 /// <summary>
 /// Provides shared input validation methods for MCP tools.
@@ -10,6 +10,7 @@ namespace RefactorCsharpMCP.Server.Utilities;
 /// Created as part of Issue #92 (Sprint 5) to extract duplicated validation logic from 11 tool files.
 /// Before: ~456 lines of duplicated validation code across tools
 /// After: ~50 lines in shared helper + ~55 lines of calls = 77% reduction
+/// Moved from Server.Utilities to Core.Validation in Sprint 5 code review for better reusability.
 /// </remarks>
 public static class ToolInputValidator
 {

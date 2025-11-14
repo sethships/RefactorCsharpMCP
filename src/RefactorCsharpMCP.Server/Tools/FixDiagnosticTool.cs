@@ -4,7 +4,7 @@ using ModelContextProtocol.Server;
 using RefactorCsharpMCP.Core.Refactorings;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using RefactorCsharpMCP.Server.Utilities;
+using RefactorCsharpMCP.Core.Validation;
 
 namespace RefactorCsharpMCP.Server.Tools;
 

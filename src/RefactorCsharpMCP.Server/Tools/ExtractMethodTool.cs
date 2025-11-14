@@ -2,7 +2,7 @@ using RefactorCsharpMCP.Core;
 using System.ComponentModel;
 using ModelContextProtocol.Server;
 using RefactorCsharpMCP.Core.Refactorings;
-using RefactorCsharpMCP.Server.Utilities;
+using RefactorCsharpMCP.Core.Validation;
 
 namespace RefactorCsharpMCP.Server.Tools;
 
@@ -41,14 +41,22 @@ public class ExtractMethodTool
             return Task.FromResult<object>(validation);
         }
 
-        // Validate line range (tool-specific validation)
-        if (startLine < 1 || endLine < 1 || endLine > 100000)
+        // Validate line range using shared validator first
+        var lineValidation = ToolInputValidator.ValidateLineNumber(startLine, "Refactoring", 1, 100_000)
+                           ?? ToolInputValidator.ValidateLineNumber(endLine, "Refactoring", 1, 100_000);
+        if (lineValidation != null)
+        {
+            return Task.FromResult<object>(lineValidation);
+        }
+
+        // Additional range validation (tool-specific)
+        if (startLine > endLine)
         {
             return Task.FromResult<object>(new
             {
                 success = false,
-                error = "Invalid line range specified",
-                message = "Refactoring failed: Invalid line range specified"
+                error = "Start line must be less than or equal to end line",
+                message = $"Refactoring failed: Start line {startLine} is greater than end line {endLine}"
             });
         }
 

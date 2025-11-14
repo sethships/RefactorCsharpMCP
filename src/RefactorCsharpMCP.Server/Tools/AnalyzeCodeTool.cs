@@ -3,7 +3,7 @@ using System.ComponentModel;
 using ModelContextProtocol.Server;
 using RefactorCsharpMCP.Core.Diagnostics;
 using Microsoft.CodeAnalysis;
-using RefactorCsharpMCP.Server.Utilities;
+using RefactorCsharpMCP.Core.Validation;
 
 namespace RefactorCsharpMCP.Server.Tools;
 
