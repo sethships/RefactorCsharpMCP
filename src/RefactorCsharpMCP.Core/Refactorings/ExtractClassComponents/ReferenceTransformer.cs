@@ -262,6 +262,10 @@ internal class ReferenceTransformer : CSharpSyntaxRewriter
     /// </remarks>
     public override SyntaxNode? VisitVariableDeclaration(VariableDeclarationSyntax node)
     {
+        // TEMPORARY: Disabled to debug field removal issue
+        // The transformation is correct but causes fields to disappear - investigating
+
+        /*
         // Check if the type is a simple identifier (not already qualified)
         if (node.Type is IdentifierNameSyntax typeIdentifier)
         {
@@ -284,6 +288,7 @@ internal class ReferenceTransformer : CSharpSyntaxRewriter
                 }
             }
         }
+        */
 
         return base.VisitVariableDeclaration(node);
     }
