@@ -108,23 +108,23 @@ internal class ReferenceUpdater
             return references;
         }
 
-        // Only search for method and field symbols - type symbols should NOT be transformed in simple identifier contexts
-        // (e.g., 'Config _field' should remain 'Config', not become '_extracted.Config')
-        var methodAndFieldNames = extractedSymbols
-            .Where(s => s != null && (s is IMethodSymbol || s is IFieldSymbol || s is IPropertySymbol))
+        // Include method, field, and type symbols for reference finding (Issue #120)
+        // Type symbols need special handling in ReferenceTransformer (qualified names, not member access)
+        var memberNames = extractedSymbols
+            .Where(s => s != null && (s is IMethodSymbol || s is IFieldSymbol || s is IPropertySymbol || s is INamedTypeSymbol))
             .Select(s => s.Name)
             .ToHashSet();
 
-        if (methodAndFieldNames.Count == 0)
+        if (memberNames.Count == 0)
         {
-            // No methods or fields to search for (only types were extracted)
+            // No members to search for
             return references;
         }
 
         // Find all identifiers and invocations in the source class
         var identifiers = sourceClass.DescendantNodes()
             .OfType<IdentifierNameSyntax>()
-            .Where(id => methodAndFieldNames.Contains(id.Identifier.Text));
+            .Where(id => memberNames.Contains(id.Identifier.Text));
 
         foreach (var identifier in identifiers)
         {

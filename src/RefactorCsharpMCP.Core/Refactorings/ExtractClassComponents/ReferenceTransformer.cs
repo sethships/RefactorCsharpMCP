@@ -191,41 +191,18 @@ internal class ReferenceTransformer : CSharpSyntaxRewriter
     /// </remarks>
     public override SyntaxNode? VisitIdentifierName(IdentifierNameSyntax node)
     {
-        // If we have pre-found reference locations, use location-based matching
-        if (IsLocationInReferenceSpans(node))
-        {
-            // Check if this identifier is already part of a member access expression
-            // (e.g., _address._city or this._city) - if so, don't transform it again
-            if (node.Parent is MemberAccessExpressionSyntax memberAccess &&
-                memberAccess.Name == node)
-            {
-                return base.VisitIdentifierName(node);
-            }
-
-            // Check if this is part of an invocation expression - handled by VisitInvocationExpression
-            if (node.Parent is InvocationExpressionSyntax)
-            {
-                return base.VisitIdentifierName(node);
-            }
-
-            // Transform: identifier -> _newClassField.identifier
-            var newFieldIdentifier = SyntaxFactory.IdentifierName(_newClassFieldName);
-            var memberAccessExpr = SyntaxFactory.MemberAccessExpression(
-                SyntaxKind.SimpleMemberAccessExpression,
-                newFieldIdentifier,
-                node);
-
-            return memberAccessExpr.WithTriviaFrom(node);
-        }
-
-        // If we have reference spans but didn't find a match, skip transformation
-        if (_referenceSpans.Count > 0)
+        // Skip if already part of member access or invocation (handled elsewhere)
+        if (node.Parent is MemberAccessExpressionSyntax memberAccess && memberAccess.Name == node)
         {
             return base.VisitIdentifierName(node);
         }
 
-        // Fallback to semantic-based approach when no reference locations provided
-        // Get the symbol for this identifier
+        if (node.Parent is InvocationExpressionSyntax)
+        {
+            return base.VisitIdentifierName(node);
+        }
+
+        // Get symbol info once for all branches
         var symbolInfo = _semanticModel.GetSymbolInfo(node);
         if (symbolInfo.Symbol == null)
         {
@@ -238,42 +215,42 @@ internal class ReferenceTransformer : CSharpSyntaxRewriter
             return base.VisitIdentifierName(node);
         }
 
-        // Do NOT transform type symbols (INamedTypeSymbol) in identifier contexts
-        // Rationale:
-        // - Type references in variable declarations (e.g., 'MyType myVar') should NOT become '_field.MyType'
-        // - Type references in object creation (e.g., 'new MyType()') should NOT become 'new _field.MyType()'
-        // - Type references in type parameters (e.g., 'List<MyType>') should NOT be transformed
-        // - Only qualified type names (OriginalClass.MyType) need transformation, handled by VisitQualifiedName
-        // This prevents InvalidCastException when Roslyn tries to use member access in type contexts
+        // Check if this identifier is within the source class
+        var enclosingType = _semanticModel.GetEnclosingSymbol(node.SpanStart)?.ContainingType;
+        if (enclosingType == null || !SymbolEqualityComparer.Default.Equals(enclosingType, _sourceClassSymbol))
+        {
+            return base.VisitIdentifierName(node);
+        }
+
+        // Handle type symbols specially (Issue #120: nested type extraction)
+        // Type references need qualified name transformation, not member access
+        // Example: 'Config' → 'ExtractedClass.Config'
         if (symbolInfo.Symbol is INamedTypeSymbol)
         {
-            return base.VisitIdentifierName(node);
+            // Transform type reference to qualified name: MyType → NewClass.MyType
+            var newClassIdentifier = SyntaxFactory.IdentifierName(_newClassName);
+            var qualifiedName = SyntaxFactory.QualifiedName(
+                newClassIdentifier,
+                (SimpleNameSyntax)node);
+
+            return qualifiedName.WithTriviaFrom(node);
         }
 
-        // Check if this identifier is already part of a member access expression
-        // (e.g., _address._city or this._city) - if so, don't transform it again
-        if (node.Parent is MemberAccessExpressionSyntax memberAccess2 &&
-            memberAccess2.Name == node)
+        // For method/field symbols, use location-based matching if available, otherwise semantic
+        if (_referenceSpans.Count > 0 && !IsLocationInReferenceSpans(node))
         {
+            // Have reference spans but this node isn't in them - skip
             return base.VisitIdentifierName(node);
         }
 
-        // Check if this identifier is within the source class (not in the extracted class)
-        var containingType = _semanticModel.GetEnclosingSymbol(node.SpanStart)?.ContainingType;
-        if (containingType == null ||
-            !SymbolEqualityComparer.Default.Equals(containingType, _sourceClassSymbol))
-        {
-            return base.VisitIdentifierName(node);
-        }
-
-        // Transform: identifier -> _newClassField.identifier
-        var newFieldIdentifier2 = SyntaxFactory.IdentifierName(_newClassFieldName);
-        var memberAccessExpr2 = SyntaxFactory.MemberAccessExpression(
+        // Transform: identifier -> _newClassField.identifier (for fields/methods)
+        var newFieldIdentifier = SyntaxFactory.IdentifierName(_newClassFieldName);
+        var memberAccessExpr = SyntaxFactory.MemberAccessExpression(
             SyntaxKind.SimpleMemberAccessExpression,
-            newFieldIdentifier2,
+            newFieldIdentifier,
             node);
 
-        return memberAccessExpr2.WithTriviaFrom(node);
+        return memberAccessExpr.WithTriviaFrom(node);
     }
 
     /// <summary>
