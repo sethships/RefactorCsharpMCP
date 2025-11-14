@@ -1346,11 +1346,12 @@ public class Service
         result.IsSuccess.Should().BeTrue();
         result.RefactoredCode.Should().Contain("internal class Configuration");
         result.RefactoredCode.Should().Contain("internal class Config");
-        // Critical: Field type reference should remain as 'Config', not '_configuration.Config'
-        result.RefactoredCode.Should().Contain("private Config _config");
+        // Issue #120: Type references should be qualified after extraction
+        // Field type should be qualified: private Configuration.Config _config
+        result.RefactoredCode.Should().Contain("private Configuration.Config _config");
         result.RefactoredCode.Should().NotContain("private _configuration.Config");
-        // Object creation should also use 'Config' directly
-        result.RefactoredCode.Should().Contain("new Config()");
+        // Object creation should use qualified name: new Configuration.Config()
+        result.RefactoredCode.Should().Contain("new Configuration.Config()");
         result.RefactoredCode.Should().NotContain("new _configuration.Config()");
     }
 

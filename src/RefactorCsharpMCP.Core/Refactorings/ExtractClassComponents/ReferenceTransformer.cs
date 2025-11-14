@@ -254,6 +254,41 @@ internal class ReferenceTransformer : CSharpSyntaxRewriter
     }
 
     /// <summary>
+    /// Visits variable declarations to transform field/local variable type references.
+    /// </summary>
+    /// <remarks>
+    /// Ensures that field declarations like `private Config _field;` are transformed to
+    /// `private Configuration.Config _field;` when Config is an extracted nested type.
+    /// </remarks>
+    public override SyntaxNode? VisitVariableDeclaration(VariableDeclarationSyntax node)
+    {
+        // Check if the type is a simple identifier (not already qualified)
+        if (node.Type is IdentifierNameSyntax typeIdentifier)
+        {
+            var symbolInfo = _semanticModel.GetSymbolInfo(typeIdentifier);
+
+            // Check if this is an extracted nested type
+            if (symbolInfo.Symbol is INamedTypeSymbol typeSymbol && _extractedSymbolSet.Contains(typeSymbol))
+            {
+                // Check if we're in the source class
+                var enclosingType = _semanticModel.GetEnclosingSymbol(typeIdentifier.SpanStart)?.ContainingType;
+                if (enclosingType != null && SymbolEqualityComparer.Default.Equals(enclosingType, _sourceClassSymbol))
+                {
+                    // Transform type to qualified name: Config → Configuration.Config
+                    var qualifiedType = SyntaxFactory.QualifiedName(
+                        SyntaxFactory.IdentifierName(_newClassName),
+                        typeIdentifier);
+
+                    // Replace the type in the variable declaration
+                    node = node.WithType(qualifiedType);
+                }
+            }
+        }
+
+        return base.VisitVariableDeclaration(node);
+    }
+
+    /// <summary>
     /// Visits qualified name syntax nodes (e.g., <c>OriginalClass.NestedType</c>) and transforms
     /// qualified references to extracted nested types.
     /// </summary>
