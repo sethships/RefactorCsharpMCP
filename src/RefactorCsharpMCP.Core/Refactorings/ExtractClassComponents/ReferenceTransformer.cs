@@ -261,13 +261,24 @@ internal class ReferenceTransformer : CSharpSyntaxRewriter
     /// Visits variable declarations to transform field/local variable type references.
     /// </summary>
     /// <remarks>
-    /// Ensures that field declarations like `private Config _field;` are transformed to
-    /// `private Configuration.Config _field;` when Config is an extracted nested type.
+    /// <para><strong>KNOWN LIMITATION (Issue #124)</strong>: Field type qualification is currently disabled
+    /// due to node identity conflicts with ExtractClassTransformer. When enabled, this transformation
+    /// causes field declarations to disappear from the output.</para>
+    ///
+    /// <para><strong>Root Cause</strong>: Double visitor pattern creates node identity conflicts.
+    /// ExtractClassTransformer removes nodes by identity, but ReferenceTransformer creates new nodes
+    /// via .WithType(), breaking identity tracking and corrupting parent chains.</para>
+    ///
+    /// <para><strong>Workaround</strong>: Developers should manually qualify field types after extraction.
+    /// The compiler will error if the type can't be resolved, making this a low-severity issue.</para>
+    ///
+    /// <para><strong>Future Fix</strong>: Requires architectural refactoring to single-pass transformation
+    /// or annotation-based tracking. See Issue #124 for detailed solution approaches.</para>
     /// </remarks>
     public override SyntaxNode? VisitVariableDeclaration(VariableDeclarationSyntax node)
     {
-        // TEMPORARY: Disabled to debug field removal issue
-        // The transformation is correct but causes fields to disappear - investigating
+        // DISABLED: See Issue #124 for details on field type qualification limitation
+        // The transformation logic below is correct but causes fields to disappear when enabled
 
         /*
         // Check if the type is a simple identifier (not already qualified)
