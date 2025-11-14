@@ -19,17 +19,15 @@ public static class ToolInputValidator
     /// </summary>
     /// <param name="sourceCode">The source code to validate.</param>
     /// <param name="operationName">The name of the operation (for error messages).</param>
-    /// <returns>Null if valid, otherwise an error object.</returns>
-    public static object? ValidateSourceCode(string sourceCode, string operationName)
+    /// <returns>Null if valid, otherwise a ValidationResult indicating the error.</returns>
+    public static ValidationResult? ValidateSourceCode(string sourceCode, string operationName)
     {
         if (string.IsNullOrWhiteSpace(sourceCode))
         {
-            return new
-            {
-                success = false,
-                error = "Source code cannot be empty",
-                message = $"{operationName} failed: Source code cannot be empty"
-            };
+            return ValidationResult.ToolInputError(
+                ErrorCode.EMPTY_SOURCE_CODE,
+                "Source code cannot be empty",
+                operationName);
         }
 
         return null; // Validation passed
@@ -41,17 +39,15 @@ public static class ToolInputValidator
     /// <param name="sourceCode">The source code to validate.</param>
     /// <param name="operationName">The name of the operation (for error messages).</param>
     /// <param name="maxSize">Maximum allowed size in bytes. Defaults to 1MB (McpToolConstants.MAX_SOURCE_CODE_SIZE).</param>
-    /// <returns>Null if valid, otherwise an error object.</returns>
-    public static object? ValidateSourceCodeSize(string sourceCode, string operationName, int maxSize = McpToolConstants.MAX_SOURCE_CODE_SIZE)
+    /// <returns>Null if valid, otherwise a ValidationResult indicating the error.</returns>
+    public static ValidationResult? ValidateSourceCodeSize(string sourceCode, string operationName, int maxSize = McpToolConstants.MAX_SOURCE_CODE_SIZE)
     {
         if (sourceCode.Length > maxSize)
         {
-            return new
-            {
-                success = false,
-                error = $"Source code exceeds {maxSize / 1_000_000}MB limit",
-                message = $"{operationName} failed: Source code exceeds {maxSize / 1_000_000}MB limit"
-            };
+            return ValidationResult.ToolInputError(
+                ErrorCode.SOURCE_CODE_TOO_LARGE,
+                $"Source code exceeds {maxSize / 1_000_000}MB limit",
+                operationName);
         }
 
         return null; // Validation passed
@@ -63,19 +59,17 @@ public static class ToolInputValidator
     /// <param name="identifier">The identifier to validate.</param>
     /// <param name="identifierType">The type of identifier (e.g., "class name", "method name") for error messages.</param>
     /// <param name="operationName">The name of the operation (for error messages).</param>
-    /// <returns>Null if valid, otherwise an error object.</returns>
-    public static object? ValidateIdentifier(string identifier, string identifierType, string operationName)
+    /// <returns>Null if valid, otherwise a ValidationResult indicating the error.</returns>
+    public static ValidationResult? ValidateIdentifier(string identifier, string identifierType, string operationName)
     {
         if (string.IsNullOrWhiteSpace(identifier) ||
             !McpToolConstants.CSharpIdentifierRegex.IsMatch(identifier))
         {
             var capitalizedType = char.ToUpper(identifierType[0]) + identifierType.Substring(1);
-            return new
-            {
-                success = false,
-                error = $"{capitalizedType} must be a valid C# identifier",
-                message = $"{operationName} failed: {capitalizedType} must be a valid C# identifier"
-            };
+            return ValidationResult.ToolInputError(
+                ErrorCode.INVALID_IDENTIFIER,
+                $"{capitalizedType} must be a valid C# identifier",
+                operationName);
         }
 
         return null; // Validation passed
@@ -88,17 +82,15 @@ public static class ToolInputValidator
     /// <param name="operationName">The name of the operation (for error messages).</param>
     /// <param name="minLine">Minimum valid line number. Defaults to 1.</param>
     /// <param name="maxLine">Maximum valid line number. Defaults to 100,000.</param>
-    /// <returns>Null if valid, otherwise an error object.</returns>
-    public static object? ValidateLineNumber(int lineNumber, string operationName, int minLine = 1, int maxLine = 100_000)
+    /// <returns>Null if valid, otherwise a ValidationResult indicating the error.</returns>
+    public static ValidationResult? ValidateLineNumber(int lineNumber, string operationName, int minLine = 1, int maxLine = 100_000)
     {
         if (lineNumber < minLine || lineNumber > maxLine)
         {
-            return new
-            {
-                success = false,
-                error = $"Line number must be between {minLine} and {maxLine}",
-                message = $"{operationName} failed: Line number {lineNumber} is out of valid range ({minLine}-{maxLine})"
-            };
+            return ValidationResult.ToolInputError(
+                ErrorCode.INVALID_LINE_NUMBER,
+                $"Line number must be between {minLine} and {maxLine}",
+                operationName);
         }
 
         return null; // Validation passed
@@ -111,17 +103,15 @@ public static class ToolInputValidator
     /// <param name="operationName">The name of the operation (for error messages).</param>
     /// <param name="minColumn">Minimum valid column number. Defaults to 1.</param>
     /// <param name="maxColumn">Maximum valid column number. Defaults to 10,000.</param>
-    /// <returns>Null if valid, otherwise an error object.</returns>
-    public static object? ValidateColumnNumber(int columnNumber, string operationName, int minColumn = 1, int maxColumn = 10_000)
+    /// <returns>Null if valid, otherwise a ValidationResult indicating the error.</returns>
+    public static ValidationResult? ValidateColumnNumber(int columnNumber, string operationName, int minColumn = 1, int maxColumn = 10_000)
     {
         if (columnNumber < minColumn || columnNumber > maxColumn)
         {
-            return new
-            {
-                success = false,
-                error = $"Column number must be between {minColumn} and {maxColumn}",
-                message = $"{operationName} failed: Column number {columnNumber} is out of valid range ({minColumn}-{maxColumn})"
-            };
+            return ValidationResult.ToolInputError(
+                ErrorCode.INVALID_COLUMN_NUMBER,
+                $"Column number must be between {minColumn} and {maxColumn}",
+                operationName);
         }
 
         return null; // Validation passed
@@ -132,17 +122,15 @@ public static class ToolInputValidator
     /// </summary>
     /// <param name="targetFramework">The target framework to validate.</param>
     /// <param name="operationName">The name of the operation (for error messages).</param>
-    /// <returns>Null if valid, otherwise an error object.</returns>
-    public static object? ValidateTargetFramework(string targetFramework, string operationName)
+    /// <returns>Null if valid, otherwise a ValidationResult indicating the error.</returns>
+    public static ValidationResult? ValidateTargetFramework(string targetFramework, string operationName)
     {
         if (string.IsNullOrWhiteSpace(targetFramework))
         {
-            return new
-            {
-                success = false,
-                error = "Target framework cannot be empty",
-                message = $"{operationName} failed: Target framework cannot be empty"
-            };
+            return ValidationResult.ToolInputError(
+                ErrorCode.EMPTY_TARGET_FRAMEWORK,
+                "Target framework cannot be empty",
+                operationName);
         }
 
         return null; // Validation passed

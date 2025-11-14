@@ -89,5 +89,40 @@ public enum ErrorCode
     /// Example: Using System.Text.Json (net6.0+) when targeting net48.
     /// This differs from typos (SYNTAX_ERROR) - these are real APIs just not available in the target.
     /// </summary>
-    FRAMEWORK_API_UNAVAILABLE = 428
+    FRAMEWORK_API_UNAVAILABLE = 428,
+
+    // Tool Input Validation Errors (410-series: MCP tool input validation)
+
+    /// <summary>
+    /// Source code parameter is null or whitespace.
+    /// </summary>
+    EMPTY_SOURCE_CODE = 410,
+
+    /// <summary>
+    /// Source code exceeds maximum size limit (1MB).
+    /// </summary>
+    SOURCE_CODE_TOO_LARGE = 411,
+
+    /// <summary>
+    /// Identifier is not a valid C# identifier.
+    /// Identifier is null, whitespace, or doesn't match C# identifier pattern.
+    /// </summary>
+    INVALID_IDENTIFIER = 412,
+
+    /// <summary>
+    /// Line number is out of valid range.
+    /// Line number is less than 1 or greater than maximum (typically 100,000).
+    /// </summary>
+    INVALID_LINE_NUMBER = 413,
+
+    /// <summary>
+    /// Column number is out of valid range.
+    /// Column number is less than 1 or greater than maximum (typically 10,000).
+    /// </summary>
+    INVALID_COLUMN_NUMBER = 414,
+
+    /// <summary>
+    /// Target framework parameter is null or whitespace.
+    /// </summary>
+    EMPTY_TARGET_FRAMEWORK = 415
 }
