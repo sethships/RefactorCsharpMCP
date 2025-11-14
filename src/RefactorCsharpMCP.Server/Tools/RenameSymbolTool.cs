@@ -2,6 +2,7 @@ using RefactorCsharpMCP.Core;
 using System.ComponentModel;
 using ModelContextProtocol.Server;
 using RefactorCsharpMCP.Core.Refactorings;
+using RefactorCsharpMCP.Core.Validation;
 
 namespace RefactorCsharpMCP.Server.Tools;
 
@@ -27,56 +28,16 @@ public class RenameSymbolTool
         [Description("The 1-based column number of the symbol to rename")] int columnNumber,
         [Description("The new identifier name (must be a valid C# identifier)")] string newName)
     {
-        // Input validation
-        if (string.IsNullOrWhiteSpace(sourceCode))
-        {
-            return Task.FromResult<object>(new
-            {
-                success = false,
-                error = "Source code cannot be empty",
-                message = "Refactoring failed: Source code cannot be empty"
-            });
-        }
+        // Input validation using shared validator
+        var validation = ToolInputValidator.ValidateSourceCode(sourceCode, "Refactoring")
+                         ?? ToolInputValidator.ValidateSourceCodeSize(sourceCode, "Refactoring")
+                         ?? ToolInputValidator.ValidateLineNumber(lineNumber, "Refactoring")
+                         ?? ToolInputValidator.ValidateColumnNumber(columnNumber, "Refactoring")
+                         ?? ToolInputValidator.ValidateIdentifier(newName, "new name", "Refactoring");
 
-        if (sourceCode.Length > McpToolConstants.MAX_SOURCE_CODE_SIZE)
+        if (validation != null)
         {
-            return Task.FromResult<object>(new
-            {
-                success = false,
-                error = "Source code exceeds 1MB limit",
-                message = "Refactoring failed: Source code exceeds 1MB limit"
-            });
-        }
-
-        if (lineNumber < 1)
-        {
-            return Task.FromResult<object>(new
-            {
-                success = false,
-                error = "Line number must be >= 1",
-                message = "Refactoring failed: Line number must be >= 1"
-            });
-        }
-
-        if (columnNumber < 1)
-        {
-            return Task.FromResult<object>(new
-            {
-                success = false,
-                error = "Column number must be >= 1",
-                message = "Refactoring failed: Column number must be >= 1"
-            });
-        }
-
-        if (string.IsNullOrWhiteSpace(newName) ||
-            !McpToolConstants.CSharpIdentifierRegex.IsMatch(newName))
-        {
-            return Task.FromResult<object>(new
-            {
-                success = false,
-                error = "New name must be a valid C# identifier (start with letter or underscore, followed by letters, digits, or underscores)",
-                message = "Refactoring failed: New name must be a valid C# identifier (start with letter or underscore, followed by letters, digits, or underscores)"
-            });
+            return Task.FromResult<object>(validation);
         }
 
         // Execute the refactoring

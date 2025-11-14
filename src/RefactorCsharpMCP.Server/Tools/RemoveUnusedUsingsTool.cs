@@ -2,6 +2,7 @@ using RefactorCsharpMCP.Core;
 using System.ComponentModel;
 using ModelContextProtocol.Server;
 using RefactorCsharpMCP.Core.Refactorings;
+using RefactorCsharpMCP.Core.Validation;
 
 namespace RefactorCsharpMCP.Server.Tools;
 
@@ -24,35 +25,14 @@ public class RemoveUnusedUsingsTool
         [Description("The complete C# source code")] string sourceCode,
         [Description("The target .NET framework (e.g., 'net8.0', 'net48', 'netstandard2.0')")] string targetFramework)
     {
-        // Input validation
-        if (string.IsNullOrWhiteSpace(sourceCode))
-        {
-            return new
-            {
-                success = false,
-                error = "Source code cannot be empty",
-                message = "Refactoring failed: Source code cannot be empty"
-            };
-        }
+        // Input validation using shared validator
+        var validation = ToolInputValidator.ValidateSourceCode(sourceCode, "Refactoring")
+                         ?? ToolInputValidator.ValidateSourceCodeSize(sourceCode, "Refactoring")
+                         ?? ToolInputValidator.ValidateTargetFramework(targetFramework, "Refactoring");
 
-        if (sourceCode.Length > McpToolConstants.MAX_SOURCE_CODE_SIZE)
+        if (validation != null)
         {
-            return new
-            {
-                success = false,
-                error = "Source code exceeds 1MB limit",
-                message = "Refactoring failed: Source code exceeds 1MB limit"
-            };
-        }
-
-        if (string.IsNullOrWhiteSpace(targetFramework))
-        {
-            return new
-            {
-                success = false,
-                error = "Target framework cannot be empty",
-                message = "Refactoring failed: Target framework cannot be empty"
-            };
+            return validation;
         }
 
         // Execute the refactoring

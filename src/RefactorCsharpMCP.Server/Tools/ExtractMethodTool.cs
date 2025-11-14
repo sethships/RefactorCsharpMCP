@@ -2,6 +2,7 @@ using RefactorCsharpMCP.Core;
 using System.ComponentModel;
 using ModelContextProtocol.Server;
 using RefactorCsharpMCP.Core.Refactorings;
+using RefactorCsharpMCP.Core.Validation;
 
 namespace RefactorCsharpMCP.Server.Tools;
 
@@ -29,55 +30,33 @@ public class ExtractMethodTool
         [Description("The name for the new method")] string newMethodName,
         [Description("The target .NET framework (e.g., 'net8.0', 'net48', 'netstandard2.0')")] string targetFramework = "net8.0")
     {
-        // Input validation
-        if (string.IsNullOrWhiteSpace(sourceCode))
+        // Input validation using shared validator
+        var validation = ToolInputValidator.ValidateSourceCode(sourceCode, "Refactoring")
+                         ?? ToolInputValidator.ValidateSourceCodeSize(sourceCode, "Refactoring")
+                         ?? ToolInputValidator.ValidateIdentifier(newMethodName, "method name", "Refactoring")
+                         ?? ToolInputValidator.ValidateTargetFramework(targetFramework, "Refactoring");
+
+        if (validation != null)
         {
-            return Task.FromResult<object>(new
-            {
-                success = false,
-                error = "Source code cannot be empty",
-                message = "Refactoring failed: Source code cannot be empty"
-            });
+            return Task.FromResult<object>(validation);
         }
 
-        if (sourceCode.Length > 1_000_000) // 1MB limit
+        // Validate line range using shared validator first
+        var lineValidation = ToolInputValidator.ValidateLineNumber(startLine, "Refactoring", 1, 100_000)
+                           ?? ToolInputValidator.ValidateLineNumber(endLine, "Refactoring", 1, 100_000);
+        if (lineValidation != null)
         {
-            return Task.FromResult<object>(new
-            {
-                success = false,
-                error = "Source code exceeds 1MB limit",
-                message = "Refactoring failed: Source code exceeds 1MB limit"
-            });
+            return Task.FromResult<object>(lineValidation);
         }
 
-        if (string.IsNullOrWhiteSpace(newMethodName) ||
-            !McpToolConstants.CSharpIdentifierRegex.IsMatch(newMethodName))
+        // Additional range validation (tool-specific)
+        if (startLine > endLine)
         {
             return Task.FromResult<object>(new
             {
                 success = false,
-                error = "Method name must be a valid C# identifier",
-                message = "Refactoring failed: Method name must be a valid C# identifier"
-            });
-        }
-
-        if (startLine < 1 || endLine < 1 || endLine > 100000) // Reasonable line limit
-        {
-            return Task.FromResult<object>(new
-            {
-                success = false,
-                error = "Invalid line range specified",
-                message = "Refactoring failed: Invalid line range specified"
-            });
-        }
-
-        if (string.IsNullOrWhiteSpace(targetFramework))
-        {
-            return Task.FromResult<object>(new
-            {
-                success = false,
-                error = "Target framework cannot be empty",
-                message = "Refactoring failed: Target framework cannot be empty"
+                error = "Start line must be less than or equal to end line",
+                message = $"Refactoring failed: Start line {startLine} is greater than end line {endLine}"
             });
         }
 

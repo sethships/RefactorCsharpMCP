@@ -23,5 +23,5 @@ public static class McpToolConstants
     public static readonly Regex CSharpIdentifierRegex = new(
         CSHARP_IDENTIFIER_PATTERN,
         RegexOptions.Compiled | RegexOptions.CultureInvariant,
-        TimeSpan.FromMilliseconds(100)); // Timeout to prevent ReDoS
+        TimeSpan.FromMilliseconds(500)); // Timeout to prevent ReDoS (increased from 100ms per code review)
 }

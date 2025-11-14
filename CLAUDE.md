@@ -13,8 +13,9 @@ RefactorCsharpMCP is a Model Context Protocol (MCP) server providing Roslyn-base
 The project is organized into three main components:
 
 - **RefactorCsharpMCP.Server**: MCP server with stdio transport, implements MCP tools for refactoring operations
+  - **Utilities**: Shared validation helpers (`ToolInputValidator`) consolidating input validation across all 11 MCP tools (Sprint 5, Issue #92)
 - **RefactorCsharpMCP.Core**: Core refactoring logic using Roslyn, analysis utilities, and refactoring algorithms
-- **RefactorCsharpMCP.Tests**: Comprehensive test suite with 1054 tests covering unit, component, and integration testing (1031 passing, 97.8%)
+- **RefactorCsharpMCP.Tests**: Comprehensive test suite with 1056 tests covering unit, component, and integration testing (1032 passing, 97.7%)
 
 ### Shared Refactoring Infrastructure
 

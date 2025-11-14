@@ -29,7 +29,8 @@ RefactorCsharpMCP/
 │   └── project-plan.md            # Comprehensive development plan
 ├── src/
 │   ├── RefactorCsharpMCP.Server/        # MCP server console application
-│   │   └── Tools/                 # MCP tool implementations
+│   │   ├── Tools/                 # MCP tool implementations
+│   │   └── Utilities/             # Shared validation helpers (ToolInputValidator)
 │   ├── RefactorCsharpMCP.Core/          # Roslyn refactoring logic
 │   │   ├── Refactorings/          # Individual refactoring implementations
 │   │   └── Analysis/              # Code analysis utilities
@@ -497,7 +498,7 @@ Replaces all uses of a local variable with its initialization expression, then r
 ```
 
 #### Extract Class
-Extracts fields and methods into a new class with automatic reference updating within the same class. **Includes optional compilation validation with framework-specific BCL references (enabled by default).**
+Extracts fields and methods into a new class with automatic reference updating within the same class. **Includes optional compilation validation with framework-specific BCL references (disabled by default, can be enabled explicitly).**
 
 ```bash
 # Parameters:
@@ -508,7 +509,7 @@ Extracts fields and methods into a new class with automatic reference updating w
 - methodNames: Comma or semicolon-separated method names to extract (optional)
 - nestedTypeNames: Comma or semicolon-separated nested type names to extract (optional)
 - targetFramework: Target .NET framework for validation (default: "net8.0")
-- validateCompilation: Enable compilation validation (default: true)
+- validateCompilation: Enable compilation validation (default: false)
 
 # Features:
 - Automatic reference updating for same-class references (field accesses, method calls)
@@ -517,8 +518,8 @@ Extracts fields and methods into a new class with automatic reference updating w
 - Composition pattern with readonly field and instantiation
 - External reference warnings for manual updates
 - Handles qualified member access (this._field)
-- Compilation validation with framework-specific BCL references (enabled by default)
-- Framework-aware validation ensures extracted code compiles successfully
+- Compilation validation with framework-specific BCL references (disabled by default)
+- Framework-aware validation ensures extracted code compiles successfully when enabled
 ```
 
 **Automatic transformations:**

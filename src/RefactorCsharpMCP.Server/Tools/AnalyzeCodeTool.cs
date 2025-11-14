@@ -3,6 +3,7 @@ using System.ComponentModel;
 using ModelContextProtocol.Server;
 using RefactorCsharpMCP.Core.Diagnostics;
 using Microsoft.CodeAnalysis;
+using RefactorCsharpMCP.Core.Validation;
 
 namespace RefactorCsharpMCP.Server.Tools;
 
@@ -37,35 +38,14 @@ public class AnalyzeCodeTool
         [Description("The target .NET framework (e.g., 'net8.0', 'net48', 'netstandard2.0')")] string targetFramework,
         [Description("Minimum severity level to report: 'Error', 'Warning', 'Info', 'Hidden' (default: 'Warning')")] string? minSeverity = null)
     {
-        // Input validation
-        if (string.IsNullOrWhiteSpace(sourceCode))
-        {
-            return new
-            {
-                success = false,
-                error = "Source code cannot be empty",
-                message = "Analysis failed: Source code cannot be empty"
-            };
-        }
+        // Input validation using shared validator
+        var validation = ToolInputValidator.ValidateSourceCode(sourceCode, "Analysis")
+                         ?? ToolInputValidator.ValidateSourceCodeSize(sourceCode, "Analysis")
+                         ?? ToolInputValidator.ValidateTargetFramework(targetFramework, "Analysis");
 
-        if (sourceCode.Length > McpToolConstants.MAX_SOURCE_CODE_SIZE)
+        if (validation != null)
         {
-            return new
-            {
-                success = false,
-                error = "Source code exceeds 1MB limit",
-                message = "Analysis failed: Source code exceeds 1MB limit"
-            };
-        }
-
-        if (string.IsNullOrWhiteSpace(targetFramework))
-        {
-            return new
-            {
-                success = false,
-                error = "Target framework cannot be empty",
-                message = "Analysis failed: Target framework cannot be empty"
-            };
+            return validation;
         }
 
         // Parse severity level
