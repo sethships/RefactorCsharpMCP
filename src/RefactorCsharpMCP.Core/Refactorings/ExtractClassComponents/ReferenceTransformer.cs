@@ -125,10 +125,12 @@ internal class ReferenceTransformer : CSharpSyntaxRewriter
         if (node.Expression is IdentifierNameSyntax identifier && IsLocationInReferenceSpans(identifier))
         {
             // Transform: MethodName(args) → _newClassField.MethodName(args)
+            // Strip leading trivia from identifier to prevent comment duplication between _field. and MethodName
+            var identifierWithoutLeadingTrivia = identifier.WithoutLeadingTrivia();
             var memberAccess = SyntaxFactory.MemberAccessExpression(
                 SyntaxKind.SimpleMemberAccessExpression,
                 SyntaxFactory.IdentifierName(_newClassFieldName),
-                identifier);
+                identifierWithoutLeadingTrivia);
 
             return node.WithExpression(memberAccess).WithTriviaFrom(node);
         }
@@ -163,10 +165,12 @@ internal class ReferenceTransformer : CSharpSyntaxRewriter
                 SymbolEqualityComparer.Default.Equals(containingType, _sourceClassSymbol))
             {
                 // Transform: MethodName(args) → _newClassField.MethodName(args)
+                // Strip leading trivia from identifier to prevent comment duplication between _field. and MethodName
+                var identifierWithoutLeadingTrivia = identifier2.WithoutLeadingTrivia();
                 var memberAccess = SyntaxFactory.MemberAccessExpression(
                     SyntaxKind.SimpleMemberAccessExpression,
                     SyntaxFactory.IdentifierName(_newClassFieldName),
-                    identifier2);
+                    identifierWithoutLeadingTrivia);
 
                 return node.WithExpression(memberAccess).WithTriviaFrom(node);
             }

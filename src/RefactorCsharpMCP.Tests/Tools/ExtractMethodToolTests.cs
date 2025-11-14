@@ -68,6 +68,6 @@ public class ExtractMethodToolTests
         var dict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json);
 
         dict!["success"].GetBoolean().Should().BeFalse();
-        dict["error"].GetString().Should().Contain("Invalid line range");
+        dict["error"].GetString().Should().Contain("Start line must be less than or equal to end line");
     }
 }

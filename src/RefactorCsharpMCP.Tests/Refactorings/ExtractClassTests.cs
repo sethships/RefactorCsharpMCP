@@ -2134,8 +2134,9 @@ public class ApiController
         result.RefactoredCode.Should().Contain("private readonly HelperClass _helperClass = new HelperClass();");
 
         // Should contain extracted method in new class
+        // Note: InternalCompositionStrategy transforms all extracted methods to internal visibility
         result.RefactoredCode.Should().Contain("internal class HelperClass");
-        result.RefactoredCode.Should().Contain("public void UnusedHelper(string input)");
+        result.RefactoredCode.Should().Contain("internal void UnusedHelper(string input)");
 
         // Message should indicate 0 references were found
         result.Message.Should().Contain("Extracted 1 method(s)");
