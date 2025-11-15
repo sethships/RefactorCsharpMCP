@@ -2,6 +2,356 @@
 
 This document provides practical examples of using RefactorCsharpMCP's refactoring capabilities.
 
+**Framework Version Awareness (v1.0+)**: All refactorings require the `targetFramework` parameter to ensure generated code is compatible with your .NET version. See [FRAMEWORK-SUPPORT.md](docs/FRAMEWORK-SUPPORT.md) for comprehensive framework documentation.
+
+## Table of Contents
+
+1. [Framework-Aware Refactoring](#framework-aware-refactoring)
+2. [Extract Method](#extract-method)
+3. [Constructor Injection](#constructor-injection)
+4. [Inline Variable](#inline-variable)
+5. [Extract Class](#4-extract-class)
+6. [Inline Method](#inline-method-part-1)
+7. [Framework Validation](#framework-aware-validation)
+8. [Framework Limitations](#framework-limitations-and-workarounds)
+9. [Diagnostic Integration](#diagnostic-integration-v15)
+
+---
+
+## Framework-Aware Refactoring
+
+Starting with v1.0, all refactorings are framework-aware, ensuring generated code matches your target .NET framework's C# language version. This section demonstrates how refactorings adapt to different frameworks.
+
+### Quick Reference: Framework → C# Version Mapping
+
+| Framework | C# Version | Key Features |
+|-----------|-----------|--------------|
+| net9.0 | C# 13 | Latest features |
+| net8.0 | C# 12 | Collection expressions, primary constructors |
+| net48 | C# 7.3 | Tuples, pattern matching |
+| netstandard2.0 | C# 7.3 | Same as net48 |
+| net35 | C# 3.0 | LINQ, lambdas |
+
+**See:** [docs/FRAMEWORK-SUPPORT.md](docs/FRAMEWORK-SUPPORT.md) for complete framework support documentation.
+
+### Example 1: Extract Method - Framework Differences
+
+Same refactoring produces different code based on target framework:
+
+**Input Code:**
+```csharp
+public class DataProcessor
+{
+    public void Process()
+    {
+        var name = GetName();
+        var age = GetAge();
+        var email = GetEmail();
+        SaveUser(name, age, email);
+    }
+}
+```
+
+**Targeting .NET 8 (C# 12) - Tuple Returns:**
+```csharp
+var refactoring = new ExtractMethod();
+var result = await refactoring.ExecuteAsync(
+    sourceCode,
+    startLine: 3,
+    endLine: 5,
+    newMethodName: "GatherUserData",
+    targetFramework: "net8.0"  // C# 12 supported
+);
+
+// Generated code uses tuples:
+public class DataProcessor
+{
+    public void Process()
+    {
+        var (name, age, email) = GatherUserData();
+        SaveUser(name, age, email);
+    }
+
+    private (string name, int age, string email) GatherUserData()
+    {
+        var name = GetName();
+        var age = GetAge();
+        var email = GetEmail();
+        return (name, age, email);  // Tuple return
+    }
+}
+```
+
+**Targeting .NET Framework 3.5 (C# 3.0) - No Tuples:**
+```csharp
+var result = await refactoring.ExecuteAsync(
+    sourceCode,
+    startLine: 3,
+    endLine: 5,
+    newMethodName: "GatherUserData",
+    targetFramework: "net35"  // C# 3.0 only
+);
+
+// Fails with error:
+{
+  "success": false,
+  "errorCode": "UNSUPPORTED_LANGUAGE_FEATURE",
+  "error": "Multiple return values require tuples (C# 7.0+). Target framework net35 uses C# 3.0.",
+  "suggestion": "Extract single return value OR create custom return type OR upgrade to net472+"
+}
+```
+
+**Workaround for .NET Framework 3.5:**
+```csharp
+// Extract each variable separately (3 separate extractions):
+private string GatherName() { return GetName(); }
+private int GatherAge() { return GetAge(); }
+private string GatherEmail() { return GetEmail(); }
+
+// Or manually create a return type:
+public class UserData
+{
+    public string Name { get; set; }
+    public int Age { get; set; }
+    public string Email { get; set; }
+}
+```
+
+### Example 2: Constructor Injection - Property Styles
+
+**Input Code:**
+```csharp
+public class UserService
+{
+    public void CreateUser(ILogger logger, string username)
+    {
+        logger.Log("Creating: " + username);
+    }
+}
+```
+
+**Targeting .NET 8 (C# 12) - Read-Only Auto-Properties:**
+```csharp
+var refactoring = new ConstructorInjection();
+var result = await refactoring.ExecuteAsync(
+    sourceCode,
+    className: "UserService",
+    methodName: "CreateUser",
+    parameterNames: new[] { "logger" },
+    targetFramework: "net8.0",
+    useProperties: true  // Use properties instead of fields
+);
+
+// Generated code with C# 6+ syntax:
+public class UserService
+{
+    public ILogger Logger { get; }  // Read-only auto-property (C# 6)
+
+    public UserService(ILogger logger)
+    {
+        Logger = logger;
+    }
+
+    public void CreateUser(string username)
+    {
+        Logger.Log("Creating: " + username);
+    }
+}
+```
+
+**Targeting .NET Framework 3.5 (C# 3.0) - Explicit Properties:**
+```csharp
+var result = await refactoring.ExecuteAsync(
+    sourceCode,
+    className: "UserService",
+    methodName: "CreateUser",
+    parameterNames: new[] { "logger" },
+    targetFramework: "net35",
+    useProperties: true
+);
+
+// Generated code with C# 3.0 syntax:
+public class UserService
+{
+    private readonly ILogger _logger;
+
+    public ILogger Logger  // C# 3.0 property with explicit getter
+    {
+        get { return _logger; }
+    }
+
+    public UserService(ILogger logger)
+    {
+        _logger = logger;
+    }
+
+    public void CreateUser(string username)
+    {
+        Logger.Log("Creating: " + username);
+    }
+}
+```
+
+### Example 3: Inline Variable - Collection Expressions
+
+**Input Code (C# 12):**
+```csharp
+public class Calculator
+{
+    public void Process()
+    {
+        var numbers = [1, 2, 3];  // Collection expression (C# 12)
+        var sum = numbers.Sum();
+    }
+}
+```
+
+**Targeting .NET 8 (C# 12) - Preserves Collection Expression:**
+```csharp
+var refactoring = new InlineVariable();
+var result = await refactoring.ExecuteAsync(
+    sourceCode,
+    lineNumber: 3,
+    columnNumber: 13,
+    targetFramework: "net8.0"  // C# 12 supported
+);
+
+// Success - collection expression preserved:
+public class Calculator
+{
+    public void Process()
+    {
+        var sum = [1, 2, 3].Sum();  // Inlined with collection expression
+    }
+}
+```
+
+**Targeting .NET Framework 4.8 (C# 7.3) - Input Validation Error:**
+```csharp
+var result = await refactoring.ExecuteAsync(
+    sourceCode,
+    lineNumber: 3,
+    columnNumber: 13,
+    targetFramework: "net48"  // C# 7.3 only
+);
+
+// Fails validation:
+{
+  "success": false,
+  "errorCode": "INPUT_SYNTAX_MISMATCH",
+  "error": "Input code contains C# 12 collection expressions, incompatible with net48 (C# 7.3).",
+  "suggestion": "Rewrite input code using C# 7.3 syntax or target net8.0+"
+}
+```
+
+**Solution - Rewrite Input for C# 7.3:**
+```csharp
+// Change input code to C# 7.3 compatible syntax:
+public class Calculator
+{
+    public void Process()
+    {
+        var numbers = new[] { 1, 2, 3 };  // Array initializer (C# 3.0+)
+        var sum = numbers.Sum();
+    }
+}
+
+// Now refactoring succeeds on net48:
+var result = await refactoring.ExecuteAsync(
+    sourceCode,
+    lineNumber: 3,
+    columnNumber: 13,
+    targetFramework: "net48"
+);
+
+// Refactored code:
+public class Calculator
+{
+    public void Process()
+    {
+        var sum = new[] { 1, 2, 3 }.Sum();  // Inlined with array initializer
+    }
+}
+```
+
+### Example 4: Make Field Readonly - Universal Across Frameworks
+
+Some refactorings work identically across all frameworks:
+
+```csharp
+public class Service
+{
+    private ILogger _logger;
+
+    public Service(ILogger logger)
+    {
+        _logger = logger;
+    }
+}
+
+// Works the same on ALL frameworks:
+var refactoring = new MakeFieldReadonly();
+
+// .NET 9
+var result9 = await refactoring.ExecuteAsync(sourceCode, "Service", "_logger", "net9.0");
+
+// .NET 8
+var result8 = await refactoring.ExecuteAsync(sourceCode, "Service", "_logger", "net8.0");
+
+// .NET Framework 4.8
+var result48 = await refactoring.ExecuteAsync(sourceCode, "Service", "_logger", "net48");
+
+// .NET Framework 3.5
+var result35 = await refactoring.ExecuteAsync(sourceCode, "Service", "_logger", "net35");
+
+// ALL produce identical output:
+// private readonly ILogger _logger;
+```
+
+**Why?** The `readonly` keyword has been available since C# 1.0, so this refactoring is framework-independent.
+
+### Best Practices for Framework-Aware Refactoring
+
+1. **Match Your Project's TFM**: Always use the same `targetFramework` as your `.csproj` file:
+   ```xml
+   <TargetFramework>net8.0</TargetFramework>  <!-- Use "net8.0" -->
+   ```
+
+2. **Handle Validation Errors**: Check `result.IsSuccess` before using refactored code:
+   ```csharp
+   if (result.IsSuccess)
+   {
+       File.WriteAllText("output.cs", result.RefactoredCode);
+   }
+   else
+   {
+       Console.WriteLine($"Error: {result.ErrorMessage}");
+       Console.WriteLine($"Suggestion: {result.SuggestedAction}");
+   }
+   ```
+
+3. **Use Modern Frameworks When Possible**: .NET 8+ have the best refactoring support and reliability.
+
+4. **Test Framework-Specific Behavior**: Run tests after refactoring to ensure compatibility with your target framework.
+
+5. **Read Documentation**: See [FRAMEWORK-SUPPORT.md](docs/FRAMEWORK-SUPPORT.md) for:
+   - Complete list of supported frameworks
+   - Framework-specific limitations
+   - Troubleshooting guide
+   - Migration strategies
+
+### Framework-Specific Limitations
+
+**⚠️ .NET Framework 4.8 (Issue #75):**
+Refactorings may fail due to reference assembly limitations. **Workaround:** Use `net8.0` for refactoring, then manually verify compatibility.
+
+**⚠️ IDE Analyzer Limitations (Issue #72):**
+`remove_unused_usings` may not detect all unused directives. **Workaround:** Use IDE-based tools for comprehensive using cleanup.
+
+**See:** [Framework Limitations section](#framework-limitations-and-workarounds) for detailed examples and workarounds.
+
+---
+
 ## Extract Method
 
 ### Example 1: Basic Code Extraction
