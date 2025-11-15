@@ -1346,13 +1346,237 @@ public class Service
         result.IsSuccess.Should().BeTrue();
         result.RefactoredCode.Should().Contain("internal class Configuration");
         result.RefactoredCode.Should().Contain("internal class Config");
-        // Issue #120: Field preserved with unqualified type (TODO: qualify in future version)
-        // Field type reference preserved (not extracted): private Config _config
-        result.RefactoredCode.Should().Contain("private Config _config");
+        // Issue #124: Field type is now qualified with new class name (Transform Planning Pattern)
+        // Field type reference qualified: private Configuration.Config _config
+        result.RefactoredCode.Should().Contain("private Configuration.Config _config");
         result.RefactoredCode.Should().NotContain("private _configuration.Config");
         // Object creation DOES use qualified name: new Configuration.Config()
         result.RefactoredCode.Should().Contain("new Configuration.Config()");
         result.RefactoredCode.Should().NotContain("new _configuration.Config()");
+    }
+
+    #endregion
+
+    #region Transform Planning Pattern Tests (Issue #124)
+
+    [Fact]
+    public void ExtractClass_WithNestedTypeInLocalVariable_QualifiesType()
+    {
+        // Arrange
+        var sourceCode = @"public class Container
+{
+    public class Config
+    {
+        public string Value { get; set; }
+    }
+
+    public void ProcessData()
+    {
+        Config localConfig = new Config();
+        localConfig.Value = ""test"";
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "Container", "ConfigManager", null, null, "Config");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("ConfigManager.Config localConfig");
+        result.RefactoredCode.Should().Contain("new ConfigManager.Config()");
+    }
+
+    [Fact]
+    public void ExtractClass_WithNestedTypeAsReturnType_QualifiesType()
+    {
+        // Arrange
+        var sourceCode = @"public class Container
+{
+    public class Result
+    {
+        public bool Success { get; set; }
+    }
+
+    public Result GetResult()
+    {
+        return new Result { Success = true };
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "Container", "ResultProvider", null, "GetResult", "Result");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("internal class ResultProvider");
+        // Return type in extracted method doesn't need qualification (same class)
+        result.RefactoredCode.Should().Contain("internal Result GetResult()");
+    }
+
+    [Fact]
+    public void ExtractClass_WithNestedTypeAsParameter_QualifiesType()
+    {
+        // Arrange
+        var sourceCode = @"public class Container
+{
+    public enum Status
+    {
+        Active,
+        Inactive
+    }
+
+    public void UpdateStatus(Status newStatus)
+    {
+        // Update logic
+    }
+
+    public void ProcessItem()
+    {
+        UpdateStatus(Status.Active);
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "Container", "StatusManager", null, "UpdateStatus", "Status");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("internal class StatusManager");
+        // Parameter type in extracted method doesn't need qualification (same class)
+        result.RefactoredCode.Should().Contain("internal void UpdateStatus(Status newStatus)");
+    }
+
+    [Fact]
+    public void ExtractClass_WithMultipleFieldsUsingNestedTypes_QualifiesAll()
+    {
+        // Arrange
+        var sourceCode = @"public class Container
+{
+    public class ConfigA
+    {
+        public string ValueA { get; set; }
+    }
+
+    public class ConfigB
+    {
+        public string ValueB { get; set; }
+    }
+
+    private ConfigA _configA;
+    private ConfigB _configB;
+
+    public void Initialize()
+    {
+        _configA = new ConfigA();
+        _configB = new ConfigB();
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "Container", "ConfigStore", null, null, "ConfigA;ConfigB");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        // Both field types should be qualified
+        result.RefactoredCode.Should().Contain("private ConfigStore.ConfigA _configA");
+        result.RefactoredCode.Should().Contain("private ConfigStore.ConfigB _configB");
+        // Object creations should be qualified
+        result.RefactoredCode.Should().Contain("new ConfigStore.ConfigA()");
+        result.RefactoredCode.Should().Contain("new ConfigStore.ConfigB()");
+    }
+
+    [Fact]
+    public void ExtractClass_WithNestedTypeAsPropertyType_QualifiesType()
+    {
+        // Arrange
+        var sourceCode = @"public class Container
+{
+    public class Settings
+    {
+        public int Timeout { get; set; }
+    }
+
+    public Settings CurrentSettings { get; set; }
+
+    public void ApplyDefaults()
+    {
+        CurrentSettings = new Settings { Timeout = 30 };
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "Container", "SettingsProvider", null, null, "Settings");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        // Property type should be qualified
+        result.RefactoredCode.Should().Contain("public SettingsProvider.Settings CurrentSettings");
+        result.RefactoredCode.Should().Contain("new SettingsProvider.Settings");
+    }
+
+    [Fact]
+    public void ExtractClass_WithNestedRecord_QualifiesTypeCorrectly()
+    {
+        // Arrange
+        var sourceCode = @"public class Container
+{
+    public record DataRecord(string Name, int Value);
+
+    private DataRecord _data;
+
+    public void SetData(string name, int value)
+    {
+        _data = new DataRecord(name, value);
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "Container", "DataStore", null, null, "DataRecord");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        // Record type in field declaration should be qualified
+        result.RefactoredCode.Should().Contain("private DataStore.DataRecord _data");
+        // Record instantiation should be qualified
+        result.RefactoredCode.Should().Contain("new DataStore.DataRecord");
+    }
+
+    [Fact]
+    public void ExtractClass_WithNestedStruct_QualifiesTypeCorrectly()
+    {
+        // Arrange
+        var sourceCode = @"public class Container
+{
+    public struct Point
+    {
+        public int X { get; set; }
+        public int Y { get; set; }
+    }
+
+    private Point _origin;
+
+    public void Initialize()
+    {
+        _origin = new Point { X = 0, Y = 0 };
+    }
+}";
+        var refactoring = new ExtractClass();
+
+        // Act
+        var result = refactoring.Execute(sourceCode, "Container", "Geometry", null, null, "Point");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        // Struct type in field declaration should be qualified
+        result.RefactoredCode.Should().Contain("private Geometry.Point _origin");
+        // Struct instantiation should be qualified
+        result.RefactoredCode.Should().Contain("new Geometry.Point");
     }
 
     #endregion

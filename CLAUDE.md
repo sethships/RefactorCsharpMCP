@@ -15,7 +15,7 @@ The project is organized into three main components:
 - **RefactorCsharpMCP.Server**: MCP server with stdio transport, implements MCP tools for refactoring operations
   - **Utilities**: Shared validation helpers (`ToolInputValidator`) consolidating input validation across all 11 MCP tools (Sprint 5, Issue #92)
 - **RefactorCsharpMCP.Core**: Core refactoring logic using Roslyn, analysis utilities, and refactoring algorithms
-- **RefactorCsharpMCP.Tests**: Comprehensive test suite with 1056 tests covering unit, component, and integration testing (1032 passing, 97.7%)
+- **RefactorCsharpMCP.Tests**: Comprehensive test suite with 1063 tests covering unit, component, and integration testing (1045 passing, 98.3%)
 
 ### Shared Refactoring Infrastructure
 
@@ -113,8 +113,27 @@ The **ExtractClass** refactoring implements a clean facade pattern (Issue #91), 
 **Key Design Decision (Issue #118):**
 The syntax-based fallback in ReferenceUpdater addresses scenarios where semantic analysis fails (missing type references, unresolved dependencies). This dual-strategy approach ensures ExtractClass works reliably on incomplete codebases during incremental refactoring.
 
+**Transform Planning Pattern (Issues #120, #124):**
+Solves the Roslyn Identity Paradox for nested type qualification by separating semantic analysis from tree transformation:
+
+- **TransformationPlan**: Data structure capturing type qualification metadata (field types, local variables, properties) using TextSpan-based location tracking
+- **AnalyzeTypeQualifications**: Analysis phase that uses SemanticModel on the ORIGINAL unmodified syntax tree to identify all type references needing qualification
+- **TypeQualificationTransformer**: Location-based transformer applying qualifications without requiring SemanticModel, allowing it to work on modified trees
+
+**Three-Phase Pipeline:**
+1. **PHASE 1 (Analysis)**: Analyze original tree with SemanticModel to collect transformation metadata keyed by TextSpan
+2. **PHASE 2 (Transform References)**: Update member references to route through composition field
+3. **PHASE 3 (Transform Types)**: Apply type qualifications using location-based matching (no SemanticModel conflicts)
+
+**Current Support:**
+- ✅ Field declarations: `Config _config` → `Configuration.Config _config`
+- ✅ Local variable declarations: `Config local` → `Configuration.Config local`
+- ✅ Property declarations: `Config Settings` → `Configuration.Config Settings`
+- ✅ All nested type kinds: classes, records, structs, enums, interfaces
+
 **Known Limitations:**
-- **Nested Type Extraction** (Issue #120): Type reference transformation is not fully implemented. When extracting nested types (classes, records, structs, enums, interfaces), type references in field declarations, return types, and qualified names are not automatically updated. The syntax-based fallback intentionally excludes `INamedTypeSymbol` to prevent incorrect transformations. See Issue #120 for planned enhancements.
+- **Return types and parameter types**: Not yet qualified when they remain in the extracted method (by design - no qualification needed in same class)
+- **Generic type arguments**: Planned for future enhancement
 - **Local Variable Name Collisions**: Syntax-based fallback includes filtering to skip local variable declarations, preventing false positives when local variables have the same name as extracted members.
 
 **Performance Characteristics:**
@@ -154,8 +173,8 @@ dotnet test
 dotnet test --collect:"XPlat Code Coverage"
 
 # Current test coverage: ~87% lines, ~83% branches (estimated)
-# Total: 1054 tests (1031 passing, 18 skipped, 5 known issues)
-# ExtractClass: 57 tests (53 passing, 4 nested type issues)
+# Total: 1063 tests (1045 passing, 18 skipped, 0 failures)
+# ExtractClass: 83 tests (all passing, including 7 new Transform Planning Pattern tests)
 # Includes 39 InlineMethod tests (38 passing, 1 skipped for net48)
 ```
 
