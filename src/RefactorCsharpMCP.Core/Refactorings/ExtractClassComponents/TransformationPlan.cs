@@ -80,6 +80,11 @@ internal class TypeQualificationInfo
     public bool IsLocalVariable { get; set; }
 
     /// <summary>
+    /// Whether this is a property type.
+    /// </summary>
+    public bool IsPropertyType { get; set; }
+
+    /// <summary>
     /// Whether this is a return type.
     /// </summary>
     public bool IsReturnType { get; set; }

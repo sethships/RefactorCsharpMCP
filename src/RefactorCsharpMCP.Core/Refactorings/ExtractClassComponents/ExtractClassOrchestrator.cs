@@ -286,7 +286,7 @@ internal class ExtractClassOrchestrator
                         Location = typeId.Span,
                         OriginalTypeName = typeId.Identifier.Text,
                         NewClassName = newClassName,
-                        IsReturnType = false // Using existing field for now; could add IsPropertyType in future
+                        IsPropertyType = true
                     };
                 }
             }
