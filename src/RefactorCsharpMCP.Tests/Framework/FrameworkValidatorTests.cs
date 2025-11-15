@@ -123,7 +123,7 @@ public class FrameworkValidatorTests
 
     #endregion
 
-    #region IsSupportedFramework Tests
+    #region IsSupported Tests
 
     [Theory]
     [InlineData("net8.0", true)]
@@ -131,10 +131,10 @@ public class FrameworkValidatorTests
     [InlineData("net6.0", false)]
     [InlineData("invalid", false)]
     [InlineData(null, false)]
-    public void IsSupportedFramework_ReturnsCorrectResult(string? tfm, bool expected)
+    public void IsSupported_ReturnsCorrectResult(string? tfm, bool expected)
     {
         // Act
-        var result = _validator.IsSupportedFramework(tfm);
+        var result = _validator.IsSupported(tfm);
 
         // Assert
         Assert.Equal(expected, result);
@@ -142,7 +142,7 @@ public class FrameworkValidatorTests
 
     #endregion
 
-    #region IsEOLFramework Tests
+    #region IsEOL Tests
 
     [Theory]
     [InlineData("net6.0", true)]
@@ -150,10 +150,10 @@ public class FrameworkValidatorTests
     [InlineData("net8.0", false)]
     [InlineData("invalid", false)]
     [InlineData(null, false)]
-    public void IsEOLFramework_ReturnsCorrectResult(string? tfm, bool expected)
+    public void IsEOL_ReturnsCorrectResult(string? tfm, bool expected)
     {
         // Act
-        var result = _validator.IsEOLFramework(tfm);
+        var result = _validator.IsEOL(tfm);
 
         // Assert
         Assert.Equal(expected, result);

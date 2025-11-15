@@ -64,7 +64,7 @@ public class FrameworkValidator
     /// </summary>
     /// <param name="targetFramework">The TFM to check</param>
     /// <returns>True if supported, false otherwise</returns>
-    public bool IsSupportedFramework(string? targetFramework)
+    public bool IsSupported(string? targetFramework)
     {
         if (string.IsNullOrWhiteSpace(targetFramework))
             return false;
@@ -78,7 +78,7 @@ public class FrameworkValidator
     /// </summary>
     /// <param name="targetFramework">The TFM to check</param>
     /// <returns>True if EOL, false otherwise</returns>
-    public bool IsEOLFramework(string? targetFramework)
+    public bool IsEOL(string? targetFramework)
     {
         if (string.IsNullOrWhiteSpace(targetFramework))
             return false;

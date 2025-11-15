@@ -320,8 +320,8 @@ See [SDD Section 7](SDD-Framework-Version-Awareness.md#7-error-handling) for imp
 **Public Interface:**
 ```
 Validate(targetFramework) → ValidationResult
-IsSupportedFramework(targetFramework) → boolean
-IsEOLFramework(targetFramework) → boolean
+IsSupported(targetFramework) → boolean
+IsEOL(targetFramework) → boolean
 GetSuggestedFramework(eolFramework) → string
 NormalizeMoniker(targetFramework) → string
 ```
