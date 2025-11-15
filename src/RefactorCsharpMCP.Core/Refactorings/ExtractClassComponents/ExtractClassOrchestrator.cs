@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
 using RefactorCsharpMCP.Core.Refactorings.ExtractClassComponents.Strategies;
 using RefactorCsharpMCP.Core.Utilities;
 using RefactorCsharpMCP.Core.Validation;
@@ -101,6 +102,15 @@ internal class ExtractClassOrchestrator
         // Create a field name for the new class instance
         var newClassFieldName = $"_{char.ToLower(newClassName[0])}{newClassName.Substring(1)}";
 
+        // ===== PHASE 1: ANALYSIS (Transform Planning Pattern) =====
+        // Analyze the ORIGINAL tree to collect all transformation metadata
+        // This uses SemanticModel on the unmodified tree, avoiding identity issues
+        var typeQualifications = AnalyzeTypeQualifications(
+            semanticModel,
+            extractedSymbols,
+            classDeclaration,
+            newClassName);
+
         // Find and categorize references BEFORE modifying the tree
         var (sameClassReferences, externalReferences) = _referenceUpdater.FindAndCategorizeReferences(
             extractedSymbols,
@@ -109,6 +119,7 @@ internal class ExtractClassOrchestrator
             root,
             classDeclaration);
 
+        // ===== PHASE 2: TRANSFORM MEMBER REFERENCES =====
         // Update references to use the new class field BEFORE any tree mutations
         // This preserves SyntaxTree identity for semantic analysis
         root = _referenceUpdater.UpdateSameClassReferences(
@@ -119,6 +130,15 @@ internal class ExtractClassOrchestrator
             newClassName,
             semanticModel,
             sourceClassSymbol);
+
+        // ===== PHASE 3: TRANSFORM TYPE QUALIFICATIONS =====
+        // Apply type qualifications using location-based matching (no SemanticModel needed)
+        // This solves Issue #124 by qualifying field types without node identity conflicts
+        if (typeQualifications.Any())
+        {
+            var typeTransformer = new TypeQualificationTransformer(typeQualifications);
+            root = (CompilationUnitSyntax)typeTransformer.Visit(root);
+        }
 
         // NOW find the updated class in the modified root
         classDeclaration = FindClass(root, className)!;
@@ -185,6 +205,97 @@ internal class ExtractClassOrchestrator
         return RefactoringResult.Success(
             newRoot.ToFullString(),
             resultMessage);
+    }
+
+    /// <summary>
+    /// Analyzes the source tree to identify type qualifications needed for extracted nested types.
+    /// Uses semantic analysis on the ORIGINAL tree before any modifications.
+    /// </summary>
+    /// <param name="semanticModel">Semantic model bound to the original syntax tree.</param>
+    /// <param name="extractedSymbols">Symbols being extracted to the new class.</param>
+    /// <param name="sourceClass">The source class containing the types.</param>
+    /// <param name="newClassName">Name of the new class for qualification.</param>
+    /// <returns>Dictionary mapping type identifier locations to qualification metadata.</returns>
+    private Dictionary<TextSpan, TypeQualificationInfo> AnalyzeTypeQualifications(
+        SemanticModel semanticModel,
+        List<ISymbol> extractedSymbols,
+        ClassDeclarationSyntax sourceClass,
+        string newClassName)
+    {
+        var qualifications = new Dictionary<TextSpan, TypeQualificationInfo>();
+
+        // Get extracted type symbols (nested types only)
+        var extractedTypeSymbols = extractedSymbols
+            .OfType<INamedTypeSymbol>()
+            .ToHashSet(SymbolEqualityComparer.Default);
+
+        if (!extractedTypeSymbols.Any())
+            return qualifications; // No nested types extracted
+
+        // Analyze field declarations
+        foreach (var fieldDecl in sourceClass.DescendantNodes().OfType<FieldDeclarationSyntax>())
+        {
+            if (fieldDecl.Declaration?.Type is IdentifierNameSyntax typeId)
+            {
+                var symbolInfo = semanticModel.GetSymbolInfo(typeId);
+                if (symbolInfo.Symbol is INamedTypeSymbol typeSymbol &&
+                    extractedTypeSymbols.Contains(typeSymbol))
+                {
+                    qualifications[typeId.Span] = new TypeQualificationInfo
+                    {
+                        Location = typeId.Span,
+                        OriginalTypeName = typeId.Identifier.Text,
+                        NewClassName = newClassName,
+                        IsFieldDeclaration = true
+                    };
+                }
+            }
+        }
+
+        // Analyze local variable declarations
+        foreach (var localDecl in sourceClass.DescendantNodes().OfType<LocalDeclarationStatementSyntax>())
+        {
+            if (localDecl.Declaration?.Type is IdentifierNameSyntax typeId)
+            {
+                var symbolInfo = semanticModel.GetSymbolInfo(typeId);
+                if (symbolInfo.Symbol is INamedTypeSymbol typeSymbol &&
+                    extractedTypeSymbols.Contains(typeSymbol))
+                {
+                    qualifications[typeId.Span] = new TypeQualificationInfo
+                    {
+                        Location = typeId.Span,
+                        OriginalTypeName = typeId.Identifier.Text,
+                        NewClassName = newClassName,
+                        IsLocalVariable = true
+                    };
+                }
+            }
+        }
+
+        // Analyze property declarations
+        foreach (var propertyDecl in sourceClass.DescendantNodes().OfType<PropertyDeclarationSyntax>())
+        {
+            if (propertyDecl.Type is IdentifierNameSyntax typeId)
+            {
+                var symbolInfo = semanticModel.GetSymbolInfo(typeId);
+                if (symbolInfo.Symbol is INamedTypeSymbol typeSymbol &&
+                    extractedTypeSymbols.Contains(typeSymbol))
+                {
+                    qualifications[typeId.Span] = new TypeQualificationInfo
+                    {
+                        Location = typeId.Span,
+                        OriginalTypeName = typeId.Identifier.Text,
+                        NewClassName = newClassName,
+                        IsPropertyType = true
+                    };
+                }
+            }
+        }
+
+        // TODO: Add support for return types, parameter types, generic type arguments, etc.
+        // Currently supports: field declarations, local variable declarations, property declarations.
+
+        return qualifications;
     }
 
     /// <summary>
