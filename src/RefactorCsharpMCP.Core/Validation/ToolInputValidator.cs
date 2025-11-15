@@ -16,6 +16,11 @@ namespace RefactorCsharpMCP.Core.Validation;
 public static class ToolInputValidator
 {
     /// <summary>
+    /// Shared FrameworkValidator instance for efficient validation.
+    /// Avoids creating new instances on each validation call.
+    /// </summary>
+    private static readonly FrameworkValidator Validator = new();
+    /// <summary>
     /// Validates that source code is not null or whitespace.
     /// </summary>
     /// <param name="sourceCode">The source code to validate.</param>
@@ -135,7 +140,9 @@ public static class ToolInputValidator
         }
 
         // Validate using FrameworkValidator for format, support, and EOL checks
-        var validationResult = new FrameworkValidator().Validate(targetFramework);
+        // See docs/FRAMEWORK-SUPPORT.md for complete framework compatibility information
+        // See Issue #75 for .NET Framework 4.x reference assembly limitations
+        var validationResult = Validator.Validate(targetFramework);
         if (!validationResult.IsValid)
         {
             return ValidationResult.ToolInputError(
