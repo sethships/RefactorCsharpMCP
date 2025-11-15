@@ -59,7 +59,7 @@ public class ConstructorInjectionTool
 
         // Execute the refactoring
         var injector = new ConstructorInjection();
-        var result = injector.Execute(sourceCode, className, methodName, paramNames, useProperties);
+        var result = injector.Execute(sourceCode, className, methodName, paramNames, targetFramework: "net8.0", useProperties: useProperties);
 
         // Return result as an object that MCP can serialize
         if (result.IsSuccess)

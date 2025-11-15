@@ -27,7 +27,7 @@ public class MakeFieldReadonly : RefactoringBase
         // Skip framework validation - Execute method does its own syntax validation
         // and doesn't require full framework reference assemblies
         // TODO(Issue #75): Replace with ICompilationProvider abstraction
-        return await Task.Run(() => Execute(sourceCode, className, fieldName));
+        return await Task.Run(() => Execute(sourceCode, className, fieldName, targetFramework));
     }
 
     /// <summary>
@@ -36,8 +36,9 @@ public class MakeFieldReadonly : RefactoringBase
     /// <param name="sourceCode">The source code containing the field.</param>
     /// <param name="className">The name of the class containing the field.</param>
     /// <param name="fieldName">The name of the field to make readonly.</param>
+    /// <param name="targetFramework">The target .NET framework (e.g., "net8.0", "net48"). Currently unused but reserved for future framework-specific features.</param>
     /// <returns>A result containing the refactored code or error information.</returns>
-    public RefactoringResult Execute(string sourceCode, string className, string fieldName)
+    public RefactoringResult Execute(string sourceCode, string className, string fieldName, string targetFramework)
     {
         // Validate inputs
         var sourceValidation = ValidateNonEmpty(sourceCode, "Source code");

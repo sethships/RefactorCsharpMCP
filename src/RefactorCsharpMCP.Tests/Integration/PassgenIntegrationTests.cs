@@ -41,7 +41,7 @@ public class PassgenIntegrationTests
         var refactoring = new MakeFieldReadonly();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "PasswordGenerator", "_random");
+        var result = refactoring.Execute(sourceCode, "PasswordGenerator", "_random", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -161,7 +161,7 @@ public class PassgenIntegrationTests
         var refactoring = new SafeDelete();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "PasswordGenerator", "IsValidLength");
+        var result = refactoring.Execute(sourceCode, "PasswordGenerator", "IsValidLength", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -232,7 +232,7 @@ public class PassgenIntegrationTests
         var refactoring = new MakeFieldReadonly();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "PasswordGenerator", "_retryCount");
+        var result = refactoring.Execute(sourceCode, "PasswordGenerator", "_retryCount", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();

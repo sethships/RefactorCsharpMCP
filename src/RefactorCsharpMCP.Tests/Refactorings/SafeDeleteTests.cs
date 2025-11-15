@@ -31,7 +31,7 @@ public class SafeDeleteTests
         var refactoring = new SafeDelete();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "Service", "UnusedHelper");
+        var result = refactoring.Execute(sourceCode, "Service", "UnusedHelper", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -59,7 +59,7 @@ public class SafeDeleteTests
         var refactoring = new SafeDelete();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "Calculator", "Add");
+        var result = refactoring.Execute(sourceCode, "Calculator", "Add", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -86,7 +86,7 @@ public class SafeDeleteTests
         var refactoring = new SafeDelete();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "Service", "Initialize");
+        var result = refactoring.Execute(sourceCode, "Service", "Initialize", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -113,7 +113,7 @@ public class SafeDeleteTests
         var refactoring = new SafeDelete();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "MathHelper", "Fibonacci");
+        var result = refactoring.Execute(sourceCode, "MathHelper", "Fibonacci", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -127,7 +127,7 @@ public class SafeDeleteTests
         var refactoring = new SafeDelete();
 
         // Act
-        var result = refactoring.Execute("", "TestClass", "method");
+        var result = refactoring.Execute("", "TestClass", "method", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -142,7 +142,7 @@ public class SafeDeleteTests
         var refactoring = new SafeDelete();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "", "method");
+        var result = refactoring.Execute(sourceCode, "", "method", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -157,7 +157,7 @@ public class SafeDeleteTests
         var refactoring = new SafeDelete();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "Test", "");
+        var result = refactoring.Execute(sourceCode, "Test", "", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -175,7 +175,7 @@ public class SafeDeleteTests
         var refactoring = new SafeDelete();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "FakeClass", "Method");
+        var result = refactoring.Execute(sourceCode, "FakeClass", "Method", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -193,7 +193,7 @@ public class SafeDeleteTests
         var refactoring = new SafeDelete();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "TestClass", "FakeMethod");
+        var result = refactoring.Execute(sourceCode, "TestClass", "FakeMethod", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -226,7 +226,7 @@ public class SafeDeleteTests
         var refactoring = new SafeDelete();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "Processor", "Log");
+        var result = refactoring.Execute(sourceCode, "Processor", "Log", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -255,7 +255,7 @@ public class SafeDeleteTests
         var refactoring = new SafeDelete();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "Service", "Helper");
+        var result = refactoring.Execute(sourceCode, "Service", "Helper", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();

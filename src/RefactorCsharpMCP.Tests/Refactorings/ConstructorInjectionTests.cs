@@ -20,7 +20,7 @@ public class ConstructorInjectionTests
         var injector = new ConstructorInjection();
 
         // Act
-        var result = injector.Execute(sourceCode, "UserService", "CreateUser", new[] { "logger", "config" }, useProperties: false);
+        var result = injector.Execute(sourceCode, "UserService", "CreateUser", new[] { "logger", "config" }, "net8.0", useProperties: false);
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -49,7 +49,7 @@ public class ConstructorInjectionTests
         var injector = new ConstructorInjection();
 
         // Act
-        var result = injector.Execute(sourceCode, "DataService", "Process", new[] { "logger" }, useProperties: true);
+        var result = injector.Execute(sourceCode, "DataService", "Process", new[] { "logger" }, "net8.0", useProperties: true);
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -67,7 +67,7 @@ public class ConstructorInjectionTests
         var injector = new ConstructorInjection();
 
         // Act
-        var result = injector.Execute("", "TestClass", "TestMethod", new[] { "param" });
+        var result = injector.Execute("", "TestClass", "TestMethod", new[] { "param" }, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -82,7 +82,7 @@ public class ConstructorInjectionTests
         var injector = new ConstructorInjection();
 
         // Act
-        var result = injector.Execute(sourceCode, "", "Method", new[] { "param" });
+        var result = injector.Execute(sourceCode, "", "Method", new[] { "param" }, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -97,7 +97,7 @@ public class ConstructorInjectionTests
         var injector = new ConstructorInjection();
 
         // Act
-        var result = injector.Execute(sourceCode, "Test", "", new[] { "param" });
+        var result = injector.Execute(sourceCode, "Test", "", new[] { "param" }, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -112,7 +112,7 @@ public class ConstructorInjectionTests
         var injector = new ConstructorInjection();
 
         // Act
-        var result = injector.Execute(sourceCode, "Test", "Method", Array.Empty<string>());
+        var result = injector.Execute(sourceCode, "Test", "Method", Array.Empty<string>(), "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -130,7 +130,7 @@ public class ConstructorInjectionTests
         var injector = new ConstructorInjection();
 
         // Act
-        var result = injector.Execute(sourceCode, "FakeClass", "Method", new[] { "x" });
+        var result = injector.Execute(sourceCode, "FakeClass", "Method", new[] { "x" }, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -148,7 +148,7 @@ public class ConstructorInjectionTests
         var injector = new ConstructorInjection();
 
         // Act
-        var result = injector.Execute(sourceCode, "TestClass", "FakeMethod", new[] { "x" });
+        var result = injector.Execute(sourceCode, "TestClass", "FakeMethod", new[] { "x" }, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -166,7 +166,7 @@ public class ConstructorInjectionTests
         var injector = new ConstructorInjection();
 
         // Act
-        var result = injector.Execute(sourceCode, "TestClass", "Method", new[] { "x", "nonexistent" });
+        var result = injector.Execute(sourceCode, "TestClass", "Method", new[] { "x", "nonexistent" }, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -187,7 +187,7 @@ public class ConstructorInjectionTests
         var injector = new ConstructorInjection();
 
         // Act
-        var result = injector.Execute(sourceCode, "Service", "Execute", new[] { "logger" });
+        var result = injector.Execute(sourceCode, "Service", "Execute", new[] { "logger" }, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();

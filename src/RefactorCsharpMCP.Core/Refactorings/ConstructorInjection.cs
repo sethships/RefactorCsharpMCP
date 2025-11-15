@@ -31,7 +31,7 @@ public class ConstructorInjection : RefactoringBase
         return await ExecuteWithValidationAsync(
             sourceCode,
             targetFramework,
-            async () => await Task.Run(() => Execute(sourceCode, className, methodName, parameterNames, useProperties)));
+            async () => await Task.Run(() => Execute(sourceCode, className, methodName, parameterNames, targetFramework, useProperties)));
     }
 
     /// <summary>
@@ -41,6 +41,7 @@ public class ConstructorInjection : RefactoringBase
     /// <param name="className">The name of the class containing the method.</param>
     /// <param name="methodName">The name of the method with parameters to inject.</param>
     /// <param name="parameterNames">The names of parameters to convert to constructor injection.</param>
+    /// <param name="targetFramework">The target .NET framework (e.g., "net8.0", "net48"). Currently unused but reserved for future framework-specific features.</param>
     /// <param name="useProperties">If true, generates properties; if false, generates fields.</param>
     /// <returns>A result containing the refactored code or error information.</returns>
     public RefactoringResult Execute(
@@ -48,6 +49,7 @@ public class ConstructorInjection : RefactoringBase
         string className,
         string methodName,
         string[] parameterNames,
+        string targetFramework,
         bool useProperties = false)
     {
         // Validate inputs

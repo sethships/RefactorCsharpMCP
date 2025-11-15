@@ -30,7 +30,7 @@ public class SafeDelete : RefactoringBase
         return await ExecuteWithValidationAsync(
             sourceCode,
             targetFramework,
-            async () => await Task.Run(() => Execute(sourceCode, className, methodName)));
+            async () => await Task.Run(() => Execute(sourceCode, className, methodName, targetFramework)));
     }
 
     /// <summary>
@@ -40,8 +40,9 @@ public class SafeDelete : RefactoringBase
     /// <param name="sourceCode">The source code containing the method.</param>
     /// <param name="className">The name of the class containing the method.</param>
     /// <param name="methodName">The name of the method to delete.</param>
+    /// <param name="targetFramework">The target .NET framework (e.g., "net8.0", "net48"). Currently unused but reserved for future framework-specific features.</param>
     /// <returns>A result containing the refactored code or error information.</returns>
-    public RefactoringResult Execute(string sourceCode, string className, string methodName)
+    public RefactoringResult Execute(string sourceCode, string className, string methodName, string targetFramework)
     {
         // Validate inputs
         var sourceValidation = ValidateNonEmpty(sourceCode, "Source code");

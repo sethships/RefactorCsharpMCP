@@ -39,7 +39,7 @@ public class SafeDeleteTool
 
         // Execute the refactoring
         var refactoring = new SafeDelete();
-        var result = refactoring.Execute(sourceCode, className, methodName);
+        var result = refactoring.Execute(sourceCode, className, methodName, targetFramework: "net8.0");
 
         // Return result as an object that MCP can serialize
         if (result.IsSuccess)

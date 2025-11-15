@@ -27,7 +27,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act - line 9, column 18 (on 'DoSomething' method name)
-        var result = inliner.Execute(sourceCode, 9, 18);
+        var result = inliner.Execute(sourceCode, 9, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
@@ -57,7 +57,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 9, 18);
+        var result = inliner.Execute(sourceCode, 9, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -84,7 +84,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 9, 18);
+        var result = inliner.Execute(sourceCode, 9, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -113,7 +113,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 10, 18);
+        var result = inliner.Execute(sourceCode, 10, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue($"Error: {result.ErrorMessage}");
@@ -140,7 +140,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act - Try different positions on the method declaration line
-        var result = inliner.Execute(sourceCode, 9, 22); // on 'Helper' identifier
+        var result = inliner.Execute(sourceCode, 9, 22, "net8.0"); // on 'Helper' identifier
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -171,7 +171,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 9, 18);
+        var result = inliner.Execute(sourceCode, 9, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -199,7 +199,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 9, 18);
+        var result = inliner.Execute(sourceCode, 9, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -227,7 +227,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 9, 18);
+        var result = inliner.Execute(sourceCode, 9, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -257,7 +257,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 9, 18);
+        var result = inliner.Execute(sourceCode, 9, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -286,7 +286,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 9, 18);
+        var result = inliner.Execute(sourceCode, 9, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -312,7 +312,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 9, 18);
+        var result = inliner.Execute(sourceCode, 9, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -344,7 +344,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 9, 18);
+        var result = inliner.Execute(sourceCode, 9, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -376,7 +376,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 9, 18);
+        var result = inliner.Execute(sourceCode, 9, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -406,7 +406,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 9, 18);
+        var result = inliner.Execute(sourceCode, 9, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -439,7 +439,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act - inline Helper method (line 9, column 18)
-        var result = inliner.Execute(sourceCode, 9, 18);
+        var result = inliner.Execute(sourceCode, 9, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
@@ -466,7 +466,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act - position on whitespace
-        var result = inliner.Execute(sourceCode, 2, 1);
+        var result = inliner.Execute(sourceCode, 2, 1, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -493,7 +493,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 9, 28);
+        var result = inliner.Execute(sourceCode, 9, 28, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -512,7 +512,7 @@ public abstract class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 4, 29);
+        var result = inliner.Execute(sourceCode, 4, 29, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse($"Expected failure but got: {result.RefactoredCode}");
@@ -540,7 +540,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 9, 18);
+        var result = inliner.Execute(sourceCode, 9, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -572,7 +572,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act - inline DoSomething at line 14, column 18
-        var result = inliner.Execute(sourceCode, 14, 18);
+        var result = inliner.Execute(sourceCode, 14, 18, "net8.0");
 
         // Assert - Part 2 should inline at both call sites
         result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
@@ -598,7 +598,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 4, 18);
+        var result = inliner.Execute(sourceCode, 4, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -626,7 +626,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 10, 18);
+        var result = inliner.Execute(sourceCode, 10, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -654,7 +654,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 10, 18);
+        var result = inliner.Execute(sourceCode, 10, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -681,7 +681,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 9, 17);
+        var result = inliner.Execute(sourceCode, 9, 17, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -710,7 +710,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 10, 18);
+        var result = inliner.Execute(sourceCode, 10, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -724,7 +724,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute("", 1, 1);
+        var result = inliner.Execute("", 1, 1, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -743,7 +743,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 0, 1);
+        var result = inliner.Execute(sourceCode, 0, 1, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -774,7 +774,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act - inline Helper method (line 10, column 18)
-        var result = inliner.Execute(sourceCode, 10, 18);
+        var result = inliner.Execute(sourceCode, 10, 18, "net8.0");
 
         // Assert - Part 2 automatically resolves conflicts by renaming
         result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
@@ -808,7 +808,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act - inline Helper method (line 12, column 18)
-        var result = inliner.Execute(sourceCode, 12, 18);
+        var result = inliner.Execute(sourceCode, 12, 18, "net8.0");
 
         // Assert - this.value is unambiguous, should succeed without renaming
         result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
@@ -839,7 +839,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act - inline Helper method (line 10, column 18)
-        var result = inliner.Execute(sourceCode, 10, 18);
+        var result = inliner.Execute(sourceCode, 10, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue(because: $"No conflict should allow inlining. Error: {result.Message}");
@@ -872,7 +872,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act - inline Helper method (line 12, column 18)
-        var result = inliner.Execute(sourceCode, 12, 18);
+        var result = inliner.Execute(sourceCode, 12, 18, "net8.0");
 
         // Assert - Part 2 automatically resolves conflicts by renaming
         result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
@@ -905,7 +905,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act - inline Helper method (line 11, column 18)
-        var result = inliner.Execute(sourceCode, 11, 18);
+        var result = inliner.Execute(sourceCode, 11, 18, "net8.0");
 
         // Assert - Should rename to counter_2 (not counter_1 which already exists)
         result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
@@ -941,7 +941,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act - inline Helper method (line 12, column 18)
-        var result = inliner.Execute(sourceCode, 12, 18);
+        var result = inliner.Execute(sourceCode, 12, 18, "net8.0");
 
         // Assert - All conflicting variables should be renamed with _1 suffix
         result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
@@ -979,7 +979,7 @@ public class Outer
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 11, 22);
+        var result = inliner.Execute(sourceCode, 11, 22, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -1013,7 +1013,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 14, 18);
+        var result = inliner.Execute(sourceCode, 14, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -1039,7 +1039,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 9, 18);
+        var result = inliner.Execute(sourceCode, 9, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -1070,7 +1070,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 12, 18);
+        var result = inliner.Execute(sourceCode, 12, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -1099,7 +1099,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 9, 25);
+        var result = inliner.Execute(sourceCode, 9, 25, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -1127,7 +1127,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 9, 17);
+        var result = inliner.Execute(sourceCode, 9, 17, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -1158,7 +1158,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 9, 18);
+        var result = inliner.Execute(sourceCode, 9, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -1190,7 +1190,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 10, 18);
+        var result = inliner.Execute(sourceCode, 10, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue($"Error: {result.ErrorMessage}");
@@ -1219,7 +1219,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 9, 18);
+        var result = inliner.Execute(sourceCode, 9, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -1247,7 +1247,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 9, 18);
+        var result = inliner.Execute(sourceCode, 9, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -1372,7 +1372,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act - inline Helper method (line 11, column 18)
-        var result = inliner.Execute(sourceCode, 11, 18);
+        var result = inliner.Execute(sourceCode, 11, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
@@ -1406,7 +1406,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act - inline Worker method (line 10, column 18)
-        var result = inliner.Execute(sourceCode, 10, 18);
+        var result = inliner.Execute(sourceCode, 10, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
@@ -1439,7 +1439,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act - inline Log method (line 10, column 18)
-        var result = inliner.Execute(sourceCode, 10, 18);
+        var result = inliner.Execute(sourceCode, 10, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
@@ -1473,7 +1473,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act - inline Process method (line 11, column 18)
-        var result = inliner.Execute(sourceCode, 11, 18);
+        var result = inliner.Execute(sourceCode, 11, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");
@@ -1511,7 +1511,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act - inline Print method (line 14, column 25)
-        var result = inliner.Execute(sourceCode, 14, 25);
+        var result = inliner.Execute(sourceCode, 14, 25, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue(because: $"Error: {result.Message}");

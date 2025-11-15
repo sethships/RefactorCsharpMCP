@@ -34,7 +34,7 @@ public class RenameSymbol : RefactoringBase
         return await ExecuteWithValidationAsync(
             sourceCode,
             targetFramework,
-            async () => await Task.Run(() => Execute(sourceCode, lineNumber, columnNumber, newName)));
+            async () => await Task.Run(() => Execute(sourceCode, lineNumber, columnNumber, newName, targetFramework)));
     }
 
     /// <summary>
@@ -44,12 +44,14 @@ public class RenameSymbol : RefactoringBase
     /// <param name="lineNumber">The 1-based line number of the symbol.</param>
     /// <param name="columnNumber">The 1-based column number of the symbol.</param>
     /// <param name="newName">The new identifier name.</param>
+    /// <param name="targetFramework">The target .NET framework (e.g., "net8.0", "net48"). Currently unused but reserved for future framework-specific features.</param>
     /// <returns>A result containing the refactored code or error information.</returns>
     public RefactoringResult Execute(
         string sourceCode,
         int lineNumber,
         int columnNumber,
-        string newName)
+        string newName,
+        string targetFramework)
     {
         // Validate inputs
         var sourceValidation = ValidateNonEmpty(sourceCode, "Source code");

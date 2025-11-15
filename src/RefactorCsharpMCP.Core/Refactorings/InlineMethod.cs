@@ -55,7 +55,7 @@ public class InlineMethod : RefactoringBase
         return await ExecuteWithValidationAsync(
             sourceCode,
             targetFramework,
-            async () => await Task.Run(() => Execute(sourceCode, lineNumber, columnNumber)));
+            async () => await Task.Run(() => Execute(sourceCode, lineNumber, columnNumber, targetFramework)));
     }
 
     /// <summary>
@@ -64,8 +64,9 @@ public class InlineMethod : RefactoringBase
     /// <param name="sourceCode">The source code containing the method.</param>
     /// <param name="lineNumber">The line number (1-based) where the method is declared.</param>
     /// <param name="columnNumber">The column number (1-based) within the line.</param>
+    /// <param name="targetFramework">The target .NET framework (e.g., "net8.0", "net48"). Currently unused but reserved for future framework-specific features.</param>
     /// <returns>A result containing the refactored code or error information.</returns>
-    public RefactoringResult Execute(string sourceCode, int lineNumber, int columnNumber)
+    public RefactoringResult Execute(string sourceCode, int lineNumber, int columnNumber, string targetFramework)
     {
         // Validate inputs
         var sourceValidation = ValidateNonEmpty(sourceCode, "Source code");

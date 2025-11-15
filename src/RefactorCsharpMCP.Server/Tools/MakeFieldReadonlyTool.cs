@@ -39,7 +39,7 @@ public class MakeFieldReadonlyTool
 
         // Execute the refactoring
         var refactoring = new MakeFieldReadonly();
-        var result = refactoring.Execute(sourceCode, className, fieldName);
+        var result = refactoring.Execute(sourceCode, className, fieldName, targetFramework: "net8.0");
 
         // Return result as an object that MCP can serialize
         if (result.IsSuccess)

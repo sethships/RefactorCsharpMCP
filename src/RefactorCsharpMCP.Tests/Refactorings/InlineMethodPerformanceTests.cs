@@ -122,7 +122,7 @@ public class InlineMethodPerformanceTests
         // Warmup
         for (int i = 0; i < WARMUP_ITERATIONS; i++)
         {
-            var warmupResult = inliner.Execute(sourceCode, lineNumber, columnNumber);
+            var warmupResult = inliner.Execute(sourceCode, lineNumber, columnNumber, "net8.0");
             if (!warmupResult.IsSuccess)
             {
                 return new BenchmarkResult
@@ -139,7 +139,7 @@ public class InlineMethodPerformanceTests
         for (int i = 0; i < BENCHMARK_ITERATIONS; i++)
         {
             sw.Restart();
-            var result = inliner.Execute(sourceCode, lineNumber, columnNumber);
+            var result = inliner.Execute(sourceCode, lineNumber, columnNumber, "net8.0");
             sw.Stop();
 
             if (!result.IsSuccess)
@@ -500,7 +500,7 @@ public class Test
         var inliner = new InlineMethod();
 
         // Act
-        var result = inliner.Execute(sourceCode, 14, 18);
+        var result = inliner.Execute(sourceCode, 14, 18, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue(because: "Single-pass algorithm should handle variable declarations and usages correctly");
@@ -543,7 +543,7 @@ public class Test
         Console.WriteLine("\n=== Testing Single Inline ===\n");
         Console.WriteLine($"Code:\n{code}\n");
 
-        var result = inliner.Execute(code, 14, 18);
+        var result = inliner.Execute(code, 14, 18, "net8.0");
 
         Console.WriteLine($"Success: {result.IsSuccess}");
         Console.WriteLine($"Message: {result.Message}");

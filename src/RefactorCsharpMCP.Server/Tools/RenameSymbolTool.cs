@@ -42,7 +42,7 @@ public class RenameSymbolTool
 
         // Execute the refactoring
         var refactoring = new RenameSymbol();
-        var result = refactoring.Execute(sourceCode, lineNumber, columnNumber, newName);
+        var result = refactoring.Execute(sourceCode, lineNumber, columnNumber, newName, targetFramework: "net8.0");
 
         // Return result as an object that MCP can serialize
         if (result.IsSuccess)

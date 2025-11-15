@@ -37,7 +37,7 @@ public class BackupToolIntegrationTests
         var refactoring = new MakeFieldReadonly();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "Program", "_dbContext");
+        var result = refactoring.Execute(sourceCode, "Program", "_dbContext", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -147,7 +147,7 @@ public class BackupToolIntegrationTests
         var refactoring = new SafeDelete();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "Program", "ObsoleteHelper");
+        var result = refactoring.Execute(sourceCode, "Program", "ObsoleteHelper", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -177,7 +177,7 @@ public class BackupToolIntegrationTests
         var refactoring = new SafeDelete();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "Program", "ProcessData");
+        var result = refactoring.Execute(sourceCode, "Program", "ProcessData", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();

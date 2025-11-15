@@ -26,7 +26,7 @@ public class MakeFieldReadonlyTests
         var refactoring = new MakeFieldReadonly();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "UserService", "_logger");
+        var result = refactoring.Execute(sourceCode, "UserService", "_logger", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -50,7 +50,7 @@ public class MakeFieldReadonlyTests
         var refactoring = new MakeFieldReadonly();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "Service", "_counter");
+        var result = refactoring.Execute(sourceCode, "Service", "_counter", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -73,7 +73,7 @@ public class MakeFieldReadonlyTests
         var refactoring = new MakeFieldReadonly();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "Counter", "_value");
+        var result = refactoring.Execute(sourceCode, "Counter", "_value", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -97,7 +97,7 @@ public class MakeFieldReadonlyTests
         var refactoring = new MakeFieldReadonly();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "Person", "_name");
+        var result = refactoring.Execute(sourceCode, "Person", "_name", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -120,7 +120,7 @@ public class MakeFieldReadonlyTests
         var refactoring = new MakeFieldReadonly();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "Service", "_logger");
+        var result = refactoring.Execute(sourceCode, "Service", "_logger", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -138,7 +138,7 @@ public class MakeFieldReadonlyTests
         var refactoring = new MakeFieldReadonly();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "Config", "MaxRetries");
+        var result = refactoring.Execute(sourceCode, "Config", "MaxRetries", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -161,7 +161,7 @@ public class MakeFieldReadonlyTests
         var refactoring = new MakeFieldReadonly();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "Data", "Value");
+        var result = refactoring.Execute(sourceCode, "Data", "Value", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -184,7 +184,7 @@ public class MakeFieldReadonlyTests
         var refactoring = new MakeFieldReadonly();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "Config", "_appName");
+        var result = refactoring.Execute(sourceCode, "Config", "_appName", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -207,7 +207,7 @@ public class MakeFieldReadonlyTests
         var refactoring = new MakeFieldReadonly();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "Service", "_logger");
+        var result = refactoring.Execute(sourceCode, "Service", "_logger", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -221,7 +221,7 @@ public class MakeFieldReadonlyTests
         var refactoring = new MakeFieldReadonly();
 
         // Act
-        var result = refactoring.Execute("", "TestClass", "field");
+        var result = refactoring.Execute("", "TestClass", "field", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -236,7 +236,7 @@ public class MakeFieldReadonlyTests
         var refactoring = new MakeFieldReadonly();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "", "field");
+        var result = refactoring.Execute(sourceCode, "", "field", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -251,7 +251,7 @@ public class MakeFieldReadonlyTests
         var refactoring = new MakeFieldReadonly();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "Test", "");
+        var result = refactoring.Execute(sourceCode, "Test", "", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -269,7 +269,7 @@ public class MakeFieldReadonlyTests
         var refactoring = new MakeFieldReadonly();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "FakeClass", "_field");
+        var result = refactoring.Execute(sourceCode, "FakeClass", "_field", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -287,7 +287,7 @@ public class MakeFieldReadonlyTests
         var refactoring = new MakeFieldReadonly();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "TestClass", "_fakeField");
+        var result = refactoring.Execute(sourceCode, "TestClass", "_fakeField", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -315,7 +315,7 @@ public class MakeFieldReadonlyTests
         var refactoring = new MakeFieldReadonly();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "Service", "_logger");
+        var result = refactoring.Execute(sourceCode, "Service", "_logger", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -338,7 +338,7 @@ public class MakeFieldReadonlyTests
         var refactoring = new MakeFieldReadonly();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "Counter", "_value");
+        var result = refactoring.Execute(sourceCode, "Counter", "_value", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -361,7 +361,7 @@ public class MakeFieldReadonlyTests
         var refactoring = new MakeFieldReadonly();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "Counter", "_value");
+        var result = refactoring.Execute(sourceCode, "Counter", "_value", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -383,7 +383,7 @@ public class MakeFieldReadonlyTests
         var refactoring = new MakeFieldReadonly();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "Config", "_maxRetries");
+        var result = refactoring.Execute(sourceCode, "Config", "_maxRetries", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -406,7 +406,7 @@ public class MakeFieldReadonlyTests
         var refactoring = new MakeFieldReadonly();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "Config", "_maxRetries");
+        var result = refactoring.Execute(sourceCode, "Config", "_maxRetries", "net8.0");
 
         // Assert - Readonly fields can have both initializer and constructor assignment
         result.IsSuccess.Should().BeTrue();
@@ -434,7 +434,7 @@ public class MakeFieldReadonlyTests
         var refactoring = new MakeFieldReadonly();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "Service", "_counter");
+        var result = refactoring.Execute(sourceCode, "Service", "_counter", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -462,7 +462,7 @@ public class MakeFieldReadonlyTests
         var refactoring = new MakeFieldReadonly();
 
         // Act
-        var result = refactoring.Execute(sourceCode, "Service", "_logger");
+        var result = refactoring.Execute(sourceCode, "Service", "_logger", "net8.0");
 
         // Assert - Conservative: reject even read-only lambda captures for safety
         result.IsSuccess.Should().BeFalse();

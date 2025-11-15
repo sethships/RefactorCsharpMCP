@@ -91,7 +91,7 @@ namespace TestNamespace
     [Benchmark(Description = "Inline variable in small file (~20 lines)")]
     public void InlineVariable_SmallFile()
     {
-        var result = _refactoring.Execute(_smallCode, lineNumber: 9, columnNumber: 17);
+        var result = _refactoring.Execute(_smallCode, lineNumber: 9, columnNumber: 17, targetFramework: "net8.0");
 
         if (!result.IsSuccess)
         {
@@ -102,7 +102,7 @@ namespace TestNamespace
     [Benchmark(Description = "Inline variable in medium file (~50 lines)")]
     public void InlineVariable_MediumFile()
     {
-        var result = _refactoring.Execute(_mediumCode, lineNumber: 12, columnNumber: 17);
+        var result = _refactoring.Execute(_mediumCode, lineNumber: 12, columnNumber: 17, targetFramework: "net8.0");
 
         if (!result.IsSuccess)
         {
