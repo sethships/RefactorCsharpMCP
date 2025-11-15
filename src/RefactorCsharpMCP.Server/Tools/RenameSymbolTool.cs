@@ -19,6 +19,7 @@ public class RenameSymbolTool
     /// <param name="lineNumber">The 1-based line number of the symbol to rename.</param>
     /// <param name="columnNumber">The 1-based column number of the symbol to rename.</param>
     /// <param name="newName">The new identifier name.</param>
+    /// <param name="targetFramework">The target .NET framework (e.g., "net8.0", "net48", "netstandard2.0"). Defaults to "net8.0".</param>
     /// <returns>A JSON object containing the refactored code and status.</returns>
     [McpServerTool]
     [Description("Renames a symbol (local variable, parameter, private field, or private method) at a specific position. Uses position-based resolution for precise symbol identification. Updates all references within the same file. ⚠️ LIMITATION: Single-file scope only. Cannot rename public/protected members or symbols used across multiple files.")]
@@ -26,14 +27,16 @@ public class RenameSymbolTool
         [Description("The complete C# source code")] string sourceCode,
         [Description("The 1-based line number of the symbol to rename")] int lineNumber,
         [Description("The 1-based column number of the symbol to rename")] int columnNumber,
-        [Description("The new identifier name (must be a valid C# identifier)")] string newName)
+        [Description("The new identifier name (must be a valid C# identifier)")] string newName,
+        [Description("The target .NET framework (e.g., 'net8.0', 'net48', 'netstandard2.0')")] string targetFramework = "net8.0")
     {
         // Input validation using shared validator
         var validation = ToolInputValidator.ValidateSourceCode(sourceCode, "Refactoring")
                          ?? ToolInputValidator.ValidateSourceCodeSize(sourceCode, "Refactoring")
                          ?? ToolInputValidator.ValidateLineNumber(lineNumber, "Refactoring")
                          ?? ToolInputValidator.ValidateColumnNumber(columnNumber, "Refactoring")
-                         ?? ToolInputValidator.ValidateIdentifier(newName, "new name", "Refactoring");
+                         ?? ToolInputValidator.ValidateIdentifier(newName, "new name", "Refactoring")
+                         ?? ToolInputValidator.ValidateTargetFramework(targetFramework, "Refactoring");
 
         if (validation != null)
         {
@@ -42,7 +45,7 @@ public class RenameSymbolTool
 
         // Execute the refactoring
         var refactoring = new RenameSymbol();
-        var result = refactoring.Execute(sourceCode, lineNumber, columnNumber, newName, targetFramework: "net8.0");
+        var result = refactoring.Execute(sourceCode, lineNumber, columnNumber, newName, targetFramework);
 
         // Return result as an object that MCP can serialize
         if (result.IsSuccess)

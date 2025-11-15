@@ -199,6 +199,11 @@ public class CompilationContextBuilder
     {
         // For Phase 1 (v1.0), we use the current runtime's BCL references
         // This works well for net8.0 and provides reasonable compatibility for other frameworks
+        //
+        // NOTE: .NET Framework 4.x reference assemblies have known limitations and may not resolve
+        // all BCL types correctly (Issue #75). This is due to differences between the .NET 8 runtime
+        // references used here and the actual .NET Framework 4.x BCL.
+        // See docs/FRAMEWORK-SUPPORT.md for workarounds and affected scenarios.
 
         var references = new List<MetadataReference>();
 
