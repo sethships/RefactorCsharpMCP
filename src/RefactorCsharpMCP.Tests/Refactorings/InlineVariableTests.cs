@@ -23,7 +23,7 @@ public class Test
         var inliner = new InlineVariable();
 
         // Act - line 6, column 13 (on 'x' in 'var x = 5')
-        var result = inliner.Execute(sourceCode, 6, 13);
+        var result = inliner.Execute(sourceCode, 6, 13, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -47,7 +47,7 @@ public class Test
         var inliner = new InlineVariable();
 
         // Act
-        var result = inliner.Execute(sourceCode, 6, 13);
+        var result = inliner.Execute(sourceCode, 6, 13, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -73,7 +73,7 @@ public class Test
         var inliner = new InlineVariable();
 
         // Act
-        var result = inliner.Execute(sourceCode, 6, 13);
+        var result = inliner.Execute(sourceCode, 6, 13, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -97,7 +97,7 @@ public class Test
         var inliner = new InlineVariable();
 
         // Act
-        var result = inliner.Execute(sourceCode, 6, 13);
+        var result = inliner.Execute(sourceCode, 6, 13, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -127,7 +127,7 @@ public class Test
         var inliner = new InlineVariable();
 
         // Act
-        var result = inliner.Execute(sourceCode, 6, 13);
+        var result = inliner.Execute(sourceCode, 6, 13, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -154,7 +154,7 @@ public class Test
         var inliner = new InlineVariable();
 
         // Act
-        var result = inliner.Execute(sourceCode, 6, 13);
+        var result = inliner.Execute(sourceCode, 6, 13, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -183,7 +183,7 @@ public class Test
         var inliner = new InlineVariable();
 
         // Act
-        var result = inliner.Execute(sourceCode, 6, 13);
+        var result = inliner.Execute(sourceCode, 6, 13, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -206,7 +206,7 @@ public class Test
         var inliner = new InlineVariable();
 
         // Act
-        var result = inliner.Execute(sourceCode, 6, 13);
+        var result = inliner.Execute(sourceCode, 6, 13, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -231,7 +231,7 @@ public class Test
         var inliner = new InlineVariable();
 
         // Act
-        var result = inliner.Execute(sourceCode, 6, 13);
+        var result = inliner.Execute(sourceCode, 6, 13, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -260,7 +260,7 @@ public class Test
         var inliner = new InlineVariable();
 
         // Act
-        var result = inliner.Execute(sourceCode, 6, 13);
+        var result = inliner.Execute(sourceCode, 6, 13, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -282,7 +282,7 @@ public class Test
         var inliner = new InlineVariable();
 
         // Act - trying to inline parameter at line 4
-        var result = inliner.Execute(sourceCode, 4, 28);
+        var result = inliner.Execute(sourceCode, 4, 28, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -306,7 +306,7 @@ public class Test
         var inliner = new InlineVariable();
 
         // Act
-        var result = inliner.Execute(sourceCode, 4, 17);
+        var result = inliner.Execute(sourceCode, 4, 17, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -330,7 +330,7 @@ public class Test
         var inliner = new InlineVariable();
 
         // Act
-        var result = inliner.Execute(sourceCode, 6, 13);
+        var result = inliner.Execute(sourceCode, 6, 13, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -354,7 +354,7 @@ public class Test
         var inliner = new InlineVariable();
 
         // Act
-        var result = inliner.Execute(sourceCode, 6, 13);
+        var result = inliner.Execute(sourceCode, 6, 13, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -378,7 +378,7 @@ public class Test
         var inliner = new InlineVariable();
 
         // Act
-        var result = inliner.Execute(sourceCode, 6, 13);
+        var result = inliner.Execute(sourceCode, 6, 13, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -402,7 +402,7 @@ public class Test
         var inliner = new InlineVariable();
 
         // Act
-        var result = inliner.Execute(sourceCode, 6, 13);
+        var result = inliner.Execute(sourceCode, 6, 13, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -421,7 +421,7 @@ public class Test
         var inliner = new InlineVariable();
 
         // Act
-        var result = inliner.Execute("", 1, 1);
+        var result = inliner.Execute("", 1, 1, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -443,7 +443,7 @@ public class Test
         var inliner = new InlineVariable();
 
         // Act
-        var result = inliner.Execute(sourceCode, 0, 1);
+        var result = inliner.Execute(sourceCode, 0, 1, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -465,7 +465,7 @@ public class Test
         var inliner = new InlineVariable();
 
         // Act
-        var result = inliner.Execute(sourceCode, 6, 0);
+        var result = inliner.Execute(sourceCode, 6, 0, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -543,7 +543,7 @@ public class Test
         var inliner = new InlineVariable();
 
         // Act
-        var result = inliner.Execute(sourceCode, 6, 13);
+        var result = inliner.Execute(sourceCode, 6, 13, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -567,7 +567,7 @@ public class Test
         var inliner = new InlineVariable();
 
         // Act - inline 'x'
-        var result = inliner.Execute(sourceCode, 6, 13);
+        var result = inliner.Execute(sourceCode, 6, 13, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -596,7 +596,7 @@ public class Test
         var inliner = new InlineVariable();
 
         // Act
-        var result = inliner.Execute(sourceCode, 6, 13);
+        var result = inliner.Execute(sourceCode, 6, 13, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -628,7 +628,7 @@ public class Test
         var inliner = new InlineVariable();
 
         // Act
-        var result = inliner.Execute(sourceCode, 6, 13);
+        var result = inliner.Execute(sourceCode, 6, 13, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -659,7 +659,7 @@ public class Test
         var inliner = new InlineVariable();
 
         // Act
-        var result = inliner.Execute(sourceCode, 8, 13);
+        var result = inliner.Execute(sourceCode, 8, 13, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -688,7 +688,7 @@ public class Test
         var inliner = new InlineVariable();
 
         // Act
-        var result = inliner.Execute(sourceCode, 6, 13);
+        var result = inliner.Execute(sourceCode, 6, 13, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -715,7 +715,7 @@ public class Test
         var inliner = new InlineVariable();
 
         // Act
-        var result = inliner.Execute(sourceCode, 7, 13);
+        var result = inliner.Execute(sourceCode, 7, 13, "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();

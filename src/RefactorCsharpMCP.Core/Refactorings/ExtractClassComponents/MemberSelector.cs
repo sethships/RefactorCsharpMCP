@@ -51,7 +51,7 @@ internal class MemberSelector
             var fieldDeclaration = FindFieldDeclaration(classDeclaration, fieldName);
             if (fieldDeclaration == null)
             {
-                return RefactoringResult.Failure($"Field '{fieldName}' not found in class '{className}'.");
+                return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, $"Field '{fieldName}' not found in class '{className}'.");
             }
             fieldNodes.Add(fieldDeclaration);
         }
@@ -65,7 +65,7 @@ internal class MemberSelector
 
             if (methodDeclaration == null)
             {
-                return RefactoringResult.Failure($"Method '{methodName}' not found in class '{className}'.");
+                return RefactoringResult.Failure(ErrorCode.NO_METHOD_FOUND, $"Method '{methodName}' not found in class '{className}'.");
             }
             methodNodes.Add(methodDeclaration);
         }
@@ -81,6 +81,7 @@ internal class MemberSelector
             if (delegateDeclaration != null)
             {
                 return RefactoringResult.Failure(
+                    ErrorCode.REFACTORING_FAILED,
                     $"Nested delegate extraction is not supported. Attempted to extract delegate '{typeName}'. " +
                     $"Delegates inherit from BaseMethodDeclarationSyntax, not BaseTypeDeclarationSyntax, and require specialized handling.");
             }
@@ -88,7 +89,7 @@ internal class MemberSelector
             var nestedType = FindNestedType(classDeclaration, typeName);
             if (nestedType == null)
             {
-                return RefactoringResult.Failure($"Nested type '{typeName}' not found in class '{className}'.");
+                return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, $"Nested type '{typeName}' not found in class '{className}'.");
             }
             nestedTypeNodes.Add(nestedType);
         }

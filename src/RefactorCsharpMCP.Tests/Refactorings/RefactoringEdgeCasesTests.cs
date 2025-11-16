@@ -27,7 +27,7 @@ public class Test
 }";
 
         // Act - Try to inline the parameter instead of a local variable
-        var result = refactoring.Execute(sourceCode, lineNumber: 4, columnNumber: 28);
+        var result = refactoring.Execute(sourceCode, lineNumber: 4, columnNumber: 28, targetFramework: "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -51,7 +51,7 @@ public class Test
 }";
 
         // Act - Try to inline a field instead of a local variable
-        var result = refactoring.Execute(sourceCode, lineNumber: 4, columnNumber: 17);
+        var result = refactoring.Execute(sourceCode, lineNumber: 4, columnNumber: 17, targetFramework: "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -77,7 +77,7 @@ public class Test
 }";
 
         // Act - Inline variable in property getter
-        var result = refactoring.Execute(sourceCode, lineNumber: 8, columnNumber: 17);
+        var result = refactoring.Execute(sourceCode, lineNumber: 8, columnNumber: 17, targetFramework: "net8.0");
 
         // Assert - Should succeed since property accessors are valid containing blocks
         result.IsSuccess.Should().BeTrue();
@@ -106,7 +106,7 @@ public class Test
 }";
 
         // Act - Inline variable in property setter
-        var result = refactoring.Execute(sourceCode, lineNumber: 10, columnNumber: 17);
+        var result = refactoring.Execute(sourceCode, lineNumber: 10, columnNumber: 17, targetFramework: "net8.0");
 
         // Assert - Should succeed since property accessors are valid containing blocks
         result.IsSuccess.Should().BeTrue();
@@ -129,7 +129,7 @@ public class Test
 }";
 
         // Act - Inline middle variable 'b'
-        var result = refactoring.Execute(sourceCode, lineNumber: 6, columnNumber: 20);
+        var result = refactoring.Execute(sourceCode, lineNumber: 6, columnNumber: 20, targetFramework: "net8.0");
 
         // Assert - Should inline only 'b', leaving 'a' and 'c'
         result.IsSuccess.Should().BeTrue();
@@ -152,7 +152,7 @@ public class Test
 }";
 
         // Act
-        var result = refactoring.Execute(sourceCode, lineNumber: 6, columnNumber: 13);
+        var result = refactoring.Execute(sourceCode, lineNumber: 6, columnNumber: 13, targetFramework: "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();

@@ -20,6 +20,7 @@ public class ConstructorInjectionTool
     /// <param name="methodName">The name of the method with parameters to inject.</param>
     /// <param name="parameterNames">Comma-separated list of parameter names to inject.</param>
     /// <param name="useProperties">If true, generates properties; if false, generates fields (default).</param>
+    /// <param name="targetFramework">The target .NET framework (e.g., "net8.0", "net48", "netstandard2.0"). Defaults to "net8.0".</param>
     /// <returns>A JSON object containing the refactored code and status.</returns>
     [McpServerTool]
     [Description("Converts method parameters to constructor-injected fields or properties. Useful for applying dependency injection patterns.")]
@@ -28,13 +29,15 @@ public class ConstructorInjectionTool
         [Description("The name of the class containing the method")] string className,
         [Description("The name of the method with parameters to inject")] string methodName,
         [Description("Comma-separated parameter names to inject (e.g., 'logger,config')")] string parameterNames,
-        [Description("Use properties instead of fields (default: false)")] bool useProperties = false)
+        [Description("Use properties instead of fields (default: false)")] bool useProperties = false,
+        [Description("The target .NET framework (e.g., 'net8.0', 'net48', 'netstandard2.0')")] string targetFramework = "net8.0")
     {
         // Input validation using shared validator
         var validation = ToolInputValidator.ValidateSourceCode(sourceCode, "Refactoring")
                          ?? ToolInputValidator.ValidateSourceCodeSize(sourceCode, "Refactoring")
                          ?? ToolInputValidator.ValidateIdentifier(className, "class name", "Refactoring")
-                         ?? ToolInputValidator.ValidateIdentifier(methodName, "method name", "Refactoring");
+                         ?? ToolInputValidator.ValidateIdentifier(methodName, "method name", "Refactoring")
+                         ?? ToolInputValidator.ValidateTargetFramework(targetFramework, "Refactoring");
 
         if (validation != null)
         {
@@ -59,7 +62,7 @@ public class ConstructorInjectionTool
 
         // Execute the refactoring
         var injector = new ConstructorInjection();
-        var result = injector.Execute(sourceCode, className, methodName, paramNames, useProperties);
+        var result = injector.Execute(sourceCode, className, methodName, paramNames, targetFramework, useProperties);
 
         // Return result as an object that MCP can serialize
         if (result.IsSuccess)

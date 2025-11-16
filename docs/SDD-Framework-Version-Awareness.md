@@ -412,8 +412,8 @@ graph TD
 
 **Public Interface Methods**:
 - Validate(targetFramework) → FrameworkValidationResult
-- IsSupportedFramework(targetFramework) → boolean
-- IsEOLFramework(targetFramework) → boolean
+- IsSupported(targetFramework) → boolean
+- IsEOL(targetFramework) → boolean
 - GetSuggestedFramework(eolFramework) → string or null
 - NormalizeTfm(targetFramework) → normalized string
 

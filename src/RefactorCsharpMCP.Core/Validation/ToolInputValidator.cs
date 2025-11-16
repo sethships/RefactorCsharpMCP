@@ -1,4 +1,5 @@
 using RefactorCsharpMCP.Core;
+using RefactorCsharpMCP.Core.Framework;
 
 namespace RefactorCsharpMCP.Core.Validation;
 
@@ -14,6 +15,11 @@ namespace RefactorCsharpMCP.Core.Validation;
 /// </remarks>
 public static class ToolInputValidator
 {
+    /// <summary>
+    /// Shared FrameworkValidator instance for efficient validation.
+    /// Avoids creating new instances on each validation call.
+    /// </summary>
+    private static readonly FrameworkValidator Validator = new();
     /// <summary>
     /// Validates that source code is not null or whitespace.
     /// </summary>
@@ -118,7 +124,7 @@ public static class ToolInputValidator
     }
 
     /// <summary>
-    /// Validates that a target framework is not null or whitespace.
+    /// Validates that a target framework is not null or whitespace and is a valid, supported framework.
     /// </summary>
     /// <param name="targetFramework">The target framework to validate.</param>
     /// <param name="operationName">The name of the operation (for error messages).</param>
@@ -130,6 +136,18 @@ public static class ToolInputValidator
             return ValidationResult.ToolInputError(
                 ErrorCode.EMPTY_TARGET_FRAMEWORK,
                 "Target framework cannot be empty",
+                operationName);
+        }
+
+        // Validate using FrameworkValidator for format, support, and EOL checks
+        // See docs/FRAMEWORK-SUPPORT.md for complete framework compatibility information
+        // See Issue #75 for .NET Framework 4.x reference assembly limitations
+        var validationResult = Validator.Validate(targetFramework);
+        if (!validationResult.IsValid)
+        {
+            return ValidationResult.ToolInputError(
+                ErrorCode.INVALID_TFM_FORMAT,
+                validationResult.ErrorMessage ?? "Invalid target framework",
                 operationName);
         }
 

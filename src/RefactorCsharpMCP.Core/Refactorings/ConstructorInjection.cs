@@ -31,7 +31,7 @@ public class ConstructorInjection : RefactoringBase
         return await ExecuteWithValidationAsync(
             sourceCode,
             targetFramework,
-            async () => await Task.Run(() => Execute(sourceCode, className, methodName, parameterNames, useProperties)));
+            async () => await Task.Run(() => Execute(sourceCode, className, methodName, parameterNames, targetFramework, useProperties)));
     }
 
     /// <summary>
@@ -41,6 +41,7 @@ public class ConstructorInjection : RefactoringBase
     /// <param name="className">The name of the class containing the method.</param>
     /// <param name="methodName">The name of the method with parameters to inject.</param>
     /// <param name="parameterNames">The names of parameters to convert to constructor injection.</param>
+    /// <param name="targetFramework">The target .NET framework (e.g., "net8.0", "net48"). Currently unused but reserved for future framework-specific features.</param>
     /// <param name="useProperties">If true, generates properties; if false, generates fields.</param>
     /// <returns>A result containing the refactored code or error information.</returns>
     public RefactoringResult Execute(
@@ -48,6 +49,7 @@ public class ConstructorInjection : RefactoringBase
         string className,
         string methodName,
         string[] parameterNames,
+        string targetFramework,
         bool useProperties = false)
     {
         // Validate inputs
@@ -62,7 +64,7 @@ public class ConstructorInjection : RefactoringBase
 
         if (parameterNames == null || parameterNames.Length == 0)
         {
-            return RefactoringResult.Failure("At least one parameter name must be specified.");
+            return RefactoringResult.Failure(ErrorCode.MISSING_PARAMETER, "At least one parameter name must be specified.");
         }
 
         try
@@ -78,14 +80,14 @@ public class ConstructorInjection : RefactoringBase
             var classDeclaration = FindClass(root, className);
             if (classDeclaration == null)
             {
-                return RefactoringResult.Failure($"Class '{className}' not found in source code.");
+                return RefactoringResult.Failure(ErrorCode.NO_CLASS_FOUND, $"Class '{className}' not found in source code.");
             }
 
             // Find the method declaration
             var methodDeclaration = FindMethod(classDeclaration, methodName);
             if (methodDeclaration == null)
             {
-                return RefactoringResult.Failure($"Method '{methodName}' not found in class '{className}'.");
+                return RefactoringResult.Failure(ErrorCode.NO_METHOD_FOUND, $"Method '{methodName}' not found in class '{className}'.");
             }
 
             // Find the parameters to inject
@@ -96,7 +98,7 @@ public class ConstructorInjection : RefactoringBase
             if (parametersToInject.Count != parameterNames.Length)
             {
                 var foundParams = string.Join(", ", parametersToInject.Select(p => p.Identifier.Text));
-                return RefactoringResult.Failure($"Not all specified parameters found. Found: {foundParams}");
+                return RefactoringResult.Failure(ErrorCode.PARAMETER_NOT_FOUND, $"Not all specified parameters found. Found: {foundParams}");
             }
 
             // Generate fields or properties using Roslyn SyntaxFactory

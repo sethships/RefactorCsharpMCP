@@ -70,18 +70,19 @@ public class ExtractMethod : RefactoringBase
         // Note: Validation also performed in ExtractMethodTool, this is defense-in-depth
         if (!McpToolConstants.CSharpIdentifierRegex.IsMatch(newMethodName))
         {
-            return RefactoringResult.Failure("Method name must be a valid C# identifier.");
+            return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, "Method name must be a valid C# identifier.");
         }
 
         if (startLine < 1 || endLine < startLine)
         {
-            return RefactoringResult.Failure($"Invalid line range: {startLine}-{endLine}");
+            return RefactoringResult.Failure(ErrorCode.INVALID_LINE_RANGE, $"Invalid line range: {startLine}-{endLine}");
         }
 
         // Validate framework support early (before expensive semantic analysis) - CR Issue #2
         if (string.IsNullOrWhiteSpace(targetFramework))
         {
             return RefactoringResult.Failure(
+                ErrorCode.MISSING_PARAMETER,
                 $"Target framework cannot be null or empty. " +
                 $"Supported frameworks: {string.Join(", ", Infrastructure.FrameworkSupport.FrameworkMoniker.SupportedFrameworks)}");
         }
@@ -93,10 +94,12 @@ public class ExtractMethod : RefactoringBase
             {
                 var suggestion = Infrastructure.FrameworkSupport.FrameworkMoniker.SuggestAlternative(normalized);
                 return RefactoringResult.Failure(
+                    ErrorCode.FRAMEWORK_SYNTAX_MISMATCH,
                     $"Target framework '{targetFramework}' is end-of-life and not supported. " +
                     $"Consider using '{suggestion ?? "net8.0"}' instead.");
             }
             return RefactoringResult.Failure(
+                ErrorCode.FRAMEWORK_SYNTAX_MISMATCH,
                 $"Target framework '{targetFramework}' is not supported. " +
                 $"Supported frameworks: {string.Join(", ", Infrastructure.FrameworkSupport.FrameworkMoniker.SupportedFrameworks)}");
         }
@@ -114,14 +117,14 @@ public class ExtractMethod : RefactoringBase
             var containingMethod = _codeSelector.FindContainingMethod(root, startLine, endLine);
             if (containingMethod == null)
             {
-                return RefactoringResult.Failure($"No method found containing lines {startLine}-{endLine}.");
+                return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, $"No method found containing lines {startLine}-{endLine}.");
             }
 
             // Find statements to extract based on line range
             var statementsToExtract = _codeSelector.FindStatementsInLineRange(containingMethod, startLine, endLine);
             if (!statementsToExtract.Any())
             {
-                return RefactoringResult.Failure($"No statements found in line range {startLine}-{endLine}.");
+                return RefactoringResult.Failure(ErrorCode.NO_STATEMENTS_FOUND, $"No statements found in line range {startLine}-{endLine}.");
             }
 
             // Create compilation for semantic analysis
@@ -135,6 +138,7 @@ public class ExtractMethod : RefactoringBase
             if (dataFlowAnalysis.ReturnInfo == null)
             {
                 return RefactoringResult.Failure(
+                    ErrorCode.REFACTORING_FAILED,
                     "Failed to analyze return type for extracted method. " +
                     "The code may contain unsupported patterns.");
             }
@@ -144,9 +148,9 @@ public class ExtractMethod : RefactoringBase
             {
                 if (string.IsNullOrEmpty(dataFlowAnalysis.ReturnInfo.ErrorMessage))
                 {
-                    return RefactoringResult.Failure("Return type analysis failed with unknown error.");
+                    return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, "Return type analysis failed with unknown error.");
                 }
-                return RefactoringResult.Failure(dataFlowAnalysis.ReturnInfo.ErrorMessage);
+                return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, dataFlowAnalysis.ReturnInfo.ErrorMessage);
             }
 
             // Validate framework compatibility for return type (Issue #51, CR Issue #5)
@@ -154,6 +158,7 @@ public class ExtractMethod : RefactoringBase
             if (dataFlowAnalysis.ReturnInfo?.Kind == ReturnKind.Multiple && languageVersion < LanguageVersion.CSharp7)
             {
                 return RefactoringResult.Failure(
+                    ErrorCode.FRAMEWORK_SYNTAX_MISMATCH,
                     $"Multiple return values detected but tuple syntax requires C# 7.0+. " +
                     $"Target framework '{targetFramework}' supports {languageVersion}. " +
                     $"Consider upgrading to .NET 8 (recommended), .NET Framework 4.7+, or .NET Standard 2.0+.");
@@ -175,7 +180,7 @@ public class ExtractMethod : RefactoringBase
             var containingClass = containingMethod.FirstAncestorOrSelf<ClassDeclarationSyntax>();
             if (containingClass == null)
             {
-                return RefactoringResult.Failure("Could not find containing class.");
+                return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, "Could not find containing class.");
             }
 
             // Replace statements with method call and add extracted method to class

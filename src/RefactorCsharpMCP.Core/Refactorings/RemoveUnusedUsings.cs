@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using RefactorCsharpMCP.Core.Infrastructure.FrameworkSupport;
+using RefactorCsharpMCP.Core.Validation;
 
 namespace RefactorCsharpMCP.Core.Refactorings;
 
@@ -51,7 +52,7 @@ public class RemoveUnusedUsings : RefactoringBase
             // Validate framework is supported
             if (!FrameworkMoniker.IsSupported(targetFramework))
             {
-                return RefactoringResult.Failure($"Unsupported framework: {targetFramework}. Use a Microsoft-supported framework version.");
+                return RefactoringResult.Failure(ErrorCode.FRAMEWORK_SYNTAX_MISMATCH, $"Unsupported framework: {targetFramework}. Use a Microsoft-supported framework version.");
             }
 
             // Get language version for target framework
@@ -76,7 +77,7 @@ public class RemoveUnusedUsings : RefactoringBase
             if (parseDiagnostics.Any())
             {
                 var errorMessages = string.Join(", ", parseDiagnostics.Select(d => d.GetMessage()).Take(3));
-                return RefactoringResult.Failure($"Syntax errors in source code: {errorMessages}");
+                return RefactoringResult.Failure(ErrorCode.SYNTAX_ERROR, $"Syntax errors in source code: {errorMessages}");
             }
 
             // If there are no using directives, return success with original code
@@ -119,7 +120,7 @@ public class RemoveUnusedUsings : RefactoringBase
             var newRoot = root.RemoveNodes(usingsToRemove, SyntaxRemoveOptions.KeepLeadingTrivia);
             if (newRoot == null)
             {
-                return RefactoringResult.Failure("Failed to remove using directives. The syntax tree transformation returned null.");
+                return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, "Failed to remove using directives. The syntax tree transformation returned null.");
             }
 
             // Normalize whitespace to ensure proper formatting

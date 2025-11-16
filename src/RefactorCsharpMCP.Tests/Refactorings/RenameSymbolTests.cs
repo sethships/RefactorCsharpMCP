@@ -25,7 +25,7 @@ public class Calculator
         var refactoring = new RenameSymbol();
 
         // Act - Position on "sum" at line 6 (var sum = ...)
-        var result = refactoring.Execute(sourceCode, 6, 13, "total");
+        var result = refactoring.Execute(sourceCode, 6, 13, "total", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -51,7 +51,7 @@ public class Greeter
         var refactoring = new RenameSymbol();
 
         // Act - Position on "name" parameter at line 4
-        var result = refactoring.Execute(sourceCode, 4, 32, "personName");
+        var result = refactoring.Execute(sourceCode, 4, 32, "personName", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -83,7 +83,7 @@ public class Counter
         var refactoring = new RenameSymbol();
 
         // Act - Position on "_count" field at line 4
-        var result = refactoring.Execute(sourceCode, 4, 17, "_value");
+        var result = refactoring.Execute(sourceCode, 4, 17, "_value", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -113,7 +113,7 @@ public class Service
         var refactoring = new RenameSymbol();
 
         // Act - Position on "DoWork" method at line 4
-        var result = refactoring.Execute(sourceCode, 4, 18, "PerformWork");
+        var result = refactoring.Execute(sourceCode, 4, 18, "PerformWork", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -140,7 +140,7 @@ public class Processor
         var refactoring = new RenameSymbol();
 
         // Act - Position on "data" at line 6
-        var result = refactoring.Execute(sourceCode, 6, 13, "input");
+        var result = refactoring.Execute(sourceCode, 6, 13, "input", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -170,7 +170,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act - Position on "x" usage at line 7, not declaration
-        var result = refactoring.Execute(sourceCode, 7, 17, "value");
+        var result = refactoring.Execute(sourceCode, 7, 17, "value", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -190,7 +190,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act - Position out of range
-        var result = refactoring.Execute(sourceCode, 100, 100, "newName");
+        var result = refactoring.Execute(sourceCode, 100, 100, "newName", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -209,7 +209,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act - Position on whitespace/class keyword area
-        var result = refactoring.Execute(sourceCode, 2, 1, "newName");
+        var result = refactoring.Execute(sourceCode, 2, 1, "newName", "net8.0");
 
         // Assert - Position resolves to class, which is not supported for rename
         result.IsSuccess.Should().BeFalse();
@@ -224,7 +224,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act
-        var result = refactoring.Execute(sourceCode, 0, 10, "newName");
+        var result = refactoring.Execute(sourceCode, 0, 10, "newName", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -239,7 +239,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act
-        var result = refactoring.Execute(sourceCode, 1, -1, "newName");
+        var result = refactoring.Execute(sourceCode, 1, -1, "newName", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -266,7 +266,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act - Try to rename x to y (conflict)
-        var result = refactoring.Execute(sourceCode, 6, 13, "y");
+        var result = refactoring.Execute(sourceCode, 6, 13, "y", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -289,7 +289,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act - Try to rename z to x (conflict with parameter)
-        var result = refactoring.Execute(sourceCode, 6, 13, "x");
+        var result = refactoring.Execute(sourceCode, 6, 13, "x", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -313,7 +313,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act - Try to rename local to _field (conflict)
-        var result = refactoring.Execute(sourceCode, 8, 13, "_field");
+        var result = refactoring.Execute(sourceCode, 8, 13, "_field", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -335,7 +335,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act - Rename to a non-conflicting name
-        var result = refactoring.Execute(sourceCode, 6, 13, "newVariable");
+        var result = refactoring.Execute(sourceCode, 6, 13, "newVariable", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -360,7 +360,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act
-        var result = refactoring.Execute(sourceCode, 6, 13, "validName_123");
+        var result = refactoring.Execute(sourceCode, 6, 13, "validName_123", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -379,7 +379,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act
-        var result = refactoring.Execute(sourceCode, 4, 17, "_field");
+        var result = refactoring.Execute(sourceCode, 4, 17, "_field", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -401,7 +401,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act
-        var result = refactoring.Execute(sourceCode, 6, 13, "1invalid");
+        var result = refactoring.Execute(sourceCode, 6, 13, "1invalid", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -423,7 +423,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act
-        var result = refactoring.Execute(sourceCode, 6, 13, "invalid-name");
+        var result = refactoring.Execute(sourceCode, 6, 13, "invalid-name", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -445,7 +445,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act
-        var result = refactoring.Execute(sourceCode, 6, 13, "");
+        var result = refactoring.Execute(sourceCode, 6, 13, "", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -467,7 +467,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act
-        var result = refactoring.Execute(sourceCode, 6, 13, "   ");
+        var result = refactoring.Execute(sourceCode, 6, 13, "   ", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -500,7 +500,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act - Rename x in Method1
-        var result = refactoring.Execute(sourceCode, 6, 13, "value1");
+        var result = refactoring.Execute(sourceCode, 6, 13, "value1", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -528,7 +528,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act - Position on _field
-        var result = refactoring.Execute(sourceCode, 4, 17, "_value");
+        var result = refactoring.Execute(sourceCode, 4, 17, "_value", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -551,7 +551,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act
-        var result = refactoring.Execute(sourceCode, 4, 17, "_data");
+        var result = refactoring.Execute(sourceCode, 4, 17, "_data", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -574,7 +574,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act - Try to rename x to x
-        var result = refactoring.Execute(sourceCode, 6, 13, "x");
+        var result = refactoring.Execute(sourceCode, 6, 13, "x", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -604,7 +604,7 @@ public class TestClass
         var refactoring = new RenameSymbol();
 
         // Act - Rename "oldName" at line 6, column 13 (declaration)
-        var result = refactoring.Execute(sourceCode, 6, 13, "newName");
+        var result = refactoring.Execute(sourceCode, 6, 13, "newName", "net8.0");
 
         // Assert - Should succeed and report correct reference count
         result.IsSuccess.Should().BeTrue();
@@ -640,7 +640,7 @@ public class TestClass
         var refactoring = new RenameSymbol();
 
         // Act - Rename "_oldField" at line 4, column 17 (declaration)
-        var result = refactoring.Execute(sourceCode, 4, 17, "_newField");
+        var result = refactoring.Execute(sourceCode, 4, 17, "_newField", "net8.0");
 
         // Assert - Should succeed and report correct reference count
         result.IsSuccess.Should().BeTrue();
@@ -675,7 +675,7 @@ public class TestClass
         var refactoring = new RenameSymbol();
 
         // Act - Rename "_value" at line 4, column 17 (declaration)
-        var result = refactoring.Execute(sourceCode, 4, 17, "_newValue");
+        var result = refactoring.Execute(sourceCode, 4, 17, "_newValue", "net8.0");
 
         // Assert - Should succeed
         result.IsSuccess.Should().BeTrue();
@@ -711,7 +711,7 @@ public class TestClass
         var refactoring = new RenameSymbol();
 
         // Act - Rename local "count" at line 8, column 13 (local variable, not field)
-        var result = refactoring.Execute(sourceCode, 8, 13, "localCount");
+        var result = refactoring.Execute(sourceCode, 8, 13, "localCount", "net8.0");
 
         // Assert - Should succeed
         result.IsSuccess.Should().BeTrue();
@@ -741,7 +741,7 @@ public class TestClass
         var refactoring = new RenameSymbol();
 
         // Act - Rename "value" at line 6, column 13 (declaration)
-        var result = refactoring.Execute(sourceCode, 6, 13, "number");
+        var result = refactoring.Execute(sourceCode, 6, 13, "number", "net8.0");
 
         // Assert - Should succeed and find all references
         result.IsSuccess.Should().BeTrue();
@@ -777,7 +777,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act
-        var result = refactoring.Execute(sourceCode, 4, 17, "NewMethodName");
+        var result = refactoring.Execute(sourceCode, 4, 17, "NewMethodName", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -796,7 +796,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act
-        var result = refactoring.Execute(sourceCode, 4, 19, "_newField");
+        var result = refactoring.Execute(sourceCode, 4, 19, "_newField", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -814,7 +814,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act
-        var result = refactoring.Execute("", 1, 1, "newName");
+        var result = refactoring.Execute("", 1, 1, "newName", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -828,7 +828,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act
-        var result = refactoring.Execute(null!, 1, 1, "newName");
+        var result = refactoring.Execute(null!, 1, 1, "newName", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -843,7 +843,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act
-        var result = refactoring.Execute(sourceCode, 1, 14, "NewTest");
+        var result = refactoring.Execute(sourceCode, 1, 14, "NewTest", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -870,7 +870,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act - Rename lambda parameter 'x' (single parameter in Where lambda)
-        var result = refactoring.Execute(sourceCode, 7, 36, "item");
+        var result = refactoring.Execute(sourceCode, 7, 36, "item", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue($"Error: {result.Message}");
@@ -893,7 +893,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act - Rename first lambda parameter 'x' (first parameter in Select lambda)
-        var result = refactoring.Execute(sourceCode, 7, 36, "item");
+        var result = refactoring.Execute(sourceCode, 7, 36, "item", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue($"Error: {result.Message}");
@@ -918,7 +918,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act - Rename inner lambda parameter 'y' (inner Where lambda parameter)
-        var result = refactoring.Execute(sourceCode, 7, 52, "item");
+        var result = refactoring.Execute(sourceCode, 7, 52, "item", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue($"Error: {result.Message}");
@@ -946,7 +946,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act - Rename lambda parameter 'x' (Where lambda with block body)
-        var result = refactoring.Execute(sourceCode, 7, 36, "value");
+        var result = refactoring.Execute(sourceCode, 7, 36, "value", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue($"Error: {result.Message}");
@@ -974,7 +974,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act - Attempt to rename lambda parameter 'x' to conflicting name 'item'
-        var result = refactoring.Execute(sourceCode, 7, 36, "item");
+        var result = refactoring.Execute(sourceCode, 7, 36, "item", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -997,7 +997,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act - Rename anonymous method parameter 'x' (delegate expression parameter)
-        var result = refactoring.Execute(sourceCode, 7, 47, "value");
+        var result = refactoring.Execute(sourceCode, 7, 47, "value", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue($"Error: {result.Message}");
@@ -1021,7 +1021,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act - Rename outer lambda parameter 'x' (first parameter in Select lambda)
-        var result = refactoring.Execute(sourceCode, 7, 35, "item");
+        var result = refactoring.Execute(sourceCode, 7, 35, "item", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue($"Error: {result.Message}");
@@ -1050,7 +1050,7 @@ public class Test
         var refactoring = new RenameSymbol();
 
         // Act - Rename local function parameter 'x' (parameter in local function)
-        var result = refactoring.Execute(sourceCode, 6, 27, "value");
+        var result = refactoring.Execute(sourceCode, 6, 27, "value", "net8.0");
 
         // Assert
         result.IsSuccess.Should().BeTrue($"Error: {result.Message}");

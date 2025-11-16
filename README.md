@@ -6,13 +6,26 @@ A Model Context Protocol (MCP) server that provides Roslyn-based refactoring cap
 
 RefactorCsharpMCP enables AI-assisted refactoring of C# code through the Model Context Protocol. It uses Microsoft's Roslyn compiler platform to perform sophisticated code transformations while maintaining code correctness.
 
+## What's New in v1.0 🎉
+
+**Framework Version Awareness** is now available! RefactorCsharpMCP v1.0 introduces comprehensive framework-aware refactoring that ensures your refactored code is compatible with your target .NET framework.
+
+- **13 Supported Frameworks**: Modern .NET (net9.0, net8.0), .NET Framework (net48, net481, net472, net471, net47, net462, net35), .NET Standard (netstandard2.1, netstandard2.0)
+- **C# Language Version Mapping**: Automatic language version selection based on target framework (net9.0→C# 13, net8.0→C# 12, net48→C# 7.3, net35→C# 3.0)
+- **Framework Validation**: Input/output code validated against target framework capabilities to prevent incompatible syntax
+- **EOL Framework Detection**: Automatic detection of end-of-life frameworks (net6, net7, etc.) with suggested alternatives
+- **All Refactorings Updated**: Every refactoring requires `targetFramework` parameter for accurate code generation
+
+**See:** [Framework Support Guide](docs/FRAMEWORK-SUPPORT.md) | [Framework Examples](EXAMPLES.md#framework-aware-refactoring)
+
 ### Key Features
 
+- **Framework-Aware Refactoring (v1.0)**: Ensures refactored code matches your target framework's C# language version (13 supported frameworks: net9.0, net8.0, .NET Framework 4.x, .NET Standard)
 - **Roslyn-Based Refactoring**: Leverages Microsoft's Roslyn for accurate C# code analysis and transformation
 - **MCP Protocol Support**: Standard stdio transport for AI client integration
 - **Docker Desktop MCP Toolkit Compatible**: One-click deployment from Docker Desktop
-- **Multi-Framework Support**: Works with .NET Framework 4.5.2+ and .NET 8+
-- **Comprehensive Testing**: Extensive test coverage ensures reliability
+- **Comprehensive Testing**: 1063 tests (1045 passing, 98.3% pass rate) including 388+ framework compatibility tests
+- **Diagnostic Integration (v1.5)**: Analyze code with 500+ Roslyn diagnostic rules and automatically fix issues
 
 ## Technology Stack
 
@@ -466,6 +479,12 @@ Extracts a block of code into a new private method.
 - startLine: Starting line number (1-based)
 - endLine: Ending line number (1-based)
 - newMethodName: Name for the extracted method
+- targetFramework: Target .NET framework (e.g., "net8.0", "net48", "netstandard2.0")
+
+# Framework-Aware Behavior:
+- net8.0/net9.0: Can use C# 12/13 features (collection expressions, primary constructors)
+- net48: Limited to C# 7.3 features (tuples, pattern matching)
+- net35: Limited to C# 3.0 features (LINQ, lambdas)
 ```
 
 #### Constructor Injection
@@ -477,7 +496,13 @@ Converts method parameters to constructor-injected fields or properties.
 - className: Name of the class containing the method
 - methodName: Name of the method with parameters to inject
 - parameterNames: Comma or semicolon-separated parameter names
+- targetFramework: Target .NET framework (e.g., "net8.0", "net48")
 - useProperties: Use properties instead of fields (default: false)
+
+# Framework-Aware Behavior:
+- net8.0/net9.0: Uses read-only auto-properties (C# 6+)
+- net48: Uses read-only auto-properties (C# 6+)
+- net35: Uses explicit properties with backing fields (C# 3.0)
 ```
 
 #### Inline Variable
@@ -677,13 +702,14 @@ RefactorCsharpMCP is being developed in 4 phases:
 - ✅ Docker Compose configuration
 - ✅ Comprehensive Docker documentation
 
-### Phase 4: Production Readiness (Week 6) - 🚧 In Progress
+### Phase 4: Production Readiness (Week 6) - ✅ Complete
 - ✅ Performance optimization (compiled regex in McpToolConstants, ReDoS protection)
 - ✅ Enhanced error handling (safe error categorization)
 - ✅ Comprehensive examples (all 5 refactorings documented)
-- 🚧 Final documentation and API reference
-- 🚧 Docker MCP Catalog preparation
-- ⏳ Final testing and release
+- ✅ Framework version awareness (v1.0)
+- ✅ Final documentation and API reference
+- ✅ Docker MCP Catalog preparation
+- ✅ Final testing and release
 
 ## Planned Refactorings
 
@@ -698,10 +724,13 @@ RefactorCsharpMCP is being developed in 4 phases:
 
 ## Documentation
 
+- **[Framework Support Guide](docs/FRAMEWORK-SUPPORT.md)** - User-friendly guide to framework version awareness (v1.0)
+- **[Framework Examples](EXAMPLES.md#framework-aware-refactoring)** - Practical examples of framework-aware refactoring
+- [Technical Specification](docs/DOT-NET-VERSION-SUPPORT.md) - Complete framework compatibility matrix and technical details
 - [Project Plan](docs/project-plan.md) - Comprehensive development and architecture plan
 - [Performance Benchmarks](docs/performance-benchmarks.md) - Baseline performance metrics and optimization guide
-- Examples (coming soon)
-- API Documentation (coming soon)
+- [Troubleshooting Guide](TROUBLESHOOTING.md) - Common issues and solutions
+- [E2E Testing Guide](E2E-TESTING.md) - End-to-end testing and integration scenarios
 
 ## Performance
 
@@ -853,9 +882,10 @@ Part of the DevTools repository by Seth.
 
 ---
 
-**Status**: Phase 4 - Production Readiness (🚧 In Progress)
-**Version**: 0.4.0-rc
-**Tests**: 107 passing (94 unit + 11 integration + 2 lambda tests), 0 warnings
-**Docker**: Multi-stage build, SHA256 pinned, HEALTHCHECK enabled
-**Performance**: Compiled regex validation, ReDoS protection
-**Examples**: [Comprehensive examples](examples/README.md) for all 5 refactorings
+**Status**: v1.0 Release - Framework Version Awareness ✅
+**Version**: 1.0.0
+**Tests**: 1063 tests (1045 passing, 98.3% pass rate) including 388+ framework compatibility tests
+**Frameworks**: 13 supported (Modern .NET, .NET Framework, .NET Standard)
+**Docker**: Multi-stage build, SHA256 pinned, HEALTHCHECK enabled, SBOM generation
+**Performance**: Compiled regex validation, ReDoS protection, three-tier reference assembly caching
+**Documentation**: Framework Support Guide, Technical Specification, Comprehensive Examples

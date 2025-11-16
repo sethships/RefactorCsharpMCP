@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.Extensions.Logging;
 using RefactorCsharpMCP.Core.Utilities;
 using RefactorCsharpMCP.Core.Utilities.Symbols;
+using RefactorCsharpMCP.Core.Validation;
 
 namespace RefactorCsharpMCP.Core.Refactorings;
 
@@ -34,7 +35,7 @@ public class RenameSymbol : RefactoringBase
         return await ExecuteWithValidationAsync(
             sourceCode,
             targetFramework,
-            async () => await Task.Run(() => Execute(sourceCode, lineNumber, columnNumber, newName)));
+            async () => await Task.Run(() => Execute(sourceCode, lineNumber, columnNumber, newName, targetFramework)));
     }
 
     /// <summary>
@@ -44,12 +45,14 @@ public class RenameSymbol : RefactoringBase
     /// <param name="lineNumber">The 1-based line number of the symbol.</param>
     /// <param name="columnNumber">The 1-based column number of the symbol.</param>
     /// <param name="newName">The new identifier name.</param>
+    /// <param name="targetFramework">The target .NET framework (e.g., "net8.0", "net48"). Currently unused but reserved for future framework-specific features.</param>
     /// <returns>A result containing the refactored code or error information.</returns>
     public RefactoringResult Execute(
         string sourceCode,
         int lineNumber,
         int columnNumber,
-        string newName)
+        string newName,
+        string targetFramework)
     {
         // Validate inputs
         var sourceValidation = ValidateNonEmpty(sourceCode, "Source code");
@@ -58,16 +61,21 @@ public class RenameSymbol : RefactoringBase
         var nameValidation = ValidateNonEmpty(newName, "New name");
         if (!nameValidation.IsSuccess) return nameValidation;
 
-        if (lineNumber < 1 || columnNumber < 1)
+        if (lineNumber < 1)
         {
-            return RefactoringResult.Failure(
-                $"Invalid position: line {lineNumber}, column {columnNumber}. Line and column numbers must be >= 1.");
+            return RefactoringResult.Failure(ErrorCode.INVALID_LINE_NUMBER, "Line number must be >= 1.");
+        }
+
+        if (columnNumber < 1)
+        {
+            return RefactoringResult.Failure(ErrorCode.INVALID_COLUMN_NUMBER, "Column number must be >= 1.");
         }
 
         // Validate new name is a valid C# identifier
         if (!IsValidIdentifier(newName))
         {
             return RefactoringResult.Failure(
+                ErrorCode.REFACTORING_FAILED,
                 $"'{newName}' is not a valid C# identifier. Identifiers must start with a letter or underscore, followed by letters, digits, or underscores.");
         }
 
@@ -92,7 +100,7 @@ public class RenameSymbol : RefactoringBase
 
             if (!symbolResult.Success)
             {
-                return RefactoringResult.Failure(symbolResult.ErrorMessage ?? "Failed to resolve symbol at specified position.");
+                return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, symbolResult.ErrorMessage ?? "Failed to resolve symbol at specified position.");
             }
 
             var symbol = symbolResult.Symbol!;
@@ -102,7 +110,7 @@ public class RenameSymbol : RefactoringBase
             // Check if new name is the same as original
             if (originalName == newName)
             {
-                return RefactoringResult.Failure($"Symbol is already named '{newName}'. No changes needed.");
+                return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, $"Symbol is already named '{newName}'. No changes needed.");
             }
 
             // Validate symbol type (only support local, parameter, field, method for V1)
@@ -110,6 +118,7 @@ public class RenameSymbol : RefactoringBase
             if (!IsSymbolSupportedForRename(scopeInfo))
             {
                 return RefactoringResult.Failure(
+                    ErrorCode.REFACTORING_FAILED,
                     $"Cannot rename {GetSymbolKindDescription(symbol)}: Only local variables, parameters, private fields, and private methods can be renamed in single-file scope.");
             }
 
@@ -117,7 +126,7 @@ public class RenameSymbol : RefactoringBase
             var scopeNode = DetermineScopeNode(symbolResult.Node!);
             if (scopeNode == null)
             {
-                return RefactoringResult.Failure("Could not determine symbol scope for conflict detection.");
+                return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, "Could not determine symbol scope for conflict detection.");
             }
 
             // Check for naming conflicts
@@ -125,7 +134,7 @@ public class RenameSymbol : RefactoringBase
             var conflictResult = _symbolHelper.FindSymbolConflicts(semanticModel, newName, scopeNode);
             if (conflictResult.HasConflicts)
             {
-                return RefactoringResult.Failure(conflictResult.ConflictDescription ?? "Name conflicts with existing symbols.");
+                return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, conflictResult.ConflictDescription ?? "Name conflicts with existing symbols.");
             }
 
             // Find all references to the symbol

@@ -30,7 +30,7 @@ public class SafeDelete : RefactoringBase
         return await ExecuteWithValidationAsync(
             sourceCode,
             targetFramework,
-            async () => await Task.Run(() => Execute(sourceCode, className, methodName)));
+            async () => await Task.Run(() => Execute(sourceCode, className, methodName, targetFramework)));
     }
 
     /// <summary>
@@ -40,8 +40,9 @@ public class SafeDelete : RefactoringBase
     /// <param name="sourceCode">The source code containing the method.</param>
     /// <param name="className">The name of the class containing the method.</param>
     /// <param name="methodName">The name of the method to delete.</param>
+    /// <param name="targetFramework">The target .NET framework (e.g., "net8.0", "net48"). Currently unused but reserved for future framework-specific features.</param>
     /// <returns>A result containing the refactored code or error information.</returns>
-    public RefactoringResult Execute(string sourceCode, string className, string methodName)
+    public RefactoringResult Execute(string sourceCode, string className, string methodName, string targetFramework)
     {
         // Validate inputs
         var sourceValidation = ValidateNonEmpty(sourceCode, "Source code");
@@ -66,14 +67,14 @@ public class SafeDelete : RefactoringBase
             var classDeclaration = FindClass(root, className);
             if (classDeclaration == null)
             {
-                return RefactoringResult.Failure($"Class '{className}' not found in source code.");
+                return RefactoringResult.Failure(ErrorCode.NO_CLASS_FOUND, $"Class '{className}' not found in source code.");
             }
 
             // Find the method declaration
             var methodDeclaration = FindMethod(classDeclaration, methodName);
             if (methodDeclaration == null)
             {
-                return RefactoringResult.Failure($"Method '{methodName}' not found in class '{className}'.");
+                return RefactoringResult.Failure(ErrorCode.NO_METHOD_FOUND, $"Method '{methodName}' not found in class '{className}'.");
             }
 
             // Create compilation for semantic analysis
@@ -84,7 +85,7 @@ public class SafeDelete : RefactoringBase
             var methodSymbol = semanticModel.GetDeclaredSymbol(methodDeclaration);
             if (methodSymbol == null)
             {
-                return RefactoringResult.Failure("Unable to analyze method symbol.");
+                return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, "Unable to analyze method symbol.");
             }
 
             // Find all references to the method within the same file
@@ -93,14 +94,14 @@ public class SafeDelete : RefactoringBase
             if (references.Any())
             {
                 var referenceLocations = string.Join(", ", references.Select(r => $"line {r.GetLocation().GetLineSpan().StartLinePosition.Line + 1}"));
-                return RefactoringResult.Failure($"Method '{methodName}' is referenced at: {referenceLocations}. Cannot safely delete.");
+                return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, $"Method '{methodName}' is referenced at: {referenceLocations}. Cannot safely delete.");
             }
 
             // Remove the method
             var updatedClass = classDeclaration.RemoveNode(methodDeclaration, SyntaxRemoveOptions.KeepNoTrivia);
             if (updatedClass == null)
             {
-                return RefactoringResult.Failure("Failed to remove method from class.");
+                return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, "Failed to remove method from class.");
             }
 
             // Replace class in root

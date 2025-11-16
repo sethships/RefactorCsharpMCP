@@ -57,7 +57,7 @@ public abstract class RefactoringBase
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            return RefactoringResult.Failure($"{parameterName} cannot be empty.");
+            return RefactoringResult.Failure(ErrorCode.MISSING_PARAMETER, $"{parameterName} cannot be empty.");
         }
         // Return validation success without refactored code (validation helper, not actual refactoring)
         return new RefactoringResult
@@ -96,7 +96,7 @@ public abstract class RefactoringBase
             {
                 var errorMessages = string.Join(", ", errors.Select(e => e.GetMessage()).Take(3));
                 Logger?.LogWarning("Syntax parsing found {Count} errors: {Errors}", errors.Count, errorMessages);
-                return RefactoringResult.Failure($"Syntax errors in source code: {errorMessages}");
+                return RefactoringResult.Failure(ErrorCode.SYNTAX_ERROR, $"Syntax errors in source code: {errorMessages}");
             }
 
             // Return validation success without refactored code (validation helper, not actual refactoring)
@@ -265,7 +265,44 @@ public abstract class RefactoringBase
 
         // Return sanitized user-friendly message with error category (for backwards compatibility)
         var userMessage = $"An error occurred during {operationName} ({errorCategory}). Please check the code syntax and try again.";
-        return RefactoringResult.Failure(userMessage);
+        return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, userMessage);
+    }
+
+    /// <summary>
+    /// Adds refactoring target context (class name, member name) to the current error context.
+    /// This helper should be called before exception handling to provide better debugging context.
+    /// </summary>
+    /// <param name="errorContext">The error context to add target information to.</param>
+    /// <param name="className">The name of the class being refactored.</param>
+    /// <param name="memberName">Optional name of the member (method, field, etc.) being refactored.</param>
+    /// <example>
+    /// <code>
+    /// try
+    /// {
+    ///     var errorContext = new RefactoringErrorContext { Phase = CurrentPhase };
+    ///     AddTargetContext(errorContext, "MyClass", "MyMethod");
+    ///     // ... refactoring logic ...
+    /// }
+    /// catch (Exception ex)
+    /// {
+    ///     return HandleException(ex, "rename method");
+    /// }
+    /// </code>
+    /// </example>
+    protected void AddTargetContext(RefactoringErrorContext errorContext, string className, string? memberName = null)
+    {
+        if (errorContext == null)
+            throw new ArgumentNullException(nameof(errorContext));
+
+        if (!string.IsNullOrWhiteSpace(className))
+        {
+            errorContext.AdditionalContext["TargetClass"] = className;
+        }
+
+        if (!string.IsNullOrWhiteSpace(memberName))
+        {
+            errorContext.AdditionalContext["TargetMember"] = memberName;
+        }
     }
 
     /// <summary>
@@ -320,7 +357,7 @@ public abstract class RefactoringBase
             {
                 Logger?.LogError("Refactoring succeeded but produced no output code");
                 tracker?.RecordFailure(ErrorCategory.InvalidState, CurrentPhase);
-                return RefactoringResult.Failure("Refactoring succeeded but produced no output code.");
+                return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, "Refactoring succeeded but produced no output code.");
             }
 
             // Record output metrics
@@ -381,6 +418,7 @@ public abstract class RefactoringBase
                     errors.Count, errorSummary);
 
                 return RefactoringResult.Failure(
+                    ErrorCode.SYNTAX_ERROR,
                     $"Generated code has compilation errors: {errorSummary}. Total errors: {errors.Count}");
             }
 
@@ -463,6 +501,7 @@ public abstract class RefactoringBase
                     targetFramework, validationResult.ErrorMessage);
 
                 return RefactoringResult.Failure(
+                    ErrorCode.FRAMEWORK_SYNTAX_MISMATCH,
                     $"Generated code has compilation errors for framework {targetFramework}: {validationResult.ErrorMessage}");
             }
 
