@@ -318,10 +318,10 @@ dotnet build --no-restore /p:SkipTests=true
 ## Additional Resources
 
 - **Documentation:** See `/docs` folder for detailed specs
-- **Examples:** See `EXAMPLES.md` for refactoring examples
-- **Troubleshooting:** See `TROUBLESHOOTING.md`
-- **Testing:** See `E2E-TESTING.md` for integration tests
-- **Claude Code:** See `CLAUDE.md` for AI-assisted development guidance
+- **Examples:** See [EXAMPLES.md](EXAMPLES.md) for refactoring examples
+- **Troubleshooting:** See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for common issues and solutions
+- **Testing:** See [E2E-TESTING.md](E2E-TESTING.md) for integration tests
+- **Claude Code:** See [CLAUDE.md](CLAUDE.md) for AI-assisted development guidance
 
 ## Getting Help
 

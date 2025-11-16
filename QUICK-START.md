@@ -69,7 +69,7 @@ RefactorCsharpMCP/
 ├── src/
 │   ├── RefactorCsharpMCP.Core/     # 🧠 Core refactoring logic
 │   ├── RefactorCsharpMCP.Server/   # 🚀 MCP server
-│   └── RefactorCsharpMCP.Tests/    # ✅ Test suite (1161 tests)
+│   └── RefactorCsharpMCP.Tests/    # ✅ Test suite (1185 tests)
 ├── docs/                            # 📚 Documentation
 └── scripts/                         # 🔧 Build scripts
 ```
@@ -119,11 +119,9 @@ git push origin feature/my-feature
 
 - **First test run takes 2-5 minutes** - Downloads reference assemblies for 13 frameworks (~4.5GB total)
 - **Reference assemblies cached** in `~/.refactor-csharp-mcp/reference-assemblies/`
-- **Test count**: 1161 tests (1045 passing, 18 skipped - primarily framework-specific tests)
-  - Unit tests: 733 tests
-  - Component tests: 20 tests
-  - Integration tests: 8 tests
-  - Framework tests: 388 tests (covering 13 .NET frameworks)
+- **Test count**: 1185 tests (1163 passing, 4 failing, 18 skipped)
+  - Note: Test count may vary as new tests are added or removed
+  - Breakdown includes unit tests, component tests, integration tests, and framework tests (covering 13 .NET frameworks)
 - **Code coverage**: ~87% lines, ~83% branches
 
 ## Need Help?
