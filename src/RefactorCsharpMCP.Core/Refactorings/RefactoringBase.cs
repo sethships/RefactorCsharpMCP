@@ -269,6 +269,43 @@ public abstract class RefactoringBase
     }
 
     /// <summary>
+    /// Adds refactoring target context (class name, member name) to the current error context.
+    /// This helper should be called before exception handling to provide better debugging context.
+    /// </summary>
+    /// <param name="errorContext">The error context to add target information to.</param>
+    /// <param name="className">The name of the class being refactored.</param>
+    /// <param name="memberName">Optional name of the member (method, field, etc.) being refactored.</param>
+    /// <example>
+    /// <code>
+    /// try
+    /// {
+    ///     var errorContext = new RefactoringErrorContext { Phase = CurrentPhase };
+    ///     AddTargetContext(errorContext, "MyClass", "MyMethod");
+    ///     // ... refactoring logic ...
+    /// }
+    /// catch (Exception ex)
+    /// {
+    ///     return HandleException(ex, "rename method");
+    /// }
+    /// </code>
+    /// </example>
+    protected void AddTargetContext(RefactoringErrorContext errorContext, string className, string? memberName = null)
+    {
+        if (errorContext == null)
+            throw new ArgumentNullException(nameof(errorContext));
+
+        if (!string.IsNullOrWhiteSpace(className))
+        {
+            errorContext.AdditionalContext["TargetClass"] = className;
+        }
+
+        if (!string.IsNullOrWhiteSpace(memberName))
+        {
+            errorContext.AdditionalContext["TargetMember"] = memberName;
+        }
+    }
+
+    /// <summary>
     /// Performs framework-aware validation wrapping for a refactoring operation.
     /// This is a template method that handles input validation, executes the refactoring, and validates output.
     /// </summary>

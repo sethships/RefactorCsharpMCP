@@ -40,6 +40,18 @@ public class RefactoringErrorContext
     public string ExceptionType { get; set; } = string.Empty;
 
     /// <summary>
+    /// Gets or sets the full stack trace for debugging.
+    /// This should NOT be exposed to end users.
+    /// </summary>
+    public string? StackTrace { get; set; }
+
+    /// <summary>
+    /// Gets or sets the inner exception chain for root cause analysis.
+    /// Each entry contains message, type, and stack trace from inner exceptions.
+    /// </summary>
+    public List<ExceptionDetail> InnerExceptions { get; set; } = new();
+
+    /// <summary>
     /// Gets or sets additional context data for debugging.
     /// </summary>
     public Dictionary<string, string> AdditionalContext { get; set; } = new();
@@ -83,9 +95,32 @@ public class RefactoringErrorContext
             ? string.Join(", ", AdditionalContext.Select(kv => $"{kv.Key}={kv.Value}"))
             : "No additional context";
 
-        return $"[{Timestamp:O}] Error in {Phase} - Category: {Category}, " +
-               $"Type: {ExceptionType}, Location: {locationInfo}, " +
-               $"Message: {FullExceptionMessage}, Context: {contextInfo}";
+        var logMessage = $"[{Timestamp:O}] Error in {Phase} - Category: {Category}, " +
+                        $"Type: {ExceptionType}, Location: {locationInfo}, " +
+                        $"Message: {FullExceptionMessage}, Context: {contextInfo}";
+
+        // Append stack trace if available
+        if (!string.IsNullOrWhiteSpace(StackTrace))
+        {
+            logMessage += $"\nStack Trace: {StackTrace}";
+        }
+
+        // Append inner exception details if any
+        if (InnerExceptions.Any())
+        {
+            logMessage += $"\nInner Exceptions ({InnerExceptions.Count}):";
+            for (int i = 0; i < InnerExceptions.Count; i++)
+            {
+                var inner = InnerExceptions[i];
+                logMessage += $"\n  [{i + 1}] Type: {inner.ExceptionType}, Message: {inner.Message}";
+                if (!string.IsNullOrWhiteSpace(inner.StackTrace))
+                {
+                    logMessage += $"\n      Stack Trace: {inner.StackTrace}";
+                }
+            }
+        }
+
+        return logMessage;
     }
 
     /// <summary>
@@ -108,6 +143,20 @@ public class RefactoringErrorContext
             _ => ErrorCategory.UnexpectedError
         };
 
+        // Collect inner exception chain
+        var innerExceptions = new List<ExceptionDetail>();
+        var currentInner = exception.InnerException;
+        while (currentInner != null)
+        {
+            innerExceptions.Add(new ExceptionDetail
+            {
+                Message = currentInner.Message,
+                ExceptionType = currentInner.GetType().Name,
+                StackTrace = currentInner.StackTrace
+            });
+            currentInner = currentInner.InnerException;
+        }
+
         return new RefactoringErrorContext
         {
             Category = category,
@@ -115,6 +164,8 @@ public class RefactoringErrorContext
             SourceLocation = sourceLocation,
             FullExceptionMessage = exception.Message,
             ExceptionType = exception.GetType().Name,
+            StackTrace = exception.StackTrace,
+            InnerExceptions = innerExceptions,
             Timestamp = DateTime.UtcNow
         };
     }
@@ -154,4 +205,26 @@ public enum ErrorCategory
     /// Unexpected error not fitting other categories.
     /// </summary>
     UnexpectedError
+}
+
+/// <summary>
+/// Represents details about an exception in the inner exception chain.
+/// Used for root cause analysis and debugging.
+/// </summary>
+public class ExceptionDetail
+{
+    /// <summary>
+    /// Gets or sets the exception message.
+    /// </summary>
+    public string Message { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the exception type name.
+    /// </summary>
+    public string ExceptionType { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the stack trace, if available.
+    /// </summary>
+    public string? StackTrace { get; set; }
 }

@@ -279,4 +279,234 @@ public class RefactoringErrorContextTests
         Assert.InRange(context.Timestamp, beforeCreate, afterCreate);
         Assert.Equal(DateTimeKind.Utc, context.Timestamp.Kind);
     }
+
+    #region Phase 4: Stack Trace and Inner Exception Tests
+
+    [Fact]
+    public void FromException_CapturesStackTrace()
+    {
+        // Arrange
+        Exception exception;
+        try
+        {
+            throw new InvalidOperationException("Test exception with stack trace");
+        }
+        catch (Exception ex)
+        {
+            exception = ex;
+        }
+
+        // Act
+        var context = RefactoringErrorContext.FromException(exception, "Test Phase");
+
+        // Assert
+        Assert.NotNull(context.StackTrace);
+        Assert.Contains("FromException_CapturesStackTrace", context.StackTrace);
+        Assert.Contains("RefactoringErrorContextTests", context.StackTrace);
+    }
+
+    [Fact]
+    public void FromException_WithInnerException_CapturesInnerExceptionChain()
+    {
+        // Arrange
+        var innerException = new ArgumentException("Inner exception message");
+        var outerException = new InvalidOperationException("Outer exception message", innerException);
+
+        // Act
+        var context = RefactoringErrorContext.FromException(outerException, "Test Phase");
+
+        // Assert
+        Assert.Single(context.InnerExceptions);
+        Assert.Equal("Inner exception message", context.InnerExceptions[0].Message);
+        Assert.Equal("ArgumentException", context.InnerExceptions[0].ExceptionType);
+    }
+
+    [Fact]
+    public void FromException_WithMultipleInnerExceptions_CapturesFullChain()
+    {
+        // Arrange
+        var innermost = new FormatException("Innermost exception");
+        var middle = new ArgumentException("Middle exception", innermost);
+        var outer = new InvalidOperationException("Outer exception", middle);
+
+        // Act
+        var context = RefactoringErrorContext.FromException(outer, "Test Phase");
+
+        // Assert
+        Assert.Equal(2, context.InnerExceptions.Count);
+
+        // First inner exception (immediate inner)
+        Assert.Equal("Middle exception", context.InnerExceptions[0].Message);
+        Assert.Equal("ArgumentException", context.InnerExceptions[0].ExceptionType);
+
+        // Second inner exception (innermost)
+        Assert.Equal("Innermost exception", context.InnerExceptions[1].Message);
+        Assert.Equal("FormatException", context.InnerExceptions[1].ExceptionType);
+    }
+
+    [Fact]
+    public void FromException_WithInnerExceptionWithStackTrace_CapturesInnerStackTrace()
+    {
+        // Arrange
+        Exception innerException;
+        try
+        {
+            throw new ArgumentException("Inner with stack trace");
+        }
+        catch (Exception ex)
+        {
+            innerException = ex;
+        }
+
+        var outerException = new InvalidOperationException("Outer", innerException);
+
+        // Act
+        var context = RefactoringErrorContext.FromException(outerException, "Test Phase");
+
+        // Assert
+        Assert.Single(context.InnerExceptions);
+        Assert.NotNull(context.InnerExceptions[0].StackTrace);
+        Assert.Contains("FromException_WithInnerExceptionWithStackTrace_CapturesInnerStackTrace",
+            context.InnerExceptions[0].StackTrace);
+    }
+
+    [Fact]
+    public void FromException_WithoutInnerException_HasEmptyInnerExceptionsList()
+    {
+        // Arrange
+        var exception = new InvalidOperationException("No inner exception");
+
+        // Act
+        var context = RefactoringErrorContext.FromException(exception, "Test Phase");
+
+        // Assert
+        Assert.Empty(context.InnerExceptions);
+    }
+
+    [Fact]
+    public void ToLogMessage_WithStackTrace_IncludesStackTraceInOutput()
+    {
+        // Arrange
+        var context = new RefactoringErrorContext
+        {
+            Category = ErrorCategory.UnexpectedError,
+            Phase = "Test Phase",
+            FullExceptionMessage = "Test exception",
+            ExceptionType = "TestException",
+            StackTrace = "   at TestClass.TestMethod() in TestFile.cs:line 42\n   at Program.Main()"
+        };
+
+        // Act
+        var logMessage = context.ToLogMessage();
+
+        // Assert
+        Assert.Contains("Stack Trace:", logMessage);
+        Assert.Contains("at TestClass.TestMethod()", logMessage);
+        Assert.Contains("TestFile.cs:line 42", logMessage);
+    }
+
+    [Fact]
+    public void ToLogMessage_WithInnerExceptions_IncludesInnerExceptionDetails()
+    {
+        // Arrange
+        var context = new RefactoringErrorContext
+        {
+            Category = ErrorCategory.UnexpectedError,
+            Phase = "Test Phase",
+            FullExceptionMessage = "Outer exception",
+            ExceptionType = "OuterException"
+        };
+        context.InnerExceptions.Add(new ExceptionDetail
+        {
+            Message = "First inner exception",
+            ExceptionType = "FirstInnerException",
+            StackTrace = "   at Inner1.Method()"
+        });
+        context.InnerExceptions.Add(new ExceptionDetail
+        {
+            Message = "Second inner exception",
+            ExceptionType = "SecondInnerException",
+            StackTrace = "   at Inner2.Method()"
+        });
+
+        // Act
+        var logMessage = context.ToLogMessage();
+
+        // Assert
+        Assert.Contains("Inner Exceptions (2):", logMessage);
+        Assert.Contains("[1] Type: FirstInnerException, Message: First inner exception", logMessage);
+        Assert.Contains("Stack Trace:    at Inner1.Method()", logMessage);
+        Assert.Contains("[2] Type: SecondInnerException, Message: Second inner exception", logMessage);
+        Assert.Contains("Stack Trace:    at Inner2.Method()", logMessage);
+    }
+
+    [Fact]
+    public void ToLogMessage_WithoutStackTrace_DoesNotIncludeStackTraceSection()
+    {
+        // Arrange
+        var context = new RefactoringErrorContext
+        {
+            Category = ErrorCategory.UnexpectedError,
+            Phase = "Test Phase",
+            FullExceptionMessage = "Test exception",
+            ExceptionType = "TestException",
+            StackTrace = null
+        };
+
+        // Act
+        var logMessage = context.ToLogMessage();
+
+        // Assert
+        Assert.DoesNotContain("Stack Trace:", logMessage);
+    }
+
+    [Fact]
+    public void ToLogMessage_WithoutInnerExceptions_DoesNotIncludeInnerExceptionsSection()
+    {
+        // Arrange
+        var context = new RefactoringErrorContext
+        {
+            Category = ErrorCategory.UnexpectedError,
+            Phase = "Test Phase",
+            FullExceptionMessage = "Test exception",
+            ExceptionType = "TestException"
+        };
+
+        // Act
+        var logMessage = context.ToLogMessage();
+
+        // Assert
+        Assert.DoesNotContain("Inner Exceptions", logMessage);
+    }
+
+    [Fact]
+    public void ExceptionDetail_CanBeCreatedWithAllProperties()
+    {
+        // Act
+        var detail = new ExceptionDetail
+        {
+            Message = "Test message",
+            ExceptionType = "TestException",
+            StackTrace = "Test stack trace"
+        };
+
+        // Assert
+        Assert.Equal("Test message", detail.Message);
+        Assert.Equal("TestException", detail.ExceptionType);
+        Assert.Equal("Test stack trace", detail.StackTrace);
+    }
+
+    [Fact]
+    public void ExceptionDetail_PropertiesDefaultToEmpty()
+    {
+        // Act
+        var detail = new ExceptionDetail();
+
+        // Assert
+        Assert.Equal(string.Empty, detail.Message);
+        Assert.Equal(string.Empty, detail.ExceptionType);
+        Assert.Null(detail.StackTrace);
+    }
+
+    #endregion
 }

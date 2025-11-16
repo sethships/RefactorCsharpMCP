@@ -49,6 +49,11 @@ public class RefactoringBaseTests
         {
             return NormalizeWhitespace(node);
         }
+
+        public void TestAddTargetContext(RefactoringErrorContext errorContext, string className, string? memberName = null)
+        {
+            AddTargetContext(errorContext, className, memberName);
+        }
     }
 
     [Fact]
@@ -318,4 +323,112 @@ public class TestClass
         // indirectly through all the refactoring ExecuteAsync methods
         true.Should().BeTrue("ExecuteWithValidationAsync is tested through refactoring classes");
     }
+
+    #region Phase 4: AddTargetContext Tests
+
+    [Fact]
+    public void AddTargetContext_WithClassName_AddsTargetClassToContext()
+    {
+        // Arrange
+        var refactoring = new TestRefactoring();
+        var errorContext = new RefactoringErrorContext { Phase = "Test Phase" };
+
+        // Act
+        refactoring.TestAddTargetContext(errorContext, "MyTestClass");
+
+        // Assert
+        errorContext.AdditionalContext.Should().ContainKey("TargetClass");
+        errorContext.AdditionalContext["TargetClass"].Should().Be("MyTestClass");
+    }
+
+    [Fact]
+    public void AddTargetContext_WithClassNameAndMemberName_AddsBothToContext()
+    {
+        // Arrange
+        var refactoring = new TestRefactoring();
+        var errorContext = new RefactoringErrorContext { Phase = "Test Phase" };
+
+        // Act
+        refactoring.TestAddTargetContext(errorContext, "MyTestClass", "MyTestMethod");
+
+        // Assert
+        errorContext.AdditionalContext.Should().ContainKey("TargetClass");
+        errorContext.AdditionalContext["TargetClass"].Should().Be("MyTestClass");
+        errorContext.AdditionalContext.Should().ContainKey("TargetMember");
+        errorContext.AdditionalContext["TargetMember"].Should().Be("MyTestMethod");
+    }
+
+    [Fact]
+    public void AddTargetContext_WithNullErrorContext_ThrowsArgumentNullException()
+    {
+        // Arrange
+        var refactoring = new TestRefactoring();
+
+        // Act & Assert
+        Action act = () => refactoring.TestAddTargetContext(null!, "MyClass");
+        act.Should().Throw<ArgumentNullException>()
+            .WithParameterName("errorContext");
+    }
+
+    [Fact]
+    public void AddTargetContext_WithEmptyClassName_DoesNotAddTargetClass()
+    {
+        // Arrange
+        var refactoring = new TestRefactoring();
+        var errorContext = new RefactoringErrorContext { Phase = "Test Phase" };
+
+        // Act
+        refactoring.TestAddTargetContext(errorContext, "", "MyMethod");
+
+        // Assert
+        errorContext.AdditionalContext.Should().NotContainKey("TargetClass");
+        errorContext.AdditionalContext.Should().ContainKey("TargetMember");
+    }
+
+    [Fact]
+    public void AddTargetContext_WithNullMemberName_OnlyAddsClassName()
+    {
+        // Arrange
+        var refactoring = new TestRefactoring();
+        var errorContext = new RefactoringErrorContext { Phase = "Test Phase" };
+
+        // Act
+        refactoring.TestAddTargetContext(errorContext, "MyClass", null);
+
+        // Assert
+        errorContext.AdditionalContext.Should().ContainKey("TargetClass");
+        errorContext.AdditionalContext["TargetClass"].Should().Be("MyClass");
+        errorContext.AdditionalContext.Should().NotContainKey("TargetMember");
+    }
+
+    [Fact]
+    public void AddTargetContext_WithWhitespaceClassName_DoesNotAddTargetClass()
+    {
+        // Arrange
+        var refactoring = new TestRefactoring();
+        var errorContext = new RefactoringErrorContext { Phase = "Test Phase" };
+
+        // Act
+        refactoring.TestAddTargetContext(errorContext, "   ", "MyMethod");
+
+        // Assert
+        errorContext.AdditionalContext.Should().NotContainKey("TargetClass");
+    }
+
+    [Fact]
+    public void AddTargetContext_WithWhitespaceMemberName_DoesNotAddTargetMember()
+    {
+        // Arrange
+        var refactoring = new TestRefactoring();
+        var errorContext = new RefactoringErrorContext { Phase = "Test Phase" };
+
+        // Act
+        refactoring.TestAddTargetContext(errorContext, "MyClass", "   ");
+
+        // Assert
+        errorContext.AdditionalContext.Should().ContainKey("TargetClass");
+        errorContext.AdditionalContext.Should().NotContainKey("TargetMember");
+    }
+
+    #endregion
 }
