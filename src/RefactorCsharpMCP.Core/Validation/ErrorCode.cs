@@ -124,5 +124,49 @@ public enum ErrorCode
     /// <summary>
     /// Target framework parameter is null or whitespace.
     /// </summary>
-    EMPTY_TARGET_FRAMEWORK = 415
+    EMPTY_TARGET_FRAMEWORK = 415,
+
+    /// <summary>
+    /// Line range is invalid (startLine > endLine or < 1).
+    /// For ExtractMethod: Invalid line range specified for code extraction.
+    /// </summary>
+    INVALID_LINE_RANGE = 416,
+
+    // Additional Execution Errors (429-434: Operation-specific failures)
+
+    /// <summary>
+    /// No statements found in specified line range.
+    /// For ExtractMethod: Selected code range contains no extractable statements.
+    /// </summary>
+    NO_STATEMENTS_FOUND = 429,
+
+    /// <summary>
+    /// Variable cannot be inlined (used in multiple locations, complex initializer, etc.).
+    /// For InlineVariable: Variable has multiple references or non-trivial initialization that prevents inlining.
+    /// </summary>
+    VARIABLE_NOT_INLINABLE = 430,
+
+    /// <summary>
+    /// Method cannot be inlined (multiple callers, complex body, etc.).
+    /// For InlineMethod: Method is called from multiple locations or has complex logic that prevents inlining.
+    /// </summary>
+    METHOD_NOT_INLINABLE = 431,
+
+    /// <summary>
+    /// Method has no callers and cannot be inlined.
+    /// For InlineMethod: Cannot inline a method that is never called.
+    /// </summary>
+    METHOD_HAS_NO_CALLERS = 432,
+
+    /// <summary>
+    /// Specified parameter not found in method signature.
+    /// For ConstructorInjection: Parameter name does not match any method parameter.
+    /// </summary>
+    PARAMETER_NOT_FOUND = 433,
+
+    /// <summary>
+    /// Field cannot be made readonly (assigned outside constructor).
+    /// For MakeFieldReadonly: Field is assigned in locations other than constructors.
+    /// </summary>
+    FIELD_NOT_ASSIGNABLE = 434
 }

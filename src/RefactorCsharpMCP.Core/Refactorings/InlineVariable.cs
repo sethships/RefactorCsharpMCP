@@ -52,12 +52,12 @@ public class InlineVariable : RefactoringBase
 
         if (lineNumber < 1)
         {
-            return RefactoringResult.Failure("Line number must be >= 1.");
+            return RefactoringResult.Failure(ErrorCode.INVALID_LINE_NUMBER, "Line number must be >= 1.");
         }
 
         if (columnNumber < 1)
         {
-            return RefactoringResult.Failure("Column number must be >= 1.");
+            return RefactoringResult.Failure(ErrorCode.INVALID_COLUMN_NUMBER, "Column number must be >= 1.");
         }
 
         try
@@ -80,7 +80,7 @@ public class InlineVariable : RefactoringBase
             var symbolResult = _symbolHelper.GetSymbolAtPosition(semanticModel, syntaxTree, lineNumber, columnNumber);
             if (!symbolResult.Success)
             {
-                return RefactoringResult.Failure(symbolResult.ErrorMessage ?? "Failed to resolve symbol at the specified position.");
+                return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, symbolResult.ErrorMessage ?? "Failed to resolve symbol at the specified position.");
             }
 
             // Extract variable information from the resolved symbol
@@ -88,6 +88,7 @@ public class InlineVariable : RefactoringBase
             if (variableInfo == null)
             {
                 return RefactoringResult.Failure(
+                    ErrorCode.REFACTORING_FAILED,
                     $"No local variable found at line {lineNumber}, column {columnNumber}. " +
                     "Ensure the cursor is on a variable declaration.");
             }
@@ -97,7 +98,7 @@ public class InlineVariable : RefactoringBase
             var validation = CanVariableBeInlined(variableInfo, semanticModel);
             if (!validation.CanInline)
             {
-                return RefactoringResult.Failure(validation.Reason ?? "Variable cannot be inlined.");
+                return RefactoringResult.Failure(ErrorCode.VARIABLE_NOT_INLINABLE, validation.Reason ?? "Variable cannot be inlined.");
             }
 
             // Find all references to the variable
@@ -124,7 +125,7 @@ public class InlineVariable : RefactoringBase
             if (trackedReferences.Count != references.Count)
             {
                 Logger?.LogWarning("Failed to track all reference nodes across transformation");
-                return RefactoringResult.Failure("Failed to track all variable references.");
+                return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, "Failed to track all variable references.");
             }
 
             // Inline all references with the initialization expression
@@ -132,7 +133,7 @@ public class InlineVariable : RefactoringBase
             // Defensive check - should never happen due to validation above
             if (variableInfo.Initializer == null)
             {
-                return RefactoringResult.Failure("Internal error: Variable initializer is null after validation.");
+                return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, "Internal error: Variable initializer is null after validation.");
             }
             var newRoot = InlineAllReferences(trackedRoot, trackedReferences, variableInfo.Initializer);
 
@@ -141,7 +142,7 @@ public class InlineVariable : RefactoringBase
             if (trackedDeclaration == null)
             {
                 Logger?.LogWarning("Failed to track declaration statement across transformation");
-                return RefactoringResult.Failure("Failed to remove variable declaration after inlining.");
+                return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, "Failed to remove variable declaration after inlining.");
             }
 
             // Remove the variable declaration

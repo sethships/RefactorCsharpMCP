@@ -64,7 +64,7 @@ public class ConstructorInjection : RefactoringBase
 
         if (parameterNames == null || parameterNames.Length == 0)
         {
-            return RefactoringResult.Failure("At least one parameter name must be specified.");
+            return RefactoringResult.Failure(ErrorCode.MISSING_PARAMETER, "At least one parameter name must be specified.");
         }
 
         try
@@ -80,14 +80,14 @@ public class ConstructorInjection : RefactoringBase
             var classDeclaration = FindClass(root, className);
             if (classDeclaration == null)
             {
-                return RefactoringResult.Failure($"Class '{className}' not found in source code.");
+                return RefactoringResult.Failure(ErrorCode.NO_CLASS_FOUND, $"Class '{className}' not found in source code.");
             }
 
             // Find the method declaration
             var methodDeclaration = FindMethod(classDeclaration, methodName);
             if (methodDeclaration == null)
             {
-                return RefactoringResult.Failure($"Method '{methodName}' not found in class '{className}'.");
+                return RefactoringResult.Failure(ErrorCode.NO_METHOD_FOUND, $"Method '{methodName}' not found in class '{className}'.");
             }
 
             // Find the parameters to inject
@@ -98,7 +98,7 @@ public class ConstructorInjection : RefactoringBase
             if (parametersToInject.Count != parameterNames.Length)
             {
                 var foundParams = string.Join(", ", parametersToInject.Select(p => p.Identifier.Text));
-                return RefactoringResult.Failure($"Not all specified parameters found. Found: {foundParams}");
+                return RefactoringResult.Failure(ErrorCode.PARAMETER_NOT_FOUND, $"Not all specified parameters found. Found: {foundParams}");
             }
 
             // Generate fields or properties using Roslyn SyntaxFactory

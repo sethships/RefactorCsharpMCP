@@ -19,6 +19,7 @@ public class CompilationContextBuilder
     private List<SyntaxTree> _syntaxTrees = new();
     private List<MetadataReference> _additionalReferences = new();
     private CSharpCompilationOptions? _compilationOptions;
+    private Func<string?, IEnumerable<MetadataReference>>? _referenceAssemblyResolver;
 
     /// <summary>
     /// Initializes a new instance of CompilationContextBuilder.
@@ -124,6 +125,30 @@ public class CompilationContextBuilder
     }
 
     /// <summary>
+    /// Sets a custom reference assembly resolver for loading BCL references.
+    /// Allows advanced scenarios like custom BCL paths, cross-platform builds, or framework-specific references.
+    /// If not set, uses default runtime reference loading.
+    /// </summary>
+    /// <param name="resolver">A function that takes the target framework and returns metadata references.
+    /// The target framework parameter may be null if not set when resolver is invoked.</param>
+    /// <returns>This builder for fluent chaining</returns>
+    /// <remarks>
+    /// Example usage:
+    /// <code>
+    /// builder.WithReferenceAssemblyResolver(tfm =>
+    /// {
+    ///     // Custom logic to load references based on target framework
+    ///     return GetCustomReferencesForFramework(tfm);
+    /// });
+    /// </code>
+    /// </remarks>
+    public CompilationContextBuilder WithReferenceAssemblyResolver(Func<string?, IEnumerable<MetadataReference>> resolver)
+    {
+        _referenceAssemblyResolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
+        return this;
+    }
+
+    /// <summary>
     /// Builds the CSharpCompilation with framework-specific configuration.
     /// Validates the target framework and configures language version appropriately.
     /// </summary>
@@ -165,8 +190,10 @@ public class CompilationContextBuilder
         // Get compilation options (use provided or default)
         var compilationOptions = _compilationOptions ?? CreateDefaultCompilationOptions();
 
-        // Load framework-specific BCL references
-        var bclReferences = LoadBclReferences();
+        // Load framework-specific BCL references (use custom resolver if provided, otherwise default)
+        var bclReferences = _referenceAssemblyResolver != null
+            ? _referenceAssemblyResolver(_targetFramework)
+            : LoadBclReferences();
 
         // Combine BCL and additional references
         var allReferences = bclReferences.Concat(_additionalReferences);

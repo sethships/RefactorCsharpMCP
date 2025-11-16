@@ -63,26 +63,26 @@ public class MakeFieldReadonly : RefactoringBase
             var classDeclaration = FindClass(root, className);
             if (classDeclaration == null)
             {
-                return RefactoringResult.Failure($"Class '{className}' not found in source code.");
+                return RefactoringResult.Failure(ErrorCode.NO_CLASS_FOUND, $"Class '{className}' not found in source code.");
             }
 
             // Find the field declaration
             var fieldDeclaration = FindFieldDeclaration(classDeclaration, fieldName);
             if (fieldDeclaration == null)
             {
-                return RefactoringResult.Failure($"Field '{fieldName}' not found in class '{className}'.");
+                return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, $"Field '{fieldName}' not found in class '{className}'.");
             }
 
             // Check if field is already readonly
             if (fieldDeclaration.Modifiers.Any(m => m.IsKind(SyntaxKind.ReadOnlyKeyword)))
             {
-                return RefactoringResult.Failure($"Field '{fieldName}' is already readonly.");
+                return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, $"Field '{fieldName}' is already readonly.");
             }
 
             // Check if field is const
             if (fieldDeclaration.Modifiers.Any(m => m.IsKind(SyntaxKind.ConstKeyword)))
             {
-                return RefactoringResult.Failure($"Field '{fieldName}' is const and cannot be made readonly.");
+                return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, $"Field '{fieldName}' is const and cannot be made readonly.");
             }
 
             // Create compilation for semantic analysis
@@ -93,7 +93,7 @@ public class MakeFieldReadonly : RefactoringBase
             var canBeReadonly = CanFieldBeReadonly(classDeclaration, fieldName, semanticModel);
             if (!canBeReadonly.IsValid)
             {
-                return RefactoringResult.Failure(canBeReadonly.Reason ?? "Field cannot be made readonly.");
+                return RefactoringResult.Failure(ErrorCode.FIELD_NOT_ASSIGNABLE, canBeReadonly.Reason ?? "Field cannot be made readonly.");
             }
 
             // Add readonly modifier

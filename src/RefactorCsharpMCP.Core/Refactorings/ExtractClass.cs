@@ -125,7 +125,7 @@ public class ExtractClass : RefactoringBase
             string.IsNullOrWhiteSpace(methodNames) &&
             string.IsNullOrWhiteSpace(nestedTypeNames))
         {
-            return RefactoringResult.Failure("At least one field, method, or nested type name must be specified.");
+            return RefactoringResult.Failure(ErrorCode.MISSING_PARAMETER, "At least one field, method, or nested type name must be specified.");
         }
 
         try

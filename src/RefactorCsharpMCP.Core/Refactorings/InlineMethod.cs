@@ -74,12 +74,12 @@ public class InlineMethod : RefactoringBase
 
         if (lineNumber < 1)
         {
-            return RefactoringResult.Failure("Line number must be >= 1.");
+            return RefactoringResult.Failure(ErrorCode.INVALID_LINE_NUMBER, "Line number must be >= 1.");
         }
 
         if (columnNumber < 1)
         {
-            return RefactoringResult.Failure("Column number must be >= 1.");
+            return RefactoringResult.Failure(ErrorCode.INVALID_COLUMN_NUMBER, "Column number must be >= 1.");
         }
 
         try
@@ -102,7 +102,7 @@ public class InlineMethod : RefactoringBase
             var symbolResult = _symbolHelper.GetSymbolAtPosition(semanticModel, syntaxTree, lineNumber, columnNumber);
             if (!symbolResult.Success)
             {
-                return RefactoringResult.Failure(symbolResult.ErrorMessage ?? "Failed to resolve symbol at the specified position.");
+                return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, symbolResult.ErrorMessage ?? "Failed to resolve symbol at the specified position.");
             }
 
             // Extract method information from the resolved symbol
@@ -110,6 +110,7 @@ public class InlineMethod : RefactoringBase
             if (methodInfo == null)
             {
                 return RefactoringResult.Failure(
+                    ErrorCode.REFACTORING_FAILED,
                     $"No method found at line {lineNumber}, column {columnNumber}. " +
                     "Ensure the cursor is on a method declaration.");
             }
@@ -119,7 +120,7 @@ public class InlineMethod : RefactoringBase
             var validation = _methodResolver.CanMethodBeInlined(methodInfo, semanticModel, compilation);
             if (!validation.CanInline)
             {
-                return RefactoringResult.Failure(validation.Reason ?? "Method cannot be inlined.");
+                return RefactoringResult.Failure(ErrorCode.METHOD_NOT_INLINABLE, validation.Reason ?? "Method cannot be inlined.");
             }
 
             // Find all references to the method (call sites)
@@ -134,7 +135,7 @@ public class InlineMethod : RefactoringBase
             // Validate we have at least one caller
             if (references.Count == 0)
             {
-                return RefactoringResult.Failure($"Method '{methodInfo.Symbol.Name}' has no callers. Cannot inline unused method.");
+                return RefactoringResult.Failure(ErrorCode.METHOD_HAS_NO_CALLERS, $"Method '{methodInfo.Symbol.Name}' has no callers. Cannot inline unused method.");
             }
 
             Logger?.LogDebug(
@@ -176,7 +177,7 @@ public class InlineMethod : RefactoringBase
             if (trackedReferences.Count != references.Count)
             {
                 Logger?.LogWarning("Failed to track all reference nodes across transformation");
-                return RefactoringResult.Failure("Failed to track all method references.");
+                return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, "Failed to track all method references.");
             }
 
             // Inline all call sites with the method body
@@ -193,7 +194,7 @@ public class InlineMethod : RefactoringBase
             if (trackedDeclaration == null)
             {
                 Logger?.LogWarning("Failed to track method declaration across transformation");
-                return RefactoringResult.Failure("Failed to remove method declaration after inlining.");
+                return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, "Failed to remove method declaration after inlining.");
             }
 
             // Remove the method declaration

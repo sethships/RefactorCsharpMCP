@@ -177,5 +177,66 @@ public class CompilationContextBuilderTests
         Assert.Equal("CustomAssembly", compilation.AssemblyName);
     }
 
+    [Fact]
+    public void WithReferenceAssemblyResolver_UsesCustomResolver()
+    {
+        // Arrange
+        var customReferenceCalled = false;
+        var customReferences = new[]
+        {
+            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(System.Console).Assembly.Location)
+        };
+
+        Func<string?, IEnumerable<MetadataReference>> customResolver = (tfm) =>
+        {
+            customReferenceCalled = true;
+            Assert.Equal("net8.0", tfm);
+            return customReferences;
+        };
+
+        var builder = new CompilationContextBuilder()
+            .WithTargetFramework("net8.0")
+            .WithReferenceAssemblyResolver(customResolver)
+            .AddSyntaxTree(CSharpSyntaxTree.ParseText("class Test { }"));
+
+        // Act
+        var compilation = builder.Build();
+
+        // Assert
+        Assert.True(customReferenceCalled, "Custom resolver should have been called");
+        Assert.NotNull(compilation);
+        // Verify custom references are present (at least the two we added)
+        Assert.True(compilation.References.Count() >= 2, $"Expected at least 2 references, got {compilation.References.Count()}");
+    }
+
+    [Fact]
+    public void WithReferenceAssemblyResolver_WithNullResolver_ThrowsArgumentNullException()
+    {
+        // Arrange
+        var builder = new CompilationContextBuilder();
+
+        // Act & Assert
+        Assert.Throws<ArgumentNullException>(() => builder.WithReferenceAssemblyResolver(null!));
+    }
+
+    [Fact]
+    public void Build_WithoutCustomResolver_UsesDefaultReferences()
+    {
+        // Arrange
+        var builder = new CompilationContextBuilder()
+            .WithTargetFramework("net8.0")
+            .AddSyntaxTree(CSharpSyntaxTree.ParseText("class Test { }"));
+
+        // Act
+        var compilation = builder.Build();
+
+        // Assert
+        Assert.NotNull(compilation);
+        // Default BCL loading provides multiple references
+        Assert.True(compilation.References.Count() > 5,
+            $"Expected more than 5 default references, got {compilation.References.Count()}");
+    }
+
     #endregion
 }

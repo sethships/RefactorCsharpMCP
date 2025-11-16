@@ -59,7 +59,7 @@ internal class ExtractClassOrchestrator
         var classDeclaration = FindClass(root, className);
         if (classDeclaration == null)
         {
-            return RefactoringResult.Failure($"Class '{className}' not found in source code.");
+            return RefactoringResult.Failure(ErrorCode.NO_CLASS_FOUND, $"Class '{className}' not found in source code.");
         }
 
         // Validate and find all members to extract
@@ -89,14 +89,14 @@ internal class ExtractClassOrchestrator
         var sourceClassSymbol = semanticModel.GetDeclaredSymbol(classDeclaration) as INamedTypeSymbol;
         if (sourceClassSymbol == null)
         {
-            return RefactoringResult.Failure($"Could not resolve symbol for class '{className}'.");
+            return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, $"Could not resolve symbol for class '{className}'.");
         }
 
         // Defensive validation: Ensure newClassName is not empty before creating field name
         // Note: ExtractClass.cs validates at line 120, but orchestrator validates for defensive programming
         if (string.IsNullOrEmpty(newClassName))
         {
-            return RefactoringResult.Failure("New class name cannot be empty.");
+            return RefactoringResult.Failure(ErrorCode.MISSING_PARAMETER, "New class name cannot be empty.");
         }
 
         // Create a field name for the new class instance
@@ -188,7 +188,7 @@ internal class ExtractClassOrchestrator
         var newRoot = transformer.Visit(root);
         if (newRoot == null)
         {
-            return RefactoringResult.Failure("Failed to transform source tree during extraction.");
+            return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, "Failed to transform source tree during extraction.");
         }
 
         // Normalize whitespace to ensure proper formatting
