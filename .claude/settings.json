@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"${CLAUDE_PROJECT_DIR:-.}\" && bash scripts/install_tools.sh 2>&1 || echo '[Warning] Tool setup incomplete - dotnet/gh may not be available'"
+          }
+        ]
+      }
+    ]
+  }
+}
