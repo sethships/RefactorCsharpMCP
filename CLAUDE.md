@@ -143,6 +143,77 @@ Solves the Roslyn Identity Paradox for nested type qualification by separating s
 
 ## Build and Development
 
+### Prerequisites
+
+**Required Tools:**
+- .NET 8.0 SDK
+- GitHub CLI (`gh`) - Required for issue management and PR workflows (when using MCP Docker GitHub tools as fallback)
+
+**Automated Setup (Claude Code Remote Environments):**
+
+This project uses Claude Code SessionStart hooks to automatically install dependencies in remote environments. When you open this project in Claude Code web, the following happens automatically:
+
+1. ✅ `.claude/settings.json` triggers `scripts/install_tools.sh`
+2. ✅ Script detects remote environment (`CLAUDE_CODE_REMOTE=true`)
+3. ✅ Installs .NET SDK 8.0 from packages.microsoft.com
+4. ✅ Installs GitHub CLI from cli.github.com
+5. ✅ Configures environment variables (DOTNET_ROOT, PATH)
+6. ✅ Reports installation success with version info
+
+**Manual Setup (Local Environments):**
+
+For local development, install dependencies manually:
+
+```bash
+# .NET SDK 8.0
+# Windows: https://dotnet.microsoft.com/download/dotnet/8.0
+# macOS: brew install dotnet@8
+# Linux: https://learn.microsoft.com/en-us/dotnet/core/install/linux
+
+# GitHub CLI
+# Windows: winget install GitHub.cli
+# macOS: brew install gh
+# Linux: https://cli.github.com/manual/installation
+```
+
+The installation script will skip automatically in local environments:
+```bash
+$ ./scripts/install_tools.sh
+ℹ️  Local environment detected - skipping automated tool installation
+```
+
+**GitHub CLI Usage (Remote Environments):**
+
+**IMPORTANT:** In Claude Code remote environments, the git remote uses a local proxy URL that gh CLI doesn't recognize. Therefore:
+
+1. **Always use the full path** when calling gh:
+   ```bash
+   # Using dynamic path (recommended for portability)
+   $(pwd)/.tools/gh/bin/gh [command]
+
+   # Or with absolute path
+   /path/to/RefactorCsharpMCP/.tools/gh/bin/gh [command]
+   ```
+
+2. **Always specify the repository** with `-R` flag:
+   ```bash
+   # List issues
+   $(pwd)/.tools/gh/bin/gh issue list -R sethb75/RefactorCsharpMCP
+
+   # View a specific issue
+   $(pwd)/.tools/gh/bin/gh issue view 123 -R sethb75/RefactorCsharpMCP
+
+   # List pull requests
+   $(pwd)/.tools/gh/bin/gh pr list -R sethb75/RefactorCsharpMCP
+   ```
+
+3. **Why this is needed:**
+   - Git remote: `http://local_proxy@127.0.0.1:20402/git/...` (proxy URL)
+   - gh expects: `https://github.com/sethb75/RefactorCsharpMCP.git` (GitHub URL)
+   - Solution: Explicit `-R sethb75/RefactorCsharpMCP` flag tells gh which repo to use
+
+4. **Authentication:** Already configured via GH_TOKEN environment variable (no action needed)
+
 ### Building the Project
 ```bash
 # Build all projects
