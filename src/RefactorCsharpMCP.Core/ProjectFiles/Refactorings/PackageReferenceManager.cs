@@ -386,6 +386,18 @@ public class PackageReferenceManager : ProjectRefactoringBase
             return RefactoringResult.Failure($"Version is required for {operation} operation");
         }
 
+        // Validate version format for add/update operations
+        if ((operation == PackageOperation.Add || operation == PackageOperation.Update)
+            && !string.IsNullOrWhiteSpace(version))
+        {
+            if (!NuGet.Versioning.NuGetVersion.TryParse(version, out _))
+            {
+                return RefactoringResult.Failure(
+                    $"Invalid NuGet version format: '{version}'. " +
+                    "Use semantic versioning (e.g., 1.2.3, 2.0.0-beta, 1.0.0+build123).");
+            }
+        }
+
         return RefactoringResult.Success(string.Empty, "Validation passed");
     }
 

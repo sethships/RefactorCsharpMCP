@@ -386,13 +386,19 @@ public class SdkStyleConverter : ProjectRefactoringBase
                 sdkDocument.Root?.Add(itemGroup);
             }
 
-            foreach (var package in packages)
+            var migratedPackages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var skippedPackages = new List<string>();
+            var packageList = packages.ToList();
+
+            foreach (var package in packageList)
             {
                 var id = package.Attribute("id")?.Value;
                 var version = package.Attribute("version")?.Value;
 
                 if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(version))
                 {
+                    Logger?.LogWarning("Skipping invalid package entry in packages.config (missing id or version)");
+                    skippedPackages.Add(id ?? "<unknown>");
                     continue;
                 }
 
@@ -407,12 +413,31 @@ public class SdkStyleConverter : ProjectRefactoringBase
                         new XAttribute("Version", version));
 
                     itemGroup.Add(packageRef);
+                    migratedPackages.Add(id);
+                }
+                else
+                {
+                    // Package already exists, count as migrated
+                    migratedPackages.Add(id);
                 }
             }
 
-            // Delete packages.config after successful migration
-            File.Delete(packagesConfigPath);
-            Logger?.LogInformation("Deleted packages.config after migration");
+            // Only delete packages.config if ALL packages were successfully migrated
+            if (skippedPackages.Count == 0 && migratedPackages.Count == packageList.Count)
+            {
+                File.Delete(packagesConfigPath);
+                Logger?.LogInformation(
+                    "Deleted packages.config after successful migration of {Count} packages",
+                    migratedPackages.Count);
+            }
+            else
+            {
+                Logger?.LogWarning(
+                    "Kept packages.config due to partial migration: {Migrated}/{Total} packages migrated, {Skipped} skipped",
+                    migratedPackages.Count,
+                    packageList.Count,
+                    skippedPackages.Count);
+            }
         }
         catch (Exception ex)
         {
