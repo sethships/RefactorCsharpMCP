@@ -1,1 +1,89 @@
-{"mcpServers":{"MCP_DOCKER":{"command":"docker","args":["mcp","gateway","run"],"env":{"LOCALAPPDATA":"C:\\Users\\seth\\AppData\\Local","ProgramData":"C:\\ProgramData","ProgramFiles":"C:\\Program Files"},"type":"stdio"}}}
+{
+  "mcpServers": {
+    "github": {
+      "type": "http",
+      "url": "${GITHUB_MCP_URL}",
+      "headers": {
+        "Authorization": "Bearer ${GITHUB_MCP_TOKEN}"
+      },
+      "description": "GitHub MCP server for repository operations, issues, PRs, and code search",
+      "capabilities": [
+        "issues",
+        "pull_requests",
+        "repositories",
+        "code_search",
+        "file_operations"
+      ]
+    },
+    "notion": {
+      "type": "http",
+      "url": "${NOTION_MCP_URL}",
+      "headers": {
+        "Authorization": "Bearer ${NOTION_MCP_TOKEN}",
+        "Notion-Version": "2022-06-28"
+      },
+      "description": "Notion MCP server for workspace, page, and database operations",
+      "capabilities": [
+        "pages",
+        "databases",
+        "blocks",
+        "search"
+      ]
+    },
+    "docker-mcp-toolkit": {
+      "type": "http",
+      "url": "${DOCKER_MCP_TOOLKIT_URL}",
+      "description": "Docker MCP toolkit providing Docker and GitHub operations",
+      "capabilities": [
+        "docker_containers",
+        "docker_images",
+        "github_operations",
+        "repository_management"
+      ]
+    },
+    "azure-devops": {
+      "type": "http",
+      "url": "${AZURE_DEVOPS_MCP_URL}",
+      "headers": {
+        "Authorization": "Bearer ${AZURE_DEVOPS_PAT}"
+      },
+      "description": "Azure DevOps MCP server for pipelines, work items, and repositories",
+      "capabilities": [
+        "work_items",
+        "pipelines",
+        "repositories",
+        "pull_requests"
+      ],
+      "optional": true
+    },
+    "slack": {
+      "type": "http",
+      "url": "${SLACK_MCP_URL}",
+      "headers": {
+        "Authorization": "Bearer ${SLACK_BOT_TOKEN}"
+      },
+      "description": "Slack MCP server for channel and message operations",
+      "capabilities": [
+        "channels",
+        "messages",
+        "users",
+        "search"
+      ],
+      "optional": true
+    },
+    "MCP_DOCKER": {
+      "command": "docker",
+      "args": [
+        "mcp",
+        "gateway",
+        "run"
+      ],
+      "env": {
+        "LOCALAPPDATA": "C:\\Users\\seth\\AppData\\Local",
+        "ProgramData": "C:\\ProgramData",
+        "ProgramFiles": "C:\\Program Files"
+      },
+      "type": "stdio"
+    }
+  }
+}

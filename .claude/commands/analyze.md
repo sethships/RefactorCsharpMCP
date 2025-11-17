@@ -1,0 +1,1 @@
+../private-config/global/.claude/commands/analyze.md
