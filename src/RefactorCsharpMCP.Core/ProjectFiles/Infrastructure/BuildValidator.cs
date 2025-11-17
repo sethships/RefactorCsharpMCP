@@ -13,10 +13,56 @@ namespace RefactorCsharpMCP.Core.ProjectFiles.Infrastructure;
 public class BuildValidator
 {
     private readonly ILogger<BuildValidator> _logger;
+    private readonly Lazy<(bool available, string? version)> _dotnetAvailability;
 
     public BuildValidator(ILogger<BuildValidator>? logger = null)
     {
         _logger = logger ?? NullLogger<BuildValidator>.Instance;
+        _dotnetAvailability = new Lazy<(bool, string?)>(CheckDotnetAvailability);
+    }
+
+    /// <summary>
+    /// Checks if dotnet CLI is available on the system.
+    /// </summary>
+    private (bool available, string? version) CheckDotnetAvailability()
+    {
+        try
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "dotnet",
+                Arguments = "--version",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = Process.Start(startInfo);
+            if (process == null)
+            {
+                _logger.LogWarning("Failed to start dotnet process");
+                return (false, null);
+            }
+
+            var versionOutput = process.StandardOutput.ReadToEnd();
+            var completed = process.WaitForExit(5000);
+
+            if (completed && process.ExitCode == 0)
+            {
+                var version = versionOutput.Trim();
+                _logger.LogDebug("dotnet CLI found, version: {Version}", version);
+                return (true, version);
+            }
+
+            _logger.LogWarning("dotnet CLI check failed with exit code {ExitCode}", process.ExitCode);
+            return (false, null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "dotnet CLI not found or not accessible");
+            return (false, null);
+        }
     }
 
     /// <summary>
@@ -34,6 +80,17 @@ public class BuildValidator
 
         try
         {
+            // Check if dotnet CLI is available
+            var (available, version) = _dotnetAvailability.Value;
+            if (!available)
+            {
+                return BuildValidationResult.Failure(
+                    "dotnet CLI not found. Please install .NET SDK from https://dot.net",
+                    TimeSpan.Zero);
+            }
+
+            _logger.LogDebug("Using dotnet CLI version: {Version}", version);
+
             // Validate the path to prevent path traversal attacks
             string validatedPath;
             if (File.Exists(projectPath))
@@ -225,19 +282,34 @@ public class BuildValidator
 /// </summary>
 internal static class ProcessExtensions
 {
-    public static async Task<bool> WaitForExitAsync(this Process process, TimeSpan timeout)
+    /// <summary>
+    /// Waits for the process to exit with a timeout, respecting external cancellation tokens.
+    /// </summary>
+    /// <param name="process">The process to wait for.</param>
+    /// <param name="timeout">The maximum time to wait.</param>
+    /// <param name="cancellationToken">Optional external cancellation token.</param>
+    /// <returns>True if the process exited within the timeout, false if timed out.</returns>
+    /// <exception cref="OperationCanceledException">If the external cancellation token is triggered.</exception>
+    public static async Task<bool> WaitForExitAsync(
+        this Process process,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default)
     {
-        using var cts = new CancellationTokenSource(timeout);
+        // Link external cancellation token with timeout
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(timeout);
 
         try
         {
             await process.WaitForExitAsync(cts.Token);
             return true;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cts.Token.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
+            // Timeout occurred, not external cancellation
             return false;
         }
+        // If external cancellation occurred, let the exception propagate
     }
 }
 

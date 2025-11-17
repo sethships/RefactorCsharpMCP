@@ -57,17 +57,28 @@ public static class PathValidator
         {
             var normalizedBasePath = Path.GetFullPath(basePath);
 
-            // Check if the full path starts with the base path
-            // Use case-insensitive comparison on Windows, case-sensitive on Unix
-            var comparison = OperatingSystem.IsWindows()
-                ? StringComparison.OrdinalIgnoreCase
-                : StringComparison.Ordinal;
+            // Use URI-based comparison to ensure proper directory boundary checking
+            // This prevents attacks like /path/to/base matching /path/to/base-malicious
+            try
+            {
+                // Ensure base path ends with directory separator for proper URI comparison
+                var basePathWithSeparator = normalizedBasePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                    + Path.DirectorySeparatorChar;
 
-            if (!fullPath.StartsWith(normalizedBasePath, comparison))
+                var baseUri = new Uri(basePathWithSeparator);
+                var fullUri = new Uri(fullPath);
+
+                if (!baseUri.IsBaseOf(fullUri))
+                {
+                    throw new SecurityException(
+                        $"Path '{path}' attempts to access files outside the allowed directory. " +
+                        $"Resolved path: '{fullPath}', Base path: '{normalizedBasePath}'");
+                }
+            }
+            catch (UriFormatException ex)
             {
                 throw new SecurityException(
-                    $"Path '{path}' attempts to access files outside the allowed directory. " +
-                    $"Resolved path: '{fullPath}', Base path: '{normalizedBasePath}'");
+                    $"Invalid path format when validating path boundaries: '{path}'", ex);
             }
         }
 
@@ -105,15 +116,27 @@ public static class PathValidator
         {
             var normalizedBasePath = Path.GetFullPath(basePath);
 
-            var comparison = OperatingSystem.IsWindows()
-                ? StringComparison.OrdinalIgnoreCase
-                : StringComparison.Ordinal;
+            // Use URI-based comparison to ensure proper directory boundary checking
+            try
+            {
+                // Ensure base path ends with directory separator for proper URI comparison
+                var basePathWithSeparator = normalizedBasePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                    + Path.DirectorySeparatorChar;
 
-            if (!fullPath.StartsWith(normalizedBasePath, comparison))
+                var baseUri = new Uri(basePathWithSeparator);
+                var fullUri = new Uri(fullPath + Path.DirectorySeparatorChar); // Add separator for directory comparison
+
+                if (!baseUri.IsBaseOf(fullUri))
+                {
+                    throw new SecurityException(
+                        $"Path '{path}' attempts to access directories outside the allowed base path. " +
+                        $"Resolved path: '{fullPath}', Base path: '{normalizedBasePath}'");
+                }
+            }
+            catch (UriFormatException ex)
             {
                 throw new SecurityException(
-                    $"Path '{path}' attempts to access directories outside the allowed base path. " +
-                    $"Resolved path: '{fullPath}', Base path: '{normalizedBasePath}'");
+                    $"Invalid path format when validating path boundaries: '{path}'", ex);
             }
         }
 

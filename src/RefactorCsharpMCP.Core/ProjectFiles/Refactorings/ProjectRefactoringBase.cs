@@ -11,8 +11,11 @@ namespace RefactorCsharpMCP.Core.ProjectFiles.Refactorings;
 /// Base class for project file refactorings, extending RefactoringBase with project-file-specific functionality.
 /// Provides common infrastructure for project file manipulation, backup/rollback, and build validation.
 /// </summary>
-public abstract class ProjectRefactoringBase : RefactoringBase
+public abstract class ProjectRefactoringBase : RefactoringBase, IDisposable
 {
+    private bool _disposed;
+    private readonly bool _ownsNuGetClient;
+
     /// <summary>
     /// Project file loader for loading and saving .csproj files.
     /// </summary>
@@ -40,7 +43,11 @@ public abstract class ProjectRefactoringBase : RefactoringBase
         Logger = logger ?? NullLogger.Instance;
         FileLoader = new ProjectFileLoader(logger as ILogger<ProjectFileLoader>);
         BuildValidator = new BuildValidator(logger as ILogger<BuildValidator>);
+
+        // Track ownership for disposal
+        _ownsNuGetClient = nugetClient == null;
         NuGetClient = nugetClient ?? new NuGetClientWrapper(logger as ILogger<NuGetClientWrapper>);
+
         BackupManager = new ProjectFileBackup(logger as ILogger<ProjectFileBackup>);
     }
 
@@ -292,6 +299,38 @@ public abstract class ProjectRefactoringBase : RefactoringBase
         catch (Exception ex)
         {
             Logger?.LogWarning(ex, "Failed to cleanup backups");
+        }
+    }
+
+    /// <summary>
+    /// Disposes resources used by the ProjectRefactoringBase.
+    /// </summary>
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// Protected dispose pattern implementation.
+    /// </summary>
+    /// <param name="disposing">True if disposing managed resources.</param>
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!_disposed)
+        {
+            if (disposing)
+            {
+                // Only dispose NuGetClient if we created it
+                if (_ownsNuGetClient)
+                {
+                    NuGetClient?.Dispose();
+                }
+
+                Logger?.LogDebug("ProjectRefactoringBase disposed");
+            }
+
+            _disposed = true;
         }
     }
 }

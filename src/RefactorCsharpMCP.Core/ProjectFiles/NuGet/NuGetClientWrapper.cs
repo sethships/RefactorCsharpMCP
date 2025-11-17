@@ -14,8 +14,9 @@ namespace RefactorCsharpMCP.Core.ProjectFiles.NuGet;
 /// Wrapper around NuGet client APIs for package metadata retrieval and compatibility checking.
 /// Provides caching for improved performance.
 /// </summary>
-public class NuGetClientWrapper
+public class NuGetClientWrapper : IDisposable
 {
+    private bool _disposed;
     private readonly ILogger<NuGetClientWrapper> _logger;
     private readonly SourceCacheContext _cache;
     private readonly SourceRepository _sourceRepository;
@@ -265,11 +266,30 @@ public class NuGetClientWrapper
     }
 
     /// <summary>
-    /// Disposes resources.
+    /// Disposes resources used by the NuGetClientWrapper.
     /// </summary>
     public void Dispose()
     {
-        _cache.Dispose();
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// Protected dispose pattern implementation.
+    /// </summary>
+    /// <param name="disposing">True if disposing managed resources.</param>
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!_disposed)
+        {
+            if (disposing)
+            {
+                _cache?.Dispose();
+                _logger.LogDebug("NuGetClientWrapper disposed");
+            }
+
+            _disposed = true;
+        }
     }
 }
 
