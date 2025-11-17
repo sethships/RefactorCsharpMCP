@@ -1,3 +1,4 @@
+using System.Security;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -25,28 +26,38 @@ public class ProjectFileBackup
     /// <returns>Path to the backup file.</returns>
     /// <exception cref="FileNotFoundException">If the source file doesn't exist.</exception>
     /// <exception cref="IOException">If backup creation fails.</exception>
+    /// <exception cref="SecurityException">If the path is invalid or attempts path traversal.</exception>
     public string CreateBackup(string filePath)
     {
-        if (!File.Exists(filePath))
+        // Validate and normalize the path to prevent path traversal attacks
+        var validatedPath = PathValidator.ValidateAndNormalizePath(filePath);
+
+        if (!File.Exists(validatedPath))
         {
-            throw new FileNotFoundException($"Cannot create backup: File not found: {filePath}");
+            throw new FileNotFoundException(
+                $"Cannot create backup: File not found: {filePath}. " +
+                "Ensure the file exists and you have read permissions.",
+                validatedPath);
         }
 
-        var backupPath = GenerateBackupPath(filePath);
+        var backupPath = GenerateBackupPath(validatedPath);
 
         try
         {
-            File.Copy(filePath, backupPath, overwrite: true);
-            _backups[filePath] = backupPath;
+            File.Copy(validatedPath, backupPath, overwrite: true);
+            _backups[validatedPath] = backupPath;
 
-            _logger.LogDebug("Created backup: {BackupPath} for {FilePath}", backupPath, filePath);
+            _logger.LogDebug("Created backup: {BackupPath} for {FilePath}", backupPath, validatedPath);
 
             return backupPath;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to create backup for {FilePath}", filePath);
-            throw new IOException($"Failed to create backup for {filePath}", ex);
+            _logger.LogError(ex, "Failed to create backup for {FilePath}", validatedPath);
+            throw new IOException(
+                $"Failed to create backup for {filePath}. " +
+                "Ensure you have write permissions in the target directory.",
+                ex);
         }
     }
 

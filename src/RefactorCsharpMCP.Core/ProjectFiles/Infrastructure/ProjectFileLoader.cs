@@ -1,3 +1,4 @@
+using System.Security;
 using System.Text;
 using System.Xml;
 using System.Xml.Linq;
@@ -28,11 +29,18 @@ public class ProjectFileLoader
     /// <returns>The loaded XML document.</returns>
     /// <exception cref="FileNotFoundException">If the file doesn't exist.</exception>
     /// <exception cref="XmlException">If the file contains invalid XML.</exception>
+    /// <exception cref="SecurityException">If the path is invalid or attempts path traversal.</exception>
     public XDocument LoadProject(string path, bool preserveFormatting = true)
     {
-        if (!File.Exists(path))
+        // Validate and normalize the path to prevent path traversal attacks
+        var validatedPath = PathValidator.ValidateAndNormalizePath(path);
+
+        if (!File.Exists(validatedPath))
         {
-            throw new FileNotFoundException($"Project file not found: {path}");
+            throw new FileNotFoundException(
+                $"Project file not found: {path}. " +
+                "Ensure the file exists, is a valid project file, and you have read permissions.",
+                validatedPath);
         }
 
         try
@@ -41,9 +49,9 @@ public class ProjectFileLoader
                 ? LoadOptions.PreserveWhitespace
                 : LoadOptions.None;
 
-            var document = XDocument.Load(path, loadOptions);
+            var document = XDocument.Load(validatedPath, loadOptions);
 
-            _logger.LogDebug("Loaded project file: {Path}", path);
+            _logger.LogDebug("Loaded project file: {Path}", validatedPath);
 
             return document;
         }
@@ -65,8 +73,12 @@ public class ProjectFileLoader
     /// <param name="document">The XML document to save.</param>
     /// <param name="path">Path where the file should be saved.</param>
     /// <param name="preserveFormatting">Whether to preserve original formatting.</param>
+    /// <exception cref="SecurityException">If the path is invalid or attempts path traversal.</exception>
     public void SaveProject(XDocument document, string path, bool preserveFormatting = true)
     {
+        // Validate and normalize the path to prevent path traversal attacks
+        var validatedPath = PathValidator.ValidateAndNormalizePath(path);
+
         try
         {
             var settings = new XmlWriterSettings
@@ -81,22 +93,25 @@ public class ProjectFileLoader
             if (preserveFormatting)
             {
                 // Save with minimal changes to preserve original formatting
-                using var writer = XmlWriter.Create(path, settings);
+                using var writer = XmlWriter.Create(validatedPath, settings);
                 document.Save(writer);
             }
             else
             {
                 // Save with standard formatting
-                using var writer = XmlWriter.Create(path, settings);
+                using var writer = XmlWriter.Create(validatedPath, settings);
                 document.Save(writer);
             }
 
-            _logger.LogDebug("Saved project file: {Path}", path);
+            _logger.LogDebug("Saved project file: {Path}", validatedPath);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to save project file: {Path}", path);
-            throw new IOException($"Failed to save project file: {path}", ex);
+            throw new IOException(
+                $"Failed to save project file: {path}. " +
+                "Ensure you have write permissions and the path is valid.",
+                ex);
         }
     }
 
@@ -227,18 +242,22 @@ public class ProjectFileLoader
     /// <param name="filePath">Path to the project file.</param>
     /// <param name="preserveFormatting">Whether to preserve whitespace and formatting.</param>
     /// <returns>The project file context with all metadata.</returns>
+    /// <exception cref="SecurityException">If the path is invalid or attempts path traversal.</exception>
     public ProjectFileContext LoadProjectContext(string filePath, bool preserveFormatting = true)
     {
-        var document = LoadProject(filePath, preserveFormatting);
+        // Validate path before loading (LoadProject will also validate, but we need the validated path here)
+        var validatedPath = PathValidator.ValidateAndNormalizePath(filePath);
+
+        var document = LoadProject(validatedPath, preserveFormatting);
         var projectType = DetectProjectType(document);
         var targetFrameworks = GetTargetFrameworks(document);
-        var packageReferences = GetPackageReferences(document, filePath);
+        var packageReferences = GetPackageReferences(document, validatedPath);
 
         var ns = document.Root?.Name.Namespace ?? XNamespace.None;
 
         var context = new ProjectFileContext
         {
-            FilePath = Path.GetFullPath(filePath),
+            FilePath = validatedPath,
             ProjectType = projectType,
             TargetFrameworks = targetFrameworks,
             Sdk = document.Root?.Attribute(ProjectFileConstants.Attributes.Sdk)?.Value,

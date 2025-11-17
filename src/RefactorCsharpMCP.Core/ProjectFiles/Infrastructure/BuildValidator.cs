@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Security;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -24,6 +25,7 @@ public class BuildValidator
     /// <param name="projectPath">Path to the project file or directory containing the project.</param>
     /// <param name="timeoutSeconds">Timeout for the build operation in seconds.</param>
     /// <returns>Build validation result.</returns>
+    /// <exception cref="SecurityException">If the path is invalid or attempts path traversal.</exception>
     public async Task<BuildValidationResult> ValidateBuildAsync(
         string projectPath,
         int timeoutSeconds = 300)
@@ -32,18 +34,27 @@ public class BuildValidator
 
         try
         {
-            // Determine if path is a file or directory
-            var targetPath = File.Exists(projectPath) ? projectPath : projectPath;
-            if (!File.Exists(projectPath) && !Directory.Exists(projectPath))
+            // Validate the path to prevent path traversal attacks
+            string validatedPath;
+            if (File.Exists(projectPath))
+            {
+                validatedPath = PathValidator.ValidateAndNormalizePath(projectPath);
+            }
+            else if (Directory.Exists(projectPath))
+            {
+                validatedPath = PathValidator.ValidateDirectoryPath(projectPath);
+            }
+            else
             {
                 return BuildValidationResult.Failure(
-                    $"Project path not found: {projectPath}",
+                    $"Project path not found: {projectPath}. " +
+                    "Ensure the path exists and you have read permissions.",
                     TimeSpan.Zero);
             }
 
-            _logger.LogInformation("Starting build validation for: {ProjectPath}", projectPath);
+            _logger.LogInformation("Starting build validation for: {ProjectPath}", validatedPath);
 
-            var (exitCode, output, errors) = await RunDotnetBuildAsync(targetPath, timeoutSeconds);
+            var (exitCode, output, errors) = await RunDotnetBuildAsync(validatedPath, timeoutSeconds);
 
             stopwatch.Stop();
 
@@ -151,15 +162,21 @@ public class BuildValidator
         var outputBuilder = new StringBuilder();
         var errorBuilder = new StringBuilder();
 
+        // Use ArgumentList to prevent command injection vulnerabilities
         var startInfo = new ProcessStartInfo
         {
             FileName = "dotnet",
-            Arguments = $"build \"{targetPath}\" --no-restore --nologo",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
+
+        // Add arguments individually - safe from command injection
+        startInfo.ArgumentList.Add("build");
+        startInfo.ArgumentList.Add(targetPath);
+        startInfo.ArgumentList.Add("--no-restore");
+        startInfo.ArgumentList.Add("--nologo");
 
         using var process = new Process { StartInfo = startInfo };
 
