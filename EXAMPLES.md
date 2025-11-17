@@ -9,12 +9,16 @@ This document provides practical examples of using RefactorCsharpMCP's refactori
 1. [Framework-Aware Refactoring](#framework-aware-refactoring)
 2. [Extract Method](#extract-method)
 3. [Constructor Injection](#constructor-injection)
-4. [Inline Variable](#inline-variable)
-5. [Extract Class](#4-extract-class)
-6. [Inline Method](#inline-method-part-1)
-7. [Framework Validation](#framework-aware-validation)
-8. [Framework Limitations](#framework-limitations-and-workarounds)
-9. [Diagnostic Integration](#diagnostic-integration-v15)
+4. [Make Field Readonly](#make-field-readonly)
+5. [Safe Delete Method](#safe-delete-method)
+6. [Inline Variable](#inline-variable)
+7. [Remove Unused Usings](#remove-unused-usings)
+8. [Extract Class](#extract-class)
+9. [Inline Method](#inline-method-part-1)
+10. [Rename Symbol](#rename-symbol)
+11. [Framework Validation](#framework-aware-validation)
+12. [Framework Limitations](#framework-limitations-and-workarounds)
+13. [Diagnostic Integration](#diagnostic-integration-v15)
 
 ---
 
@@ -567,6 +571,576 @@ public class OrderService
 }
 ```
 
+## Make Field Readonly
+
+The Make Field Readonly refactoring analyzes field assignments and adds the `readonly` modifier when fields are only assigned in constructors. This enforces immutability and prevents accidental modifications after object initialization.
+
+### Example 1: Single Field - Basic Usage
+
+**Use Case:** Make a configuration field readonly to prevent accidental modification
+
+**Input Code:**
+```csharp
+public class EmailService
+{
+    private string _smtpServer;
+    private int _port;
+
+    public EmailService(string smtpServer, int port)
+    {
+        _smtpServer = smtpServer;
+        _port = port;
+    }
+
+    public void SendEmail(string to, string subject)
+    {
+        // _smtpServer and _port are never modified after construction
+        Console.WriteLine($"Sending via {_smtpServer}:{_port}");
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "make_field_readonly",
+  "arguments": {
+    "sourceCode": "...",
+    "className": "EmailService",
+    "fieldName": "_smtpServer",
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+**Output Code:**
+```csharp
+public class EmailService
+{
+    private readonly string _smtpServer;
+    private int _port;
+
+    public EmailService(string smtpServer, int port)
+    {
+        _smtpServer = smtpServer;
+        _port = port;
+    }
+
+    public void SendEmail(string to, string subject)
+    {
+        // _smtpServer is now readonly - compiler prevents modification
+        Console.WriteLine($"Sending via {_smtpServer}:{_port}");
+    }
+}
+```
+
+**Explanation:** The `_smtpServer` field is only assigned in the constructor, so it's safe to add the `readonly` modifier. This prevents accidental modifications like `_smtpServer = "newserver"` elsewhere in the class.
+
+### Example 2: Analyze All Fields
+
+**Use Case:** Analyze an entire class to find all fields that can be made readonly
+
+**Input Code:**
+```csharp
+public class UserService
+{
+    private ILogger _logger;
+    private IDatabase _database;
+    private string _tableName;
+    private int _retryCount;
+
+    public UserService(ILogger logger, IDatabase database)
+    {
+        _logger = logger;
+        _database = database;
+        _tableName = "Users";
+        _retryCount = 3;
+    }
+
+    public void SaveUser(User user)
+    {
+        _logger.Log("Saving user");
+        _database.Save(_tableName, user);
+    }
+
+    public void UpdateRetryCount(int newCount)
+    {
+        _retryCount = newCount;  // Modified outside constructor
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "make_field_readonly",
+  "arguments": {
+    "sourceCode": "...",
+    "className": "UserService",
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+**Output Code:**
+```csharp
+public class UserService
+{
+    private readonly ILogger _logger;
+    private readonly IDatabase _database;
+    private readonly string _tableName;
+    private int _retryCount;  // Not readonly - modified in UpdateRetryCount
+
+    public UserService(ILogger logger, IDatabase database)
+    {
+        _logger = logger;
+        _database = database;
+        _tableName = "Users";
+        _retryCount = 3;
+    }
+
+    public void SaveUser(User user)
+    {
+        _logger.Log("Saving user");
+        _database.Save(_tableName, user);
+    }
+
+    public void UpdateRetryCount(int newCount)
+    {
+        _retryCount = newCount;  // Modified outside constructor
+    }
+}
+```
+
+**Explanation:** When no specific field is provided, the refactoring analyzes all fields in the class. It makes `_logger`, `_database`, and `_tableName` readonly because they're only assigned in the constructor. The `_retryCount` field remains mutable because it's modified in `UpdateRetryCount`.
+
+### Example 3: Field Cannot Be Made Readonly
+
+**Use Case:** Attempting to make a field readonly when it's modified outside constructors
+
+**Input Code:**
+```csharp
+public class Counter
+{
+    private int _count;
+
+    public Counter()
+    {
+        _count = 0;
+    }
+
+    public void Increment()
+    {
+        _count++;  // Modified outside constructor
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "make_field_readonly",
+  "arguments": {
+    "sourceCode": "...",
+    "className": "Counter",
+    "fieldName": "_count",
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+**Result:**
+```json
+{
+  "success": false,
+  "message": "Field '_count' is assigned outside of constructors and cannot be made readonly",
+  "error": "Field has assignments outside constructors"
+}
+```
+
+**Explanation:** The refactoring detects that `_count` is modified in the `Increment()` method, so it cannot be made readonly. The `readonly` modifier only allows assignments in constructors or field initializers.
+
+### Example 4: Framework-Independent Behavior
+
+**Use Case:** Readonly modifier works identically across all .NET frameworks
+
+**Input Code:**
+```csharp
+public class Configuration
+{
+    private string _apiKey;
+
+    public Configuration(string apiKey)
+    {
+        _apiKey = apiKey;
+    }
+}
+```
+
+**Works on ALL frameworks:**
+```csharp
+// .NET 9
+var result = await refactoring.ExecuteAsync(code, "Configuration", "_apiKey", "net9.0");
+
+// .NET 8
+var result = await refactoring.ExecuteAsync(code, "Configuration", "_apiKey", "net8.0");
+
+// .NET Framework 4.8
+var result = await refactoring.ExecuteAsync(code, "Configuration", "_apiKey", "net48");
+
+// .NET Framework 3.5
+var result = await refactoring.ExecuteAsync(code, "Configuration", "_apiKey", "net35");
+```
+
+**Output (identical across all frameworks):**
+```csharp
+public class Configuration
+{
+    private readonly string _apiKey;
+
+    public Configuration(string apiKey)
+    {
+        _apiKey = apiKey;
+    }
+}
+```
+
+**Explanation:** The `readonly` keyword has been available since C# 1.0, so this refactoring produces identical results across all .NET framework versions.
+
+### MCP Tool Usage
+
+```javascript
+// Make a specific field readonly
+const result = await use_mcp_tool({
+  server_name: "refactor-csharp-mcp",
+  tool_name: "make_field_readonly",
+  arguments: {
+    sourceCode: "...",
+    className: "MyClass",
+    fieldName: "_myField",
+    targetFramework: "net8.0"
+  }
+});
+
+// Analyze all fields in a class
+const result = await use_mcp_tool({
+  server_name: "refactor-csharp-mcp",
+  tool_name: "make_field_readonly",
+  arguments: {
+    sourceCode: "...",
+    className: "MyClass",
+    targetFramework: "net8.0"
+    // fieldName omitted - analyzes all fields
+  }
+});
+```
+
+### Best Practices
+
+1. **Run on entire classes** - Omit the `fieldName` parameter to analyze all fields at once
+2. **Use with constructor injection** - After applying constructor injection, use this refactoring to make injected dependencies readonly
+3. **Enforce immutability** - Readonly fields help prevent bugs caused by accidental state mutations
+4. **Framework-independent** - Works identically on all .NET frameworks since C# 1.0
+5. **Safe refactoring** - The tool validates that fields are only assigned in constructors before adding `readonly`
+
+## Safe Delete Method
+
+The Safe Delete Method refactoring safely removes methods after verifying they have no references within the codebase. This prevents breaking changes by ensuring deleted methods aren't called elsewhere.
+
+### Example 1: Delete Unused Method
+
+**Use Case:** Remove a method that's no longer used after refactoring
+
+**Input Code:**
+```csharp
+public class OrderService
+{
+    public void ProcessOrder(Order order)
+    {
+        ValidateOrder(order);
+        SaveOrder(order);
+    }
+
+    private void ValidateOrder(Order order)
+    {
+        if (order == null)
+            throw new ArgumentNullException(nameof(order));
+    }
+
+    private void SaveOrder(Order order)
+    {
+        // Save logic
+    }
+
+    private void LogOrder(Order order)
+    {
+        // This method is no longer used
+        Console.WriteLine($"Order: {order.Id}");
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "safe_delete_method",
+  "arguments": {
+    "sourceCode": "...",
+    "className": "OrderService",
+    "methodName": "LogOrder",
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+**Output Code:**
+```csharp
+public class OrderService
+{
+    public void ProcessOrder(Order order)
+    {
+        ValidateOrder(order);
+        SaveOrder(order);
+    }
+
+    private void ValidateOrder(Order order)
+    {
+        if (order == null)
+            throw new ArgumentNullException(nameof(order));
+    }
+
+    private void SaveOrder(Order order)
+    {
+        // Save logic
+    }
+}
+```
+
+**Explanation:** The `LogOrder` method has no references within the class, so it's safe to delete. The refactoring removes the entire method declaration.
+
+### Example 2: Cannot Delete - Method Has References
+
+**Use Case:** Attempt to delete a method that's still being called
+
+**Input Code:**
+```csharp
+public class Calculator
+{
+    public int Calculate(int a, int b)
+    {
+        var sum = Add(a, b);
+        return sum * 2;
+    }
+
+    private int Add(int a, int b)
+    {
+        return a + b;
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "safe_delete_method",
+  "arguments": {
+    "sourceCode": "...",
+    "className": "Calculator",
+    "methodName": "Add",
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+**Result:**
+```json
+{
+  "success": false,
+  "message": "Method 'Add' has 1 reference(s) and cannot be safely deleted",
+  "error": "Method has references",
+  "references": [
+    {
+      "location": "Line 5, Column 19",
+      "context": "var sum = Add(a, b);"
+    }
+  ]
+}
+```
+
+**Explanation:** The `Add` method is called on line 5, so it cannot be safely deleted. The refactoring returns an error with details about where the method is referenced.
+
+### Example 3: Delete Overloaded Method
+
+**Use Case:** Delete one overload while keeping others
+
+**Input Code:**
+```csharp
+public class Logger
+{
+    public void Log(string message)
+    {
+        Console.WriteLine(message);
+    }
+
+    public void Log(string message, LogLevel level)
+    {
+        Console.WriteLine($"[{level}] {message}");
+    }
+
+    public void Log(string message, LogLevel level, Exception ex)
+    {
+        // This overload is unused
+        Console.WriteLine($"[{level}] {message}: {ex.Message}");
+    }
+
+    public void WriteLog()
+    {
+        Log("Test");
+        Log("Warning", LogLevel.Warn);
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "safe_delete_method",
+  "arguments": {
+    "sourceCode": "...",
+    "className": "Logger",
+    "methodName": "Log",
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+**Result:**
+```json
+{
+  "success": false,
+  "message": "Multiple overloads of 'Log' exist. Please specify which overload to delete by providing parameter types or use a more specific method selector",
+  "error": "Ambiguous method - multiple overloads found"
+}
+```
+
+**Explanation:** When multiple overloads exist, the refactoring cannot determine which one to delete. You must either manually delete the specific overload or use the MCP tool to delete the entire method declaration if no overloads are referenced.
+
+### Example 4: Delete Private Helper Method
+
+**Use Case:** Clean up unused private helper methods after refactoring
+
+**Input Code:**
+```csharp
+public class DataProcessor
+{
+    public string ProcessData(string input)
+    {
+        var cleaned = CleanData(input);
+        return cleaned.ToUpper();
+    }
+
+    private string CleanData(string data)
+    {
+        return data.Trim();
+    }
+
+    private string NormalizeData(string data)
+    {
+        // This helper method was used before refactoring
+        return data.Replace("  ", " ");
+    }
+
+    private bool ValidateLength(string data)
+    {
+        // Another unused helper
+        return data.Length > 0;
+    }
+}
+```
+
+**Tool Call (Delete first unused method):**
+```json
+{
+  "tool": "safe_delete_method",
+  "arguments": {
+    "sourceCode": "...",
+    "className": "DataProcessor",
+    "methodName": "NormalizeData",
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+**After first deletion, delete second unused method:**
+```json
+{
+  "tool": "safe_delete_method",
+  "arguments": {
+    "sourceCode": "...",
+    "className": "DataProcessor",
+    "methodName": "ValidateLength",
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+**Final Output Code:**
+```csharp
+public class DataProcessor
+{
+    public string ProcessData(string input)
+    {
+        var cleaned = CleanData(input);
+        return cleaned.ToUpper();
+    }
+
+    private string CleanData(string data)
+    {
+        return data.Trim();
+    }
+}
+```
+
+**Explanation:** Both `NormalizeData` and `ValidateLength` have no references, so they can be safely deleted. The `CleanData` method remains because it's called in `ProcessData`.
+
+### MCP Tool Usage
+
+```javascript
+// Delete a method
+const result = await use_mcp_tool({
+  server_name: "refactor-csharp-mcp",
+  tool_name: "safe_delete_method",
+  arguments: {
+    sourceCode: "...",
+    className: "MyClass",
+    methodName: "UnusedMethod",
+    targetFramework: "net8.0"
+  }
+});
+
+// Check result
+if (result.success) {
+  console.log("Method deleted successfully");
+} else {
+  console.log(`Cannot delete: ${result.message}`);
+  if (result.references) {
+    console.log("References found at:");
+    result.references.forEach(ref => {
+      console.log(`  - ${ref.location}: ${ref.context}`);
+    });
+  }
+}
+```
+
+### Best Practices
+
+1. **Use after refactoring** - Run this after extract method or inline method to clean up unused methods
+2. **Check references first** - The tool automatically validates no references exist before deletion
+3. **One method at a time** - Delete methods one at a time to avoid cascading deletions
+4. **Review overloads** - Be careful with overloaded methods - the tool may report ambiguity
+5. **Framework-independent** - Method deletion works identically across all .NET frameworks
+6. **Safe operation** - The tool prevents deletion if any references are found, avoiding breaking changes
+
 ## Inline Variable
 
 The Inline Variable refactoring replaces all uses of a local variable with its initialization expression, then removes the variable declaration. This helps simplify code by eliminating unnecessary intermediate variables. Maps to Roslyn diagnostics IDE0059 (unnecessary value assignment) and IDE0058 (expression value never used).
@@ -737,7 +1311,350 @@ const result = await use_mcp_tool({
 4. **Review operator precedence** - while parentheses are added automatically, verify the result is semantically correct.
 5. **Consider readability trade-offs** - sometimes a well-named intermediate variable improves code clarity even if it's technically unnecessary.
 
-## 4. Extract Class
+## Remove Unused Usings
+
+The Remove Unused Usings refactoring analyzes using directives and removes those that aren't referenced in the code. It detects unused namespaces using Roslyn diagnostics (IDE0005, CS8019) and preserves framework-specific global usings introduced in C# 10.
+
+### Example 1: Remove Simple Unused Usings
+
+**Use Case:** Clean up unused namespace imports after refactoring
+
+**Input Code:**
+```csharp
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+public class Calculator
+{
+    public int Add(int a, int b)
+    {
+        Console.WriteLine($"Adding {a} + {b}");
+        return a + b;
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "remove_unused_usings",
+  "arguments": {
+    "sourceCode": "...",
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+**Output Code:**
+```csharp
+using System;
+
+public class Calculator
+{
+    public int Add(int a, int b)
+    {
+        Console.WriteLine($"Adding {a} + {b}");
+        return a + b;
+    }
+}
+```
+
+**Explanation:** Only `System` is used (for `Console.WriteLine`). The refactoring removes `System.Collections.Generic`, `System.Linq`, `System.Text`, and `System.Threading.Tasks` because they're not referenced.
+
+### Example 2: Preserve Required Usings
+
+**Use Case:** Keep only the usings that are actually needed
+
+**Input Code:**
+```csharp
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+public class DataProcessor
+{
+    public List<int> FilterData(int[] numbers)
+    {
+        return numbers.Where(n => n > 0).ToList();
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "remove_unused_usings",
+  "arguments": {
+    "sourceCode": "...",
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+**Output Code:**
+```csharp
+using System.Collections.Generic;
+using System.Linq;
+
+public class DataProcessor
+{
+    public List<int> FilterData(int[] numbers)
+    {
+        return numbers.Where(n => n > 0).ToList();
+    }
+}
+```
+
+**Explanation:** The refactoring keeps `System.Collections.Generic` (for `List<T>`) and `System.Linq` (for `Where` and `ToList` extension methods), but removes `System` because it's not used.
+
+### Example 3: Framework-Aware Global Using Preservation (C# 10+)
+
+**Use Case:** Preserve global usings in modern .NET projects
+
+**Input Code (.NET 6+):**
+```csharp
+// Global usings are implicitly included by the SDK
+using System.Collections.Generic;
+using System.Text;
+
+public class Service
+{
+    public void Process()
+    {
+        Console.WriteLine("Processing");  // Uses implicit global using System
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "remove_unused_usings",
+  "arguments": {
+    "sourceCode": "...",
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+**Output Code:**
+```csharp
+public class Service
+{
+    public void Process()
+    {
+        Console.WriteLine("Processing");
+    }
+}
+```
+
+**Explanation:** In .NET 6+, the SDK includes global usings for common namespaces like `System`. The refactoring removes explicit usings that are covered by global usings, and removes `System.Collections.Generic` and `System.Text` because they're not used.
+
+### Example 4: Handle Aliases and Static Usings
+
+**Use Case:** Preserve using aliases and static usings when they're used
+
+**Input Code:**
+```csharp
+using System;
+using System.Collections.Generic;
+using static System.Math;
+using StringList = System.Collections.Generic.List<string>;
+
+public class Calculator
+{
+    public double CalculateCircle(double radius)
+    {
+        return PI * Pow(radius, 2);  // Uses static Math members
+    }
+
+    public StringList GetNames()
+    {
+        return new StringList { "Alice", "Bob" };  // Uses alias
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "remove_unused_usings",
+  "arguments": {
+    "sourceCode": "...",
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+**Output Code:**
+```csharp
+using static System.Math;
+using StringList = System.Collections.Generic.List<string>;
+
+public class Calculator
+{
+    public double CalculateCircle(double radius)
+    {
+        return PI * Pow(radius, 2);
+    }
+
+    public StringList GetNames()
+    {
+        return new StringList { "Alice", "Bob" };
+    }
+}
+```
+
+**Explanation:** The refactoring preserves `using static System.Math` (for `PI` and `Pow`) and the `StringList` alias. It removes `System` and `System.Collections.Generic` as regular usings because they're either unused or covered by the alias.
+
+### Example 5: No Unused Usings Detected
+
+**Use Case:** All usings are required
+
+**Input Code:**
+```csharp
+using System;
+using System.Collections.Generic;
+
+public class Logger
+{
+    private List<string> _messages = new List<string>();
+
+    public void Log(string message)
+    {
+        _messages.Add($"{DateTime.Now}: {message}");
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "remove_unused_usings",
+  "arguments": {
+    "sourceCode": "...",
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+**Result:**
+```json
+{
+  "success": false,
+  "message": "No unused using directives detected",
+  "error": "All usings are required"
+}
+```
+
+**Explanation:** Both `System` (for `DateTime`) and `System.Collections.Generic` (for `List<T>`) are used, so no usings can be removed. The refactoring returns a failure indicating all usings are necessary.
+
+### Example 6: Framework-Specific Behavior (.NET Framework 4.8)
+
+**Use Case:** Remove unused usings in older .NET Framework projects
+
+**Input Code:**
+```csharp
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+public class Processor
+{
+    public void Run()
+    {
+        Console.WriteLine("Running");
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "remove_unused_usings",
+  "arguments": {
+    "sourceCode": "...",
+    "targetFramework": "net48"
+  }
+}
+```
+
+**Output Code:**
+```csharp
+using System;
+
+public class Processor
+{
+    public void Run()
+    {
+        Console.WriteLine("Running");
+    }
+}
+```
+
+**Explanation:** .NET Framework 4.8 doesn't have global usings, so all namespaces must be explicitly declared. The refactoring removes `System.Collections.Generic` and `System.Linq` but keeps `System` for `Console`.
+
+### MCP Tool Usage
+
+```javascript
+// Remove unused usings
+const result = await use_mcp_tool({
+  server_name: "refactor-csharp-mcp",
+  tool_name: "remove_unused_usings",
+  arguments: {
+    sourceCode: "...",
+    targetFramework: "net8.0"
+  }
+});
+
+// Check result
+if (result.success) {
+  console.log("Removed unused usings");
+  console.log(result.refactoredCode);
+} else {
+  console.log(`No changes: ${result.message}`);
+}
+```
+
+### Limitations (Issue #72)
+
+**⚠️ IDE Analyzer Limitations:**
+
+The `remove_unused_usings` refactoring relies on Roslyn compiler APIs rather than full IDE workspace APIs. This means:
+
+1. **May not detect all unused usings** - Some unused directives might not be identified
+2. **Best for obvious cases** - Works well for clearly unused namespaces
+3. **Use IDE tools for comprehensive cleanup** - Visual Studio, VS Code with C# extension, or Rider have better detection
+
+**Recommended Workflow:**
+```csharp
+// 1. Use remove_unused_usings for initial cleanup
+var result = await refactoring.ExecuteAsync(code, "net8.0");
+
+// 2. Use IDE-based tools for final verification
+// - Visual Studio: Right-click → Remove and Sort Usings
+// - VS Code: C# extension provides code actions
+// - Rider: Code → Optimize Imports
+
+// 3. Enable build-time warnings in .csproj
+<PropertyGroup>
+  <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+</PropertyGroup>
+```
+
+### Best Practices
+
+1. **Run after refactoring** - Use this after extract class, inline method, or other refactorings that may leave unused usings
+2. **Framework awareness** - Specify the correct target framework to handle global usings properly
+3. **IDE verification** - Use IDE-based tools for final cleanup and verification
+4. **Build warnings** - Enable CS8019 warnings in your project to catch unused usings during build
+5. **Preserve aliases** - The tool automatically preserves using aliases and static usings when used
+6. **Global usings** - On .NET 6+, the tool respects implicit global usings from the SDK
+
+## Extract Class
 
 Extract Class refactoring helps decompose large classes by moving fields and methods into a new class, following the composition pattern. The refactoring automatically updates references within the same class and warns about external references that need manual updates.
 
@@ -1871,6 +2788,469 @@ For more detailed troubleshooting, see [docs/DOCKER-MCP-TOOLKIT.md](docs/DOCKER-
    - Enable resource limits for production deployments
    - Monitor container health and resource usage
    - Keep Docker images updated with security patches
+
+## Rename Symbol
+
+The Rename Symbol refactoring renames local variables, parameters, private fields, or private methods at a specific position and updates all references within the same file. It uses position-based resolution for precise symbol identification.
+
+**⚠️ LIMITATION:** Single-file scope only. Cannot rename public/protected members or symbols used across multiple files.
+
+### Example 1: Rename Local Variable
+
+**Use Case:** Rename a poorly named variable to follow naming conventions
+
+**Input Code:**
+```csharp
+public class Calculator
+{
+    public int Calculate(int x, int y)
+    {
+        var temp = x + y;
+        var result = temp * 2;
+        return result;
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "rename_symbol",
+  "arguments": {
+    "sourceCode": "...",
+    "lineNumber": 5,
+    "columnNumber": 13,
+    "newName": "sum",
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+**Output Code:**
+```csharp
+public class Calculator
+{
+    public int Calculate(int x, int y)
+    {
+        var sum = x + y;
+        var result = sum * 2;
+        return result;
+    }
+}
+```
+
+**Explanation:** The variable `temp` at line 5, column 13 is renamed to `sum`. All references to `temp` within the method are automatically updated.
+
+### Example 2: Rename Method Parameter
+
+**Use Case:** Improve parameter name clarity
+
+**Input Code:**
+```csharp
+public class UserService
+{
+    public void CreateUser(string n, string e, int a)
+    {
+        Console.WriteLine($"Creating user: {n}");
+        Console.WriteLine($"Email: {e}");
+        Console.WriteLine($"Age: {a}");
+    }
+}
+```
+
+**Tool Call (Rename first parameter):**
+```json
+{
+  "tool": "rename_symbol",
+  "arguments": {
+    "sourceCode": "...",
+    "lineNumber": 3,
+    "columnNumber": 32,
+    "newName": "name",
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+**Output Code:**
+```csharp
+public class UserService
+{
+    public void CreateUser(string name, string e, int a)
+    {
+        Console.WriteLine($"Creating user: {name}");
+        Console.WriteLine($"Email: {e}");
+        Console.WriteLine($"Age: {a}");
+    }
+}
+```
+
+**Explanation:** The parameter `n` is renamed to `name`, and all references within the method body are updated.
+
+### Example 3: Rename Private Field
+
+**Use Case:** Standardize field naming conventions
+
+**Input Code:**
+```csharp
+public class EmailService
+{
+    private string smtp;
+    private int port;
+
+    public EmailService(string server, int portNumber)
+    {
+        smtp = server;
+        port = portNumber;
+    }
+
+    public void Send(string message)
+    {
+        Console.WriteLine($"Sending via {smtp}:{port}");
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "rename_symbol",
+  "arguments": {
+    "sourceCode": "...",
+    "lineNumber": 3,
+    "columnNumber": 20,
+    "newName": "_smtpServer",
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+**Output Code:**
+```csharp
+public class EmailService
+{
+    private string _smtpServer;
+    private int port;
+
+    public EmailService(string server, int portNumber)
+    {
+        _smtpServer = server;
+        port = portNumber;
+    }
+
+    public void Send(string message)
+    {
+        Console.WriteLine($"Sending via {_smtpServer}:{port}");
+    }
+}
+```
+
+**Explanation:** The field `smtp` is renamed to `_smtpServer` following C# naming conventions. All references within the class are updated automatically.
+
+### Example 4: Rename Private Method
+
+**Use Case:** Improve method name clarity
+
+**Input Code:**
+```csharp
+public class DataProcessor
+{
+    public void Process(string data)
+    {
+        var cleaned = Clean(data);
+        Save(cleaned);
+    }
+
+    private string Clean(string input)
+    {
+        return input.Trim().ToUpper();
+    }
+
+    private void Save(string data)
+    {
+        Console.WriteLine($"Saving: {data}");
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "rename_symbol",
+  "arguments": {
+    "sourceCode": "...",
+    "lineNumber": 10,
+    "columnNumber": 20,
+    "newName": "SanitizeInput",
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+**Output Code:**
+```csharp
+public class DataProcessor
+{
+    public void Process(string data)
+    {
+        var cleaned = SanitizeInput(data);
+        Save(cleaned);
+    }
+
+    private string SanitizeInput(string input)
+    {
+        return input.Trim().ToUpper();
+    }
+
+    private void Save(string data)
+    {
+        Console.WriteLine($"Saving: {data}");
+    }
+}
+```
+
+**Explanation:** The method `Clean` is renamed to `SanitizeInput`, and the method call on line 5 is automatically updated.
+
+### Example 5: Cannot Rename - Symbol Not Found
+
+**Use Case:** Attempting to rename at an invalid position
+
+**Input Code:**
+```csharp
+public class Test
+{
+    public void Method()
+    {
+        var x = 5;
+    }
+}
+```
+
+**Tool Call (Invalid position):**
+```json
+{
+  "tool": "rename_symbol",
+  "arguments": {
+    "sourceCode": "...",
+    "lineNumber": 4,
+    "columnNumber": 1,
+    "newName": "newName",
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+**Result:**
+```json
+{
+  "success": false,
+  "message": "No symbol found at line 4, column 1",
+  "error": "Symbol not found at specified position"
+}
+```
+
+**Explanation:** There's no symbol at the specified position (it's whitespace or a keyword), so the refactoring cannot proceed.
+
+### Example 6: Cannot Rename - Public Member (Limitation)
+
+**Use Case:** Attempting to rename a public method (not supported in V1)
+
+**Input Code:**
+```csharp
+public class Calculator
+{
+    public int Add(int a, int b)
+    {
+        return a + b;
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "rename_symbol",
+  "arguments": {
+    "sourceCode": "...",
+    "lineNumber": 3,
+    "columnNumber": 16,
+    "newName": "Sum",
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+**Result:**
+```json
+{
+  "success": false,
+  "message": "Cannot rename public method 'Add'. Only local variables, parameters, and private members can be renamed (single-file scope limitation)",
+  "error": "Public member rename not supported"
+}
+```
+
+**Explanation:** The `rename_symbol` tool only supports renaming symbols within a single file scope. Public and protected members may be used in other files, so they cannot be safely renamed without cross-file analysis.
+
+### MCP Tool Usage
+
+```javascript
+// Rename a symbol at specific position
+const result = await use_mcp_tool({
+  server_name: "refactor-csharp-mcp",
+  tool_name: "rename_symbol",
+  arguments: {
+    sourceCode: "...",
+    lineNumber: 5,        // 1-based line number
+    columnNumber: 13,     // 1-based column number
+    newName: "newName",   // New identifier (must be valid C# identifier)
+    targetFramework: "net8.0"
+  }
+});
+
+// Check result
+if (result.success) {
+  console.log("Symbol renamed successfully");
+  console.log(result.refactoredCode);
+} else {
+  console.log(`Rename failed: ${result.message}`);
+}
+```
+
+### Position-Based Resolution
+
+The `rename_symbol` tool uses position-based resolution to identify the symbol to rename. This means you specify the exact line and column where the symbol appears, and the tool:
+
+1. **Resolves the symbol** at that position using Roslyn semantic analysis
+2. **Validates the symbol type** (local variable, parameter, private field, private method)
+3. **Finds all references** to that symbol within the same file
+4. **Updates all references** with the new name
+5. **Preserves formatting** and code structure
+
+**Position Calculation:**
+- Line numbers are 1-based (first line is 1, not 0)
+- Column numbers are 1-based (first character is 1, not 0)
+- Position should point to the symbol identifier, not whitespace or keywords
+
+**Example Position Calculation:**
+```csharp
+public class Test
+{
+    public void Method()
+    {
+        var myVariable = 5;
+        //  ^^^^^^^^^^
+        //  Line: 5, Column: 13 (start of 'myVariable')
+    }
+}
+```
+
+### Supported Symbol Types
+
+| Symbol Type | Scope | Example | Supported |
+|------------|-------|---------|-----------|
+| Local Variable | Method | `var x = 5;` | ✅ Yes |
+| Method Parameter | Method | `void M(int x)` | ✅ Yes |
+| Private Field | Class | `private int _x;` | ✅ Yes |
+| Private Method | Class | `private void M()` | ✅ Yes |
+| Public Field | Class | `public int X;` | ❌ No (V1) |
+| Public Method | Class | `public void M()` | ❌ No (V1) |
+| Protected Member | Class | `protected int X;` | ❌ No (V1) |
+| Internal Member | Class | `internal int X;` | ❌ No (V1) |
+
+### Limitations
+
+**Single-File Scope (V1):**
+- Only renames symbols within the current file
+- Cannot rename public/protected/internal members
+- Cannot rename symbols used across multiple files
+- For cross-file renames, use IDE tools (Visual Studio, VS Code, Rider)
+
+**Valid Identifiers Only:**
+- New name must be a valid C# identifier
+- Cannot use C# keywords (e.g., `int`, `class`, `void`)
+- Must follow C# naming rules (alphanumeric + underscore, cannot start with digit)
+
+**Position Accuracy:**
+- Must specify exact position of symbol identifier
+- Whitespace, keywords, or operators will result in "symbol not found" error
+
+### Best Practices
+
+1. **Use IDE tools for public members** - Visual Studio, VS Code, and Rider support cross-file renaming
+2. **Verify position** - Ensure line and column numbers point to the symbol identifier
+3. **Follow naming conventions** - Use consistent naming patterns (e.g., `_camelCase` for private fields)
+4. **Single file refactoring** - Only use this tool when symbols are confined to a single file
+5. **Test after rename** - Run tests to ensure all references were updated correctly
+6. **Framework-independent** - Renaming works identically across all .NET frameworks
+
+### Example Workflow: Batch Rename Parameters
+
+**Input Code:**
+```csharp
+public class UserService
+{
+    public void CreateUser(string n, string e, int a)
+    {
+        Console.WriteLine($"Name: {n}, Email: {e}, Age: {a}");
+    }
+}
+```
+
+**Step 1: Rename first parameter (`n` → `name`):**
+```javascript
+const step1 = await use_mcp_tool({
+  server_name: "refactor-csharp-mcp",
+  tool_name: "rename_symbol",
+  arguments: {
+    sourceCode: originalCode,
+    lineNumber: 3,
+    columnNumber: 32,
+    newName: "name",
+    targetFramework: "net8.0"
+  }
+});
+```
+
+**Step 2: Rename second parameter (`e` → `email`):**
+```javascript
+const step2 = await use_mcp_tool({
+  server_name: "refactor-csharp-mcp",
+  tool_name: "rename_symbol",
+  arguments: {
+    sourceCode: step1.refactoredCode,  // Use output from step 1
+    lineNumber: 3,
+    columnNumber: 48,  // Position may have shifted
+    newName: "email",
+    targetFramework: "net8.0"
+  }
+});
+```
+
+**Step 3: Rename third parameter (`a` → `age`):**
+```javascript
+const step3 = await use_mcp_tool({
+  server_name: "refactor-csharp-mcp",
+  tool_name: "rename_symbol",
+  arguments: {
+    sourceCode: step2.refactoredCode,
+    lineNumber: 3,
+    columnNumber: 61,
+    newName: "age",
+    targetFramework: "net8.0"
+  }
+});
+```
+
+**Final Output:**
+```csharp
+public class UserService
+{
+    public void CreateUser(string name, string email, int age)
+    {
+        Console.WriteLine($"Name: {name}, Email: {email}, Age: {age}");
+    }
+}
+```
 
 ## Framework-Aware Validation
 
