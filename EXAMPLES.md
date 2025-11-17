@@ -16,9 +16,11 @@ This document provides practical examples of using RefactorCsharpMCP's refactori
 8. [Extract Class](#extract-class)
 9. [Inline Method](#inline-method-part-1)
 10. [Rename Symbol](#rename-symbol)
-11. [Framework Validation](#framework-aware-validation)
-12. [Framework Limitations](#framework-limitations-and-workarounds)
-13. [Diagnostic Integration](#diagnostic-integration-v15)
+11. [Fix Diagnostic](#fix-diagnostic)
+12. [Analyze Code](#analyze-code)
+13. [Framework Validation](#framework-aware-validation)
+14. [Framework Limitations](#framework-limitations-and-workarounds)
+15. [Diagnostic Integration](#diagnostic-integration-v15)
 
 ---
 
@@ -810,17 +812,33 @@ public class Configuration
 ### MCP Tool Usage
 
 ```javascript
-// Make a specific field readonly
-const result = await use_mcp_tool({
-  server_name: "refactor-csharp-mcp",
-  tool_name: "make_field_readonly",
-  arguments: {
-    sourceCode: "...",
-    className: "MyClass",
-    fieldName: "_myField",
-    targetFramework: "net8.0"
+// Make a specific field readonly with error handling
+try {
+  const result = await use_mcp_tool({
+    server_name: "refactor-csharp-mcp",
+    tool_name: "make_field_readonly",
+    arguments: {
+      sourceCode: "...",
+      className: "MyClass",
+      fieldName: "_myField",
+      targetFramework: "net8.0"
+    }
+  });
+
+  if (result.success) {
+    console.log("Field made readonly successfully");
+    console.log(result.refactoredCode);
+  } else {
+    console.error("Refactoring failed:", result.message);
+    // Handle specific error cases
+    if (result.error === "Field has assignments outside constructors") {
+      console.log("Field cannot be made readonly - it's modified after construction");
+    }
   }
-});
+} catch (error) {
+  console.error("MCP tool error:", error);
+  // Handle network errors, authentication issues, etc.
+}
 
 // Analyze all fields in a class
 const result = await use_mcp_tool({
@@ -1018,12 +1036,14 @@ public class Logger
 ```json
 {
   "success": false,
-  "message": "Multiple overloads of 'Log' exist. Please specify which overload to delete by providing parameter types or use a more specific method selector",
-  "error": "Ambiguous method - multiple overloads found"
+  "message": "Method 'Log' has 2 reference(s) and cannot be safely deleted",
+  "error": "Method has references"
 }
 ```
 
-**Explanation:** When multiple overloads exist, the refactoring cannot determine which one to delete. You must either manually delete the specific overload or use the MCP tool to delete the entire method declaration if no overloads are referenced.
+**Explanation:** The tool finds the first method named 'Log' (the single-parameter overload) which has 1 reference. When overloaded methods exist, the tool matches by name only and cannot distinguish between overloads. For overloaded methods, you must manually delete the unused overload or rename methods to have unique names before using safe_delete_method.
+
+**Note**: The tool does not currently support deleting specific method overloads by signature. If you have overloaded methods, delete them manually in your IDE.
 
 ### Example 4: Delete Private Helper Method
 
@@ -3133,16 +3153,18 @@ The `rename_symbol` tool uses position-based resolution to identify the symbol t
 
 **Example Position Calculation:**
 ```csharp
-public class Test
-{
-    public void Method()
-    {
-        var myVariable = 5;
-        //  ^^^^^^^^^^
-        //  Line: 5, Column: 13 (start of 'myVariable')
-    }
-}
+     1  public class Test
+     2  {
+     3      public void Method()
+     4      {
+     5          var myVariable = 5;
+     6          //  ^^^^^^^^^^
+     7          //  Line: 5, Column: 13 (start of 'myVariable')
+     8      }
+     9  }
 ```
+
+**Note**: Line numbers are relative to the entire file (1-based), not relative to the method or block.
 
 ### Supported Symbol Types
 
@@ -3250,6 +3272,938 @@ public class UserService
         Console.WriteLine($"Name: {name}, Email: {email}, Age: {age}");
     }
 }
+```
+
+## Fix Diagnostic
+
+The Fix Diagnostic refactoring automatically fixes specific Roslyn diagnostics by applying the appropriate refactoring. It supports common code quality issues like unused usings (IDE0005/CS8019) and readonly fields (IDE0044). The tool is framework-aware and applies fixes according to target framework capabilities.
+
+### Example 1: Fix Unused Using Directive
+
+**Use Case:** Automatically remove an unused using directive detected by the compiler
+
+**Input Code:**
+```csharp
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+public class Calculator
+{
+    public int Add(int a, int b)
+    {
+        Console.WriteLine($"Adding {a} + {b}");
+        return a + b;
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "fix_diagnostic",
+  "arguments": {
+    "sourceCode": "...",
+    "diagnosticId": "IDE0005",
+    "line": 2,
+    "column": 1,
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+**Output Code:**
+```csharp
+using System;
+using System.Linq;
+
+public class Calculator
+{
+    public int Add(int a, int b)
+    {
+        Console.WriteLine($"Adding {a} + {b}");
+        return a + b;
+    }
+}
+```
+
+**Explanation:** The diagnostic IDE0005 indicates that the `using System.Collections.Generic;` directive is unnecessary. The fix removes this specific using while preserving others.
+
+### Example 2: Fix Readonly Field (IDE0044)
+
+**Use Case:** Automatically add readonly modifier to a field that's only assigned in constructor
+
+**Input Code:**
+```csharp
+public class EmailService
+{
+    private string _smtpServer;
+    private int _port;
+
+    public EmailService(string server, int port)
+    {
+        _smtpServer = server;
+        _port = port;
+    }
+
+    public void Send(string message)
+    {
+        Console.WriteLine($"Sending via {_smtpServer}:{_port}");
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "fix_diagnostic",
+  "arguments": {
+    "sourceCode": "...",
+    "diagnosticId": "IDE0044",
+    "line": 3,
+    "column": 20,
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+**Output Code:**
+```csharp
+public class EmailService
+{
+    private readonly string _smtpServer;
+    private int _port;
+
+    public EmailService(string server, int port)
+    {
+        _smtpServer = server;
+        _port = port;
+    }
+
+    public void Send(string message)
+    {
+        Console.WriteLine($"Sending via {_smtpServer}:{_port}");
+    }
+}
+```
+
+**Explanation:** The diagnostic IDE0044 indicates that `_smtpServer` can be made readonly. The fix adds the `readonly` modifier to prevent accidental modifications after construction.
+
+### Example 3: Fix Compiler Warning CS8019
+
+**Use Case:** Remove unused using directive flagged by compiler warning
+
+**Input Code:**
+```csharp
+using System;
+using System.Text;
+using System.Threading.Tasks;
+
+public class Logger
+{
+    public void Log(string message)
+    {
+        Console.WriteLine($"[{DateTime.Now}] {message}");
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "fix_diagnostic",
+  "arguments": {
+    "sourceCode": "...",
+    "diagnosticId": "CS8019",
+    "line": 3,
+    "column": 1,
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+**Output Code:**
+```csharp
+using System;
+using System.Threading.Tasks;
+
+public class Logger
+{
+    public void Log(string message)
+    {
+        Console.WriteLine($"[{DateTime.Now}] {message}");
+    }
+}
+```
+
+**Explanation:** CS8019 is the compiler warning for unnecessary using directives. The fix removes `using System.Text;` which is not referenced in the code.
+
+### Example 4: Unsupported Diagnostic
+
+**Use Case:** Attempting to fix a diagnostic that's not supported
+
+**Input Code:**
+```csharp
+public class Test
+{
+    public void Method()
+    {
+        var x = 5;
+        x = 10;  // IDE0059: Unnecessary assignment
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "fix_diagnostic",
+  "arguments": {
+    "sourceCode": "...",
+    "diagnosticId": "IDE0059",
+    "line": 6,
+    "column": 9,
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+**Result:**
+```json
+{
+  "success": false,
+  "message": "Diagnostic IDE0059 is not currently supported for automatic fixing",
+  "error": "Unsupported diagnostic",
+  "supportedDiagnostics": ["IDE0005", "CS8019", "IDE0044"]
+}
+```
+
+**Explanation:** Not all diagnostics can be automatically fixed. The tool only supports specific diagnostics where the fix is unambiguous and safe.
+
+### Example 5: Framework-Specific Fix
+
+**Use Case:** Fixing unused usings with framework-aware global using handling
+
+**Input Code (.NET 8):**
+```csharp
+using System;
+using System.Collections.Generic;
+
+public class Service
+{
+    public void Process()
+    {
+        Console.WriteLine("Processing");  // Uses implicit global using System
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "fix_diagnostic",
+  "arguments": {
+    "sourceCode": "...",
+    "diagnosticId": "IDE0005",
+    "line": 1,
+    "column": 1,
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+**Output Code:**
+```csharp
+using System.Collections.Generic;
+
+public class Service
+{
+    public void Process()
+    {
+        Console.WriteLine("Processing");
+    }
+}
+```
+
+**Explanation:** On .NET 8+, the SDK includes global usings for common namespaces like `System`. The fix removes the explicit `using System;` because it's redundant with the global using.
+
+### Example 6: Diagnostic Not Found at Location
+
+**Use Case:** Attempting to fix a diagnostic at an incorrect location
+
+**Input Code:**
+```csharp
+using System;
+
+public class Test
+{
+    public void Method()
+    {
+        Console.WriteLine("Hello");
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "fix_diagnostic",
+  "arguments": {
+    "sourceCode": "...",
+    "diagnosticId": "IDE0005",
+    "line": 5,
+    "column": 1,
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+**Result:**
+```json
+{
+  "success": false,
+  "message": "No IDE0005 diagnostic found at line 5, column 1",
+  "error": "Diagnostic not found at specified location"
+}
+```
+
+**Explanation:** The diagnostic must exist at the exact location specified. If the line/column doesn't match where the diagnostic actually occurs, the fix cannot be applied.
+
+### MCP Tool Usage
+
+```javascript
+// Fix a specific diagnostic
+const result = await use_mcp_tool({
+  server_name: "refactor-csharp-mcp",
+  tool_name: "fix_diagnostic",
+  arguments: {
+    sourceCode: "...",
+    diagnosticId: "IDE0005",
+    line: 2,
+    column: 1,
+    targetFramework: "net8.0"
+  }
+});
+
+// Check result
+if (result.success) {
+  console.log("Diagnostic fixed successfully");
+  console.log(result.refactoredCode);
+} else {
+  console.log(`Fix failed: ${result.message}`);
+  if (result.supportedDiagnostics) {
+    console.log("Supported diagnostics:", result.supportedDiagnostics);
+  }
+}
+```
+
+### Supported Diagnostics
+
+| Diagnostic ID | Description | Fix Applied |
+|--------------|-------------|-------------|
+| IDE0005 | Using directive is unnecessary | Remove unused using |
+| CS8019 | Unnecessary using directive | Remove unused using |
+| IDE0044 | Add readonly modifier | Add `readonly` to field |
+
+**Note**: The list of supported diagnostics may expand in future versions.
+
+### Best Practices
+
+1. **Use with analyze_code** - Run `analyze_code` first to discover all diagnostics, then fix them one by one
+2. **Verify location** - Ensure line and column numbers match where the diagnostic actually occurs
+3. **Framework awareness** - Specify correct target framework for framework-specific fixes
+4. **Check support** - Not all diagnostics can be automatically fixed - check supported list
+5. **Batch processing** - Fix diagnostics sequentially, as fixing one may affect others
+6. **Manual verification** - Always review automatic fixes before committing
+
+### Workflow Integration
+
+The `fix_diagnostic` tool is designed to work with `analyze_code`:
+
+```javascript
+// Step 1: Analyze code to find diagnostics
+const analysis = await use_mcp_tool({
+  server_name: "refactor-csharp-mcp",
+  tool_name: "analyze_code",
+  arguments: {
+    sourceCode: code,
+    targetFramework: "net8.0",
+    minSeverity: "Warning"
+  }
+});
+
+// Step 2: Fix each supported diagnostic
+for (const diagnostic of analysis.diagnostics) {
+  if (["IDE0005", "CS8019", "IDE0044"].includes(diagnostic.id)) {
+    const fix = await use_mcp_tool({
+      server_name: "refactor-csharp-mcp",
+      tool_name: "fix_diagnostic",
+      arguments: {
+        sourceCode: code,
+        diagnosticId: diagnostic.id,
+        line: diagnostic.location.line,
+        column: diagnostic.location.column,
+        targetFramework: "net8.0"
+      }
+    });
+
+    if (fix.success) {
+      code = fix.refactoredCode;  // Update code with fix
+    }
+  }
+}
+```
+
+## Analyze Code
+
+The Analyze Code tool performs comprehensive code analysis using Roslyn diagnostics with full IDE analyzer support (IDE0001-IDE9999). It detects compiler warnings, style violations, and code quality issues, returning detailed information about each finding including location, severity, and applicable refactorings. The tool is framework-aware and analyzes code according to target framework capabilities.
+
+### Example 1: Basic Code Analysis
+
+**Use Case:** Analyze code for common issues and style violations
+
+**Input Code:**
+```csharp
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+public class UserService
+{
+    private string _name;
+    private int _age;
+
+    public UserService()
+    {
+        _name = "Unknown";
+        _age = 0;
+    }
+
+    public void PrintInfo()
+    {
+        Console.WriteLine($"Name: {_name}, Age: {_age}");
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "analyze_code",
+  "arguments": {
+    "sourceCode": "...",
+    "targetFramework": "net8.0",
+    "minSeverity": "Info"
+  }
+}
+```
+
+**Output:**
+```json
+{
+  "success": true,
+  "diagnostics": [
+    {
+      "id": "IDE0005",
+      "severity": "Info",
+      "message": "Using directive is unnecessary",
+      "location": {
+        "line": 2,
+        "column": 1,
+        "file": "source"
+      },
+      "category": "Style",
+      "applicableRefactorings": ["remove_unused_usings", "fix_diagnostic"]
+    },
+    {
+      "id": "IDE0005",
+      "severity": "Info",
+      "message": "Using directive is unnecessary",
+      "location": {
+        "line": 3,
+        "column": 1,
+        "file": "source"
+      },
+      "category": "Style",
+      "applicableRefactorings": ["remove_unused_usings", "fix_diagnostic"]
+    },
+    {
+      "id": "IDE0044",
+      "severity": "Info",
+      "message": "Add readonly modifier",
+      "location": {
+        "line": 7,
+        "column": 20,
+        "file": "source"
+      },
+      "category": "Style",
+      "applicableRefactorings": ["make_field_readonly", "fix_diagnostic"]
+    },
+    {
+      "id": "IDE0044",
+      "severity": "Info",
+      "message": "Add readonly modifier",
+      "location": {
+        "line": 8,
+        "column": 17,
+        "file": "source"
+      },
+      "category": "Style",
+      "applicableRefactorings": ["make_field_readonly", "fix_diagnostic"]
+    }
+  ],
+  "summary": {
+    "totalDiagnostics": 4,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 4,
+    "hiddenCount": 0
+  }
+}
+```
+
+**Explanation:** The analysis found 4 style issues: 2 unused using directives and 2 fields that can be made readonly. Each diagnostic includes its location and suggests applicable refactorings.
+
+### Example 2: Severity Filtering
+
+**Use Case:** Analyze code for warnings and errors only, ignoring info-level diagnostics
+
+**Input Code:**
+```csharp
+using System;
+
+public class Calculator
+{
+    public int Divide(int a, int b)
+    {
+        return a / b;  // No null/zero check - potential runtime error
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "analyze_code",
+  "arguments": {
+    "sourceCode": "...",
+    "targetFramework": "net8.0",
+    "minSeverity": "Warning"
+  }
+}
+```
+
+**Output:**
+```json
+{
+  "success": true,
+  "diagnostics": [],
+  "summary": {
+    "totalDiagnostics": 0,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "hiddenCount": 0
+  }
+}
+```
+
+**Explanation:** With `minSeverity: "Warning"`, only warnings and errors are reported. Info-level suggestions are filtered out. In this case, the potential division by zero isn't flagged by Roslyn as a warning in this simple context.
+
+### Example 3: Framework-Specific Analysis
+
+**Use Case:** Analyze code with framework-specific language features
+
+**Input Code:**
+```csharp
+using System;
+
+public class Example
+{
+    public void Method()
+    {
+        var numbers = [1, 2, 3];  // Collection expression (C# 12)
+        Console.WriteLine(numbers.Length);
+    }
+}
+```
+
+**Tool Call (net8.0 - Supports C# 12):**
+```json
+{
+  "tool": "analyze_code",
+  "arguments": {
+    "sourceCode": "...",
+    "targetFramework": "net8.0",
+    "minSeverity": "Error"
+  }
+}
+```
+
+**Output:**
+```json
+{
+  "success": true,
+  "diagnostics": [],
+  "summary": {
+    "totalDiagnostics": 0,
+    "errorCount": 0,
+    "warningCount": 0
+  }
+}
+```
+
+**Tool Call (net48 - Only C# 7.3):**
+```json
+{
+  "tool": "analyze_code",
+  "arguments": {
+    "sourceCode": "...",
+    "targetFramework": "net48",
+    "minSeverity": "Error"
+  }
+}
+```
+
+**Output:**
+```json
+{
+  "success": true,
+  "diagnostics": [
+    {
+      "id": "CS1525",
+      "severity": "Error",
+      "message": "Invalid expression term '['",
+      "location": {
+        "line": 7,
+        "column": 23,
+        "file": "source"
+      },
+      "category": "Compiler Error",
+      "applicableRefactorings": []
+    }
+  ],
+  "summary": {
+    "totalDiagnostics": 1,
+    "errorCount": 1,
+    "warningCount": 0
+  }
+}
+```
+
+**Explanation:** The same code produces different analysis results based on target framework. Collection expressions are valid in net8.0 (C# 12) but cause compiler errors in net48 (C# 7.3).
+
+### Example 4: Complete Code Quality Check
+
+**Use Case:** Comprehensive analysis including all severity levels
+
+**Input Code:**
+```csharp
+using System;
+using System.Collections.Generic;
+
+public class DataProcessor
+{
+    private List<string> data;
+
+    public DataProcessor()
+    {
+        data = new List<string>();
+    }
+
+    public void Process()
+    {
+        foreach (var item in data)
+        {
+            Console.WriteLine(item);
+        }
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "analyze_code",
+  "arguments": {
+    "sourceCode": "...",
+    "targetFramework": "net8.0",
+    "minSeverity": "Hidden"
+  }
+}
+```
+
+**Output:**
+```json
+{
+  "success": true,
+  "diagnostics": [
+    {
+      "id": "IDE0044",
+      "severity": "Info",
+      "message": "Add readonly modifier",
+      "location": {
+        "line": 6,
+        "column": 29,
+        "file": "source"
+      },
+      "category": "Style",
+      "applicableRefactorings": ["make_field_readonly", "fix_diagnostic"]
+    },
+    {
+      "id": "IDE0090",
+      "severity": "Hidden",
+      "message": "Use 'new(...)' for object creation",
+      "location": {
+        "line": 10,
+        "column": 15,
+        "file": "source"
+      },
+      "category": "Style",
+      "applicableRefactorings": []
+    }
+  ],
+  "summary": {
+    "totalDiagnostics": 2,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 1,
+    "hiddenCount": 1
+  }
+}
+```
+
+**Explanation:** With `minSeverity: "Hidden"`, all diagnostics are returned including hidden style suggestions like using implicit object creation.
+
+### Example 5: No Issues Found
+
+**Use Case:** Analyzing clean, well-written code
+
+**Input Code:**
+```csharp
+using System;
+
+public class Calculator
+{
+    public int Add(int a, int b)
+    {
+        return a + b;
+    }
+
+    public int Multiply(int a, int b)
+    {
+        return a * b;
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "analyze_code",
+  "arguments": {
+    "sourceCode": "...",
+    "targetFramework": "net8.0",
+    "minSeverity": "Info"
+  }
+}
+```
+
+**Output:**
+```json
+{
+  "success": true,
+  "diagnostics": [],
+  "summary": {
+    "totalDiagnostics": 0,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "hiddenCount": 0
+  }
+}
+```
+
+**Explanation:** No diagnostics found - the code follows best practices and has no style violations or issues.
+
+### Example 6: Syntax Errors
+
+**Use Case:** Analyzing code with syntax errors
+
+**Input Code:**
+```csharp
+using System;
+
+public class Test
+{
+    public void Method()
+    {
+        var x = 5
+        Console.WriteLine(x);  // Missing semicolon above
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "analyze_code",
+  "arguments": {
+    "sourceCode": "...",
+    "targetFramework": "net8.0",
+    "minSeverity": "Error"
+  }
+}
+```
+
+**Output:**
+```json
+{
+  "success": true,
+  "diagnostics": [
+    {
+      "id": "CS1002",
+      "severity": "Error",
+      "message": "; expected",
+      "location": {
+        "line": 7,
+        "column": 19,
+        "file": "source"
+      },
+      "category": "Compiler Error",
+      "applicableRefactorings": []
+    }
+  ],
+  "summary": {
+    "totalDiagnostics": 1,
+    "errorCount": 1,
+    "warningCount": 0
+  }
+}
+```
+
+**Explanation:** Syntax errors are reported as compiler errors with specific locations and descriptions.
+
+### MCP Tool Usage
+
+```javascript
+// Analyze code for all issues
+const result = await use_mcp_tool({
+  server_name: "refactor-csharp-mcp",
+  tool_name: "analyze_code",
+  arguments: {
+    sourceCode: "...",
+    targetFramework: "net8.0",
+    minSeverity: "Info"  // Info, Warning, Error, or Hidden
+  }
+});
+
+// Process results
+if (result.success) {
+  console.log(`Found ${result.summary.totalDiagnostics} issues`);
+  console.log(`  Errors: ${result.summary.errorCount}`);
+  console.log(`  Warnings: ${result.summary.warningCount}`);
+  console.log(`  Info: ${result.summary.infoCount}`);
+
+  // Group by severity
+  const errors = result.diagnostics.filter(d => d.severity === "Error");
+  const warnings = result.diagnostics.filter(d => d.severity === "Warning");
+  const info = result.diagnostics.filter(d => d.severity === "Info");
+
+  // Show applicable refactorings
+  result.diagnostics.forEach(diagnostic => {
+    if (diagnostic.applicableRefactorings.length > 0) {
+      console.log(`${diagnostic.id}: Can fix with ${diagnostic.applicableRefactorings.join(", ")}`);
+    }
+  });
+}
+```
+
+### Diagnostic Categories
+
+| Category | Description | Examples |
+|----------|-------------|----------|
+| Compiler Error | Syntax or semantic errors that prevent compilation | CS1002, CS0246 |
+| Compiler Warning | Potential issues that don't prevent compilation | CS0168, CS8019 |
+| Style | Code style and formatting suggestions | IDE0005, IDE0044 |
+| Design | Design pattern and architecture recommendations | CA1000, CA1001 |
+| Performance | Performance optimization suggestions | CA1806, CA1810 |
+| Security | Security vulnerabilities and best practices | CA2100, CA3001 |
+
+### Severity Levels
+
+| Level | Description | Use Case |
+|-------|-------------|----------|
+| Error | Prevents compilation | Must fix before build |
+| Warning | Potential issues | Should review and fix |
+| Info | Style suggestions | Optional improvements |
+| Hidden | IDE-only hints | Typically for refactoring suggestions |
+
+### Best Practices
+
+1. **Start with errors** - Set `minSeverity: "Error"` to find critical issues first
+2. **Incremental cleanup** - Address errors, then warnings, then info-level issues
+3. **Framework matching** - Use the same framework as your project's target
+4. **Combine with fixes** - Use `analyze_code` to find issues, then `fix_diagnostic` to apply fixes
+5. **Regular analysis** - Run analysis frequently during development
+6. **Review suggestions** - Not all diagnostics need to be fixed - use judgment
+
+### Workflow: Analysis → Fix Loop
+
+```javascript
+// Complete code quality improvement workflow
+let code = originalCode;
+let iteration = 0;
+const maxIterations = 10;
+
+while (iteration < maxIterations) {
+  // Analyze current code
+  const analysis = await use_mcp_tool({
+    server_name: "refactor-csharp-mcp",
+    tool_name: "analyze_code",
+    arguments: {
+      sourceCode: code,
+      targetFramework: "net8.0",
+      minSeverity: "Info"
+    }
+  });
+
+  // Exit if no more fixable diagnostics
+  const fixable = analysis.diagnostics.filter(d =>
+    d.applicableRefactorings && d.applicableRefactorings.length > 0
+  );
+
+  if (fixable.length === 0) {
+    console.log("No more fixable diagnostics");
+    break;
+  }
+
+  // Fix first diagnostic
+  const diagnostic = fixable[0];
+  console.log(`Fixing ${diagnostic.id} at line ${diagnostic.location.line}`);
+
+  const fix = await use_mcp_tool({
+    server_name: "refactor-csharp-mcp",
+    tool_name: "fix_diagnostic",
+    arguments: {
+      sourceCode: code,
+      diagnosticId: diagnostic.id,
+      line: diagnostic.location.line,
+      column: diagnostic.location.column,
+      targetFramework: "net8.0"
+    }
+  });
+
+  if (fix.success) {
+    code = fix.refactoredCode;
+    iteration++;
+  } else {
+    console.log(`Could not fix ${diagnostic.id}: ${fix.message}`);
+    break;
+  }
+}
+
+console.log(`Code quality improved after ${iteration} fixes`);
 ```
 
 ## Framework-Aware Validation
