@@ -45,6 +45,16 @@ bld/
 .claude/cache/
 .claude/logs/
 
+# Private Claude Code configurations (bootstrapped at session start)
+.claude/private-config/
+
+# Skills are dynamically symlinked by bootstrap script
+.claude/skills/
+
+# Environment files
+.env
+.credentials.json
+
 # Local tool installations (created by scripts/install_tools.sh)
 .tools/
 
