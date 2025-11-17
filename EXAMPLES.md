@@ -22,6 +22,27 @@ This document provides practical examples of using RefactorCsharpMCP's refactori
 14. [Framework Limitations](#framework-limitations-and-workarounds)
 15. [Diagnostic Integration](#diagnostic-integration-v15)
 
+## Quick Reference: Tool Capabilities
+
+| Tool | Scope | Framework-Aware | Position-Based | Primary Use Case |
+|------|-------|-----------------|----------------|------------------|
+| [Extract Method](#extract-method) | Single-File | ✅ | ❌ | Extract code into reusable methods |
+| [Constructor Injection](#constructor-injection) | Single-File | ✅ | ❌ | Convert to dependency injection pattern |
+| [Make Field Readonly](#make-field-readonly) | Single-File | ✅ | ❌ | Enforce immutability with readonly |
+| [Safe Delete Method](#safe-delete-method) | Single-File | ✅ | ❌ | Delete unused methods safely |
+| [Inline Variable](#inline-variable) | Single-File | ✅ | ✅ | Simplify by removing intermediates |
+| [Remove Unused Usings](#remove-unused-usings) | Single-File | ✅ | ❌ | Clean up unused imports |
+| [Extract Class](#extract-class) | Single-File | ✅ | ❌ | Split large classes (SRP) |
+| [Inline Method](#inline-method-part-1) | Single-File | ✅ | ✅ | Remove single-use methods |
+| [Rename Symbol](#rename-symbol) | Single-File | ✅ | ✅ | Rename variables/fields/methods |
+| [Fix Diagnostic](#fix-diagnostic) | Single-File | ✅ | ❌ | Auto-fix compiler warnings |
+| [Analyze Code](#analyze-code) | Single-File | ✅ | ❌ | Discover code quality issues |
+
+**Legend:**
+- **Scope**: Single-File (operates on one file at a time), Multi-File (future: cross-file refactoring)
+- **Framework-Aware**: Adapts output to target .NET framework (net8.0, net48, netstandard2.0, etc.)
+- **Position-Based**: Requires line/column coordinates to identify the target symbol
+
 ---
 
 ## Framework-Aware Refactoring
@@ -455,6 +476,10 @@ public class UserService
 
 ## Constructor Injection
 
+The Constructor Injection refactoring converts method parameters into constructor-injected fields, following the dependency injection pattern. This helps decouple classes and improve testability.
+
+**See also:** [Make Field Readonly](#make-field-readonly) to make injected dependencies immutable after construction.
+
 ### Example 1: Field Injection (Default)
 
 **Before:**
@@ -576,6 +601,8 @@ public class OrderService
 ## Make Field Readonly
 
 The Make Field Readonly refactoring analyzes field assignments and adds the `readonly` modifier when fields are only assigned in constructors. This enforces immutability and prevents accidental modifications after object initialization.
+
+**See also:** [Analyze Code](#analyze-code) to discover all fields in a class that can be made readonly (look for IDE0044 diagnostics).
 
 ### Example 1: Single Field - Basic Usage
 
@@ -1041,7 +1068,7 @@ public class Logger
 }
 ```
 
-**Explanation:** The tool finds the first method named 'Log' (the single-parameter overload) which has 1 reference. When overloaded methods exist, the tool matches by name only and cannot distinguish between overloads. For overloaded methods, you must manually delete the unused overload or rename methods to have unique names before using safe_delete_method.
+**Explanation:** When overloaded methods exist, the tool matches by name only and cannot distinguish between overloads. It finds the first method named 'Log' and counts ALL references to any method with that name (2 in this case: both the single-parameter and two-parameter overloads are called). For overloaded methods, you must manually delete the unused overload or rename methods to have unique names before using safe_delete_method.
 
 **Note**: The tool does not currently support deleting specific method overloads by signature. If you have overloaded methods, delete them manually in your IDE.
 
@@ -1677,6 +1704,8 @@ var result = await refactoring.ExecuteAsync(code, "net8.0");
 ## Extract Class
 
 Extract Class refactoring helps decompose large classes by moving fields and methods into a new class, following the composition pattern. The refactoring automatically updates references within the same class and warns about external references that need manual updates.
+
+**See also:** [Rename Symbol](#rename-symbol) to rename the composition field or extracted class after extraction.
 
 ### Basic Usage - Single Field
 
@@ -3278,6 +3307,8 @@ public class UserService
 
 The Fix Diagnostic refactoring automatically fixes specific Roslyn diagnostics by applying the appropriate refactoring. It supports common code quality issues like unused usings (IDE0005/CS8019) and readonly fields (IDE0044). The tool is framework-aware and applies fixes according to target framework capabilities.
 
+**See also:** [Analyze Code](#analyze-code) to discover all diagnostics in your code before fixing them.
+
 ### Example 1: Fix Unused Using Directive
 
 **Use Case:** Automatically remove an unused using directive detected by the compiler
@@ -3657,6 +3688,8 @@ for (const diagnostic of analysis.diagnostics) {
 ## Analyze Code
 
 The Analyze Code tool performs comprehensive code analysis using Roslyn diagnostics with full IDE analyzer support (IDE0001-IDE9999). It detects compiler warnings, style violations, and code quality issues, returning detailed information about each finding including location, severity, and applicable refactorings. The tool is framework-aware and analyzes code according to target framework capabilities.
+
+**See also:** [Fix Diagnostic](#fix-diagnostic) to automatically fix issues discovered by analysis, and [Make Field Readonly](#make-field-readonly) to address IDE0044 diagnostics.
 
 ### Example 1: Basic Code Analysis
 
@@ -4576,6 +4609,8 @@ var targetFramework = SelectBestFramework("net48");
 ## Inline Method (Part 1)
 
 The Inline Method refactoring replaces a method's single invocation with its body, then removes the method declaration. Part 1 supports void methods with simple parameters (primitives, string) and single caller only.
+
+**See also:** [Extract Method](#extract-method) for the inverse operation - extracting code into a new method.
 
 ### Example 1: Simple Method Inlining
 
