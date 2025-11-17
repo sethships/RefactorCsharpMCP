@@ -70,11 +70,13 @@ public class BuildValidator
     /// </summary>
     /// <param name="projectPath">Path to the project file or directory containing the project.</param>
     /// <param name="timeoutSeconds">Timeout for the build operation in seconds.</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the build operation.</param>
     /// <returns>Build validation result.</returns>
     /// <exception cref="SecurityException">If the path is invalid or attempts path traversal.</exception>
     public async Task<BuildValidationResult> ValidateBuildAsync(
         string projectPath,
-        int timeoutSeconds = 300)
+        int timeoutSeconds = 300,
+        CancellationToken cancellationToken = default)
     {
         var stopwatch = Stopwatch.StartNew();
 
@@ -111,7 +113,7 @@ public class BuildValidator
 
             _logger.LogInformation("Starting build validation for: {ProjectPath}", validatedPath);
 
-            var (exitCode, output, errors) = await RunDotnetBuildAsync(validatedPath, timeoutSeconds);
+            var (exitCode, output, errors) = await RunDotnetBuildAsync(validatedPath, timeoutSeconds, cancellationToken);
 
             stopwatch.Stop();
 
@@ -164,16 +166,18 @@ public class BuildValidator
     /// </summary>
     /// <param name="projectPaths">Paths to project files or directories.</param>
     /// <param name="timeoutSeconds">Timeout per project in seconds.</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the build operations.</param>
     /// <returns>Dictionary of project path to build validation result.</returns>
     public async Task<Dictionary<string, BuildValidationResult>> ValidateBuildsAsync(
         IEnumerable<string> projectPaths,
-        int timeoutSeconds = 300)
+        int timeoutSeconds = 300,
+        CancellationToken cancellationToken = default)
     {
         var results = new Dictionary<string, BuildValidationResult>();
 
         foreach (var projectPath in projectPaths)
         {
-            var result = await ValidateBuildAsync(projectPath, timeoutSeconds);
+            var result = await ValidateBuildAsync(projectPath, timeoutSeconds, cancellationToken);
             results[projectPath] = result;
         }
 
@@ -185,10 +189,12 @@ public class BuildValidator
     /// </summary>
     /// <param name="solutionPath">Path to the solution file (.sln).</param>
     /// <param name="timeoutSeconds">Timeout for the build operation in seconds.</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the build operation.</param>
     /// <returns>Build validation result.</returns>
     public async Task<BuildValidationResult> ValidateSolutionBuildAsync(
         string solutionPath,
-        int timeoutSeconds = 600)
+        int timeoutSeconds = 600,
+        CancellationToken cancellationToken = default)
     {
         if (!File.Exists(solutionPath))
         {
@@ -206,7 +212,7 @@ public class BuildValidator
 
         _logger.LogInformation("Starting solution build validation for: {SolutionPath}", solutionPath);
 
-        return await ValidateBuildAsync(solutionPath, timeoutSeconds);
+        return await ValidateBuildAsync(solutionPath, timeoutSeconds, cancellationToken);
     }
 
     /// <summary>
@@ -214,7 +220,8 @@ public class BuildValidator
     /// </summary>
     private async Task<(int exitCode, string output, string errors)> RunDotnetBuildAsync(
         string targetPath,
-        int timeoutSeconds)
+        int timeoutSeconds,
+        CancellationToken cancellationToken = default)
     {
         var outputBuilder = new StringBuilder();
         var errorBuilder = new StringBuilder();
@@ -257,7 +264,7 @@ public class BuildValidator
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
-        var completed = await process.WaitForExitAsync(TimeSpan.FromSeconds(timeoutSeconds));
+        var completed = await process.WaitForExitAsync(TimeSpan.FromSeconds(timeoutSeconds), cancellationToken);
 
         if (!completed)
         {
@@ -304,12 +311,16 @@ internal static class ProcessExtensions
             await process.WaitForExitAsync(cts.Token);
             return true;
         }
-        catch (OperationCanceledException) when (cts.Token.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // External cancellation - propagate
+            throw;
+        }
+        catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
         {
             // Timeout occurred, not external cancellation
             return false;
         }
-        // If external cancellation occurred, let the exception propagate
     }
 }
 

@@ -75,10 +75,41 @@ public static class PathValidator
                         $"Resolved path: '{fullPath}', Base path: '{normalizedBasePath}'");
                 }
             }
-            catch (UriFormatException ex)
+            catch (UriFormatException)
             {
-                throw new SecurityException(
-                    $"Invalid path format when validating path boundaries: '{path}'", ex);
+                // Fallback for UNC paths and other Uri incompatible paths
+                // Use normalized string comparison with explicit boundary checking
+                var basePathWithSeparator = normalizedBasePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                    + Path.DirectorySeparatorChar;
+
+                var comparison = OperatingSystem.IsWindows()
+                    ? StringComparison.OrdinalIgnoreCase
+                    : StringComparison.Ordinal;
+
+                if (!fullPath.StartsWith(basePathWithSeparator, comparison))
+                {
+                    throw new SecurityException(
+                        $"Path '{path}' attempts to access files outside the allowed directory. " +
+                        $"Resolved path: '{fullPath}', Base path: '{normalizedBasePath}'");
+                }
+            }
+            catch (ArgumentException)
+            {
+                // Handle ArgumentException from Uri constructor for UNC paths
+                // Use normalized string comparison with explicit boundary checking
+                var basePathWithSeparator = normalizedBasePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                    + Path.DirectorySeparatorChar;
+
+                var comparison = OperatingSystem.IsWindows()
+                    ? StringComparison.OrdinalIgnoreCase
+                    : StringComparison.Ordinal;
+
+                if (!fullPath.StartsWith(basePathWithSeparator, comparison))
+                {
+                    throw new SecurityException(
+                        $"Path '{path}' attempts to access files outside the allowed directory. " +
+                        $"Resolved path: '{fullPath}', Base path: '{normalizedBasePath}'");
+                }
             }
         }
 
@@ -133,10 +164,45 @@ public static class PathValidator
                         $"Resolved path: '{fullPath}', Base path: '{normalizedBasePath}'");
                 }
             }
-            catch (UriFormatException ex)
+            catch (UriFormatException)
             {
-                throw new SecurityException(
-                    $"Invalid path format when validating path boundaries: '{path}'", ex);
+                // Fallback for UNC paths and other Uri incompatible paths
+                // Use normalized string comparison with explicit boundary checking
+                var fullPathWithSeparator = fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                    + Path.DirectorySeparatorChar;
+                var basePathWithSeparator = normalizedBasePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                    + Path.DirectorySeparatorChar;
+
+                var comparison = OperatingSystem.IsWindows()
+                    ? StringComparison.OrdinalIgnoreCase
+                    : StringComparison.Ordinal;
+
+                if (!fullPathWithSeparator.StartsWith(basePathWithSeparator, comparison))
+                {
+                    throw new SecurityException(
+                        $"Path '{path}' attempts to access directories outside the allowed base path. " +
+                        $"Resolved path: '{fullPath}', Base path: '{normalizedBasePath}'");
+                }
+            }
+            catch (ArgumentException)
+            {
+                // Handle ArgumentException from Uri constructor for UNC paths
+                // Use normalized string comparison with explicit boundary checking
+                var fullPathWithSeparator = fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                    + Path.DirectorySeparatorChar;
+                var basePathWithSeparator = normalizedBasePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                    + Path.DirectorySeparatorChar;
+
+                var comparison = OperatingSystem.IsWindows()
+                    ? StringComparison.OrdinalIgnoreCase
+                    : StringComparison.Ordinal;
+
+                if (!fullPathWithSeparator.StartsWith(basePathWithSeparator, comparison))
+                {
+                    throw new SecurityException(
+                        $"Path '{path}' attempts to access directories outside the allowed base path. " +
+                        $"Resolved path: '{fullPath}', Base path: '{normalizedBasePath}'");
+                }
             }
         }
 
