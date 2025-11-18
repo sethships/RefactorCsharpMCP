@@ -44,6 +44,12 @@ public enum ErrorCode
     /// </summary>
     INPUT_SYNTAX_MISMATCH = 404,
 
+    /// <summary>
+    /// Invalid target framework specified.
+    /// For IntroduceParameterObject: Framework validation failed.
+    /// </summary>
+    INVALID_FRAMEWORK = 405,
+
     // Execution Errors (422-series: Semantic/processing errors)
 
     /// <summary>
@@ -169,6 +175,36 @@ public enum ErrorCode
     /// For MakeFieldReadonly: Field is assigned in locations other than constructors.
     /// </summary>
     FIELD_NOT_ASSIGNABLE = 434,
+
+    /// <summary>
+    /// Duplicate class name conflict.
+    /// For IntroduceParameterObject: Parameter object name already exists in source code.
+    /// </summary>
+    DUPLICATE_CLASS_NAME = 435,
+
+    /// <summary>
+    /// Semantic model error.
+    /// For IntroduceParameterObject: Unable to resolve symbol using semantic model.
+    /// </summary>
+    SEMANTIC_MODEL_ERROR = 436,
+
+    /// <summary>
+    /// Ref or out parameters cannot be grouped into parameter objects.
+    /// For IntroduceParameterObject: Records/classes don't support ref/out parameters.
+    /// </summary>
+    REF_OUT_PARAMETER_UNSUPPORTED = 437,
+
+    /// <summary>
+    /// Optional parameters cannot be grouped into parameter objects.
+    /// For IntroduceParameterObject: Default values would be lost in parameter object.
+    /// </summary>
+    OPTIONAL_PARAMETER_UNSUPPORTED = 438,
+
+    /// <summary>
+    /// Params parameters cannot be grouped into parameter objects.
+    /// For IntroduceParameterObject: Params modifier not supported in parameter objects.
+    /// </summary>
+    PARAMS_PARAMETER_UNSUPPORTED = 439,
 
     // File System Errors (440-449: File and directory operations)
 

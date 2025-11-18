@@ -9,18 +9,19 @@ This document provides practical examples of using RefactorCsharpMCP's refactori
 1. [Framework-Aware Refactoring](#framework-aware-refactoring)
 2. [Extract Method](#extract-method)
 3. [Constructor Injection](#constructor-injection)
-4. [Make Field Readonly](#make-field-readonly)
-5. [Safe Delete Method](#safe-delete-method)
-6. [Inline Variable](#inline-variable)
-7. [Remove Unused Usings](#remove-unused-usings)
-8. [Extract Class](#extract-class)
-9. [Inline Method](#inline-method-part-1)
-10. [Rename Symbol](#rename-symbol)
-11. [Fix Diagnostic](#fix-diagnostic)
-12. [Analyze Code](#analyze-code)
-13. [Framework Validation](#framework-aware-validation)
-14. [Framework Limitations](#framework-limitations-and-workarounds)
-15. [Diagnostic Integration](#diagnostic-integration-v15)
+4. [Introduce Parameter Object](#introduce-parameter-object)
+5. [Make Field Readonly](#make-field-readonly)
+6. [Safe Delete Method](#safe-delete-method)
+7. [Inline Variable](#inline-variable)
+8. [Remove Unused Usings](#remove-unused-usings)
+9. [Extract Class](#extract-class)
+10. [Inline Method](#inline-method-part-1)
+11. [Rename Symbol](#rename-symbol)
+12. [Fix Diagnostic](#fix-diagnostic)
+13. [Analyze Code](#analyze-code)
+14. [Framework Validation](#framework-aware-validation)
+15. [Framework Limitations](#framework-limitations-and-workarounds)
+16. [Diagnostic Integration](#diagnostic-integration-v15)
 
 ## Quick Reference: Tool Capabilities
 
@@ -28,6 +29,7 @@ This document provides practical examples of using RefactorCsharpMCP's refactori
 |------|-------|-----------------|----------------|------------------|
 | [Extract Method](#extract-method) | Single-File | ✅ | ❌ | Extract code into reusable methods |
 | [Constructor Injection](#constructor-injection) | Single-File | ✅ | ❌ | Convert to dependency injection pattern |
+| [Introduce Parameter Object](#introduce-parameter-object) | Single-File | ✅ | ❌ | Group related parameters into object |
 | [Make Field Readonly](#make-field-readonly) | Single-File | ✅ | ❌ | Enforce immutability with readonly |
 | [Safe Delete Method](#safe-delete-method) | Single-File | ✅ | ❌ | Delete unused methods safely |
 | [Inline Variable](#inline-variable) | Single-File | ✅ | ✅ | Simplify by removing intermediates |
@@ -597,6 +599,191 @@ public class OrderService
     }
 }
 ```
+
+## Introduce Parameter Object
+
+The Introduce Parameter Object refactoring replaces a group of related parameters with a parameter object. This refactoring generates framework-aware parameter objects (records for .NET 8+, traditional classes for .NET Framework 4.8).
+
+**Benefits:**
+- Reduces parameter count for methods with many related parameters
+- Groups related data together
+- Makes method signatures more readable
+- Easier to extend (add new fields to the parameter object instead of adding parameters)
+
+### Example 1: Basic Parameter Grouping (.NET 8)
+
+**Use Case:** Group address-related parameters into an AddressInfo parameter object
+
+**Input Code:**
+```csharp
+public class CustomerService
+{
+    public void CreateCustomer(string name, string email, string street, string city, string zip)
+    {
+        Console.WriteLine($"Creating customer {name} at {street}, {city}, {zip}");
+        // Send welcome email to {email}
+    }
+
+    public void TestMethod()
+    {
+        CreateCustomer("John Doe", "john@example.com", "123 Main St", "Springfield", "12345");
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "introduce_parameter_object",
+  "arguments": {
+    "sourceCode": "...",
+    "className": "CustomerService",
+    "methodName": "CreateCustomer",
+    "parameterNames": "street,city,zip",
+    "newClassName": "AddressInfo",
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+**Output Code:**
+```csharp
+public record AddressInfo(string Street, string City, string Zip);
+
+public class CustomerService
+{
+    public void CreateCustomer(string name, string email, AddressInfo addressInfo)
+    {
+        Console.WriteLine($"Creating customer {name} at {addressInfo.Street}, {addressInfo.City}, {addressInfo.Zip}");
+        // Send welcome email to {email}
+    }
+
+    public void TestMethod()
+    {
+        CreateCustomer("John Doe", "john@example.com", new AddressInfo("123 Main St", "Springfield", "12345"));
+    }
+}
+```
+
+**Result:**
+- ✅ Generated record with primary constructor (C# 9+)
+- ✅ Method signature updated to accept AddressInfo
+- ✅ Method body transformed to use addressInfo.Street, addressInfo.City, addressInfo.Zip
+- ✅ Caller updated to create AddressInfo instance
+
+### Example 2: Framework Differences (.NET Framework 4.8)
+
+**Use Case:** Same refactoring but targeting .NET Framework 4.8 (generates traditional class instead of record)
+
+**Tool Call:**
+```json
+{
+  "tool": "introduce_parameter_object",
+  "arguments": {
+    "sourceCode": "...",
+    "className": "CustomerService",
+    "methodName": "CreateCustomer",
+    "parameterNames": "street,city,zip",
+    "newClassName": "AddressInfo",
+    "targetFramework": "net48"
+  }
+}
+```
+
+**Output Code:**
+```csharp
+public class AddressInfo
+{
+    public string Street { get; }
+    public string City { get; }
+    public string Zip { get; }
+
+    public AddressInfo(string street, string city, string zip)
+    {
+        Street = street;
+        City = city;
+        Zip = zip;
+    }
+}
+
+public class CustomerService
+{
+    public void CreateCustomer(string name, string email, AddressInfo addressInfo)
+    {
+        Console.WriteLine($"Creating customer {name} at {addressInfo.Street}, {addressInfo.City}, {addressInfo.Zip}");
+    }
+
+    public void TestMethod()
+    {
+        CreateCustomer("John Doe", "john@example.com", new AddressInfo("123 Main St", "Springfield", "12345"));
+    }
+}
+```
+
+**Result:**
+- ✅ Generated traditional class with readonly properties (C# 7.3)
+- ✅ Constructor with parameter assignment
+- ✅ Same behavior as .NET 8 version, but compatible with older frameworks
+
+### Example 3: Partial Parameter Grouping
+
+**Use Case:** Group only some parameters while keeping others
+
+**Input Code:**
+```csharp
+public class PaymentService
+{
+    public void ProcessPayment(string customerId, decimal amount, string currency, string cardNumber, string cvv, string expiryDate)
+    {
+        Console.WriteLine($"Processing ${amount} {currency} for customer {customerId}");
+        Console.WriteLine($"Card: {cardNumber}, CVV: {cvv}, Expiry: {expiryDate}");
+    }
+
+    public void Test()
+    {
+        ProcessPayment("CUST-123", 99.99m, "USD", "4111-1111-1111-1111", "123", "12/25");
+    }
+}
+```
+
+**Tool Call:**
+```json
+{
+  "tool": "introduce_parameter_object",
+  "arguments": {
+    "sourceCode": "...",
+    "className": "PaymentService",
+    "methodName": "ProcessPayment",
+    "parameterNames": "cardNumber,cvv,expiryDate",
+    "newClassName": "PaymentCardInfo",
+    "targetFramework": "net8.0"
+  }
+}
+```
+
+**Output Code:**
+```csharp
+public record PaymentCardInfo(string CardNumber, string Cvv, string ExpiryDate);
+
+public class PaymentService
+{
+    public void ProcessPayment(string customerId, decimal amount, string currency, PaymentCardInfo paymentCardInfo)
+    {
+        Console.WriteLine($"Processing ${amount} {currency} for customer {customerId}");
+        Console.WriteLine($"Card: {paymentCardInfo.CardNumber}, CVV: {paymentCardInfo.Cvv}, Expiry: {paymentCardInfo.ExpiryDate}");
+    }
+
+    public void Test()
+    {
+        ProcessPayment("CUST-123", 99.99m, "USD", new PaymentCardInfo("4111-1111-1111-1111", "123", "12/25"));
+    }
+}
+```
+
+**Result:**
+- ✅ Grouped only card-related parameters
+- ✅ Preserved other parameters (customerId, amount, currency)
+- ✅ Multiple callers all updated automatically
 
 ## Make Field Readonly
 
