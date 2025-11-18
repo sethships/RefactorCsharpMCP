@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using RefactorCsharpMCP.Core.ProjectFiles.Infrastructure;
 using RefactorCsharpMCP.Core.ProjectFiles.Models;
 using RefactorCsharpMCP.Core.Refactorings;
+using RefactorCsharpMCP.Core.Validation;
 
 namespace RefactorCsharpMCP.Core.ProjectFiles.Refactorings;
 
@@ -53,7 +54,7 @@ public class SdkStyleConverter : ProjectRefactoringBase
             // Check if already SDK-style
             if (context.ProjectType == ProjectType.SdkStyle)
             {
-                return RefactoringResult.Failure("Project is already in SDK-style format");
+                return RefactoringResult.Failure(ErrorCode.ALREADY_SDK_STYLE, "Project is already in SDK-style format");
             }
 
             // Check for ASP.NET Web Apps
@@ -116,14 +117,14 @@ public class SdkStyleConverter : ProjectRefactoringBase
             {
                 Logger?.LogError(ex, "SDK conversion failed for {ProjectPath}", projectPath);
                 Rollback(projectPath);
-                return RefactoringResult.Failure($"Conversion failed: {ex.Message}");
+                return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, $"Conversion failed: {ex.Message}");
             }
         }
         catch (Exception ex)
         {
             stopwatch.Stop();
             Logger?.LogError(ex, "SDK conversion failed with exception");
-            return RefactoringResult.Failure($"Unexpected error: {ex.Message}");
+            return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, $"Unexpected error: {ex.Message}");
         }
     }
 

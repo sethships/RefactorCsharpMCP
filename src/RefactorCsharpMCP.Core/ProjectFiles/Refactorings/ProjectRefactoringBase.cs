@@ -4,6 +4,7 @@ using RefactorCsharpMCP.Core.ProjectFiles.Infrastructure;
 using RefactorCsharpMCP.Core.ProjectFiles.Models;
 using RefactorCsharpMCP.Core.ProjectFiles.NuGet;
 using RefactorCsharpMCP.Core.Refactorings;
+using RefactorCsharpMCP.Core.Validation;
 
 namespace RefactorCsharpMCP.Core.ProjectFiles.Refactorings;
 
@@ -62,17 +63,17 @@ public abstract class ProjectRefactoringBase : RefactoringBase, IDisposable
 
         if (string.IsNullOrWhiteSpace(projectPath))
         {
-            return RefactoringResult.Failure("Project path cannot be null or empty");
+            return RefactoringResult.Failure(ErrorCode.MISSING_PARAMETER, "Project path cannot be null or empty");
         }
 
         if (!File.Exists(projectPath))
         {
-            return RefactoringResult.Failure($"Project file not found: {projectPath}");
+            return RefactoringResult.Failure(ErrorCode.PROJECT_FILE_NOT_FOUND, $"Project file not found: {projectPath}");
         }
 
         if (!projectPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
         {
-            return RefactoringResult.Failure($"Not a valid C# project file: {projectPath}");
+            return RefactoringResult.Failure(ErrorCode.INVALID_PROJECT_TYPE, $"Not a valid C# project file: {projectPath}");
         }
 
         return RefactoringResult.Success(string.Empty, "Project file validation succeeded");
@@ -199,12 +200,14 @@ public abstract class ProjectRefactoringBase : RefactoringBase, IDisposable
                 {
                     Rollback(projectPath);
                     return RefactoringResult.Failure(
+                        ErrorCode.BUILD_VALIDATION_FAILED,
                         $"Build failed and changes were rolled back: {buildResult.ErrorMessage}\n\n{buildResult.Errors}");
                 }
                 catch (Exception rollbackEx)
                 {
                     Logger?.LogCritical(rollbackEx, "Failed to rollback after build failure");
                     return RefactoringResult.Failure(
+                        ErrorCode.BUILD_VALIDATION_FAILED,
                         $"Build failed AND rollback failed: {buildResult.ErrorMessage}\n\nRollback error: {rollbackEx.Message}");
                 }
             }
@@ -212,7 +215,7 @@ public abstract class ProjectRefactoringBase : RefactoringBase, IDisposable
         catch (Exception ex)
         {
             Logger?.LogError(ex, "Build validation threw exception for {ProjectPath}", projectPath);
-            return RefactoringResult.Failure($"Build validation error: {ex.Message}");
+            return RefactoringResult.Failure(ErrorCode.BUILD_VALIDATION_FAILED, $"Build validation error: {ex.Message}");
         }
     }
 

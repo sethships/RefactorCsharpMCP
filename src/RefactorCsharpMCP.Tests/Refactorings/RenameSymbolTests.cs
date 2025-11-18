@@ -228,7 +228,7 @@ public class Test
 
         // Assert
         result.IsSuccess.Should().BeFalse();
-        result.ErrorMessage.Should().Contain("Invalid position");
+        result.ErrorMessage.Should().Contain("Line number must be >= 1");
     }
 
     [Fact]
@@ -243,7 +243,7 @@ public class Test
 
         // Assert
         result.IsSuccess.Should().BeFalse();
-        result.ErrorMessage.Should().Contain("Invalid position");
+        result.ErrorMessage.Should().Contain("Column number must be >= 1");
     }
 
     // ============================================================================

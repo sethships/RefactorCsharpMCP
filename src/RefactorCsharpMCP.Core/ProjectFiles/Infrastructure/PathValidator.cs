@@ -13,8 +13,14 @@ public static class PathValidator
         ".vbproj",
         ".fsproj",
         ".props",
-        ".targets",
-        ".config"
+        ".targets"
+    };
+
+    private static readonly HashSet<string> AllowedConfigFiles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "app.config",
+        "web.config",
+        "packages.config"
     };
 
     /// <summary>
@@ -45,11 +51,23 @@ public static class PathValidator
 
         // Validate file extension
         var extension = Path.GetExtension(fullPath);
-        if (!AllowedExtensions.Contains(extension))
+        var fileName = Path.GetFileName(fullPath);
+
+        // Special handling for .config files - only allow specific safe config files
+        if (extension.Equals(".config", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!AllowedConfigFiles.Contains(fileName))
+            {
+                throw new SecurityException(
+                    $"Config file '{fileName}' is not allowed. " +
+                    $"Allowed config files: {string.Join(", ", AllowedConfigFiles)}");
+            }
+        }
+        else if (!AllowedExtensions.Contains(extension))
         {
             throw new SecurityException(
                 $"Invalid file extension '{extension}'. " +
-                $"Allowed extensions: {string.Join(", ", AllowedExtensions)}");
+                $"Allowed extensions: {string.Join(", ", AllowedExtensions)} and specific .config files");
         }
 
         // If base path is provided, ensure the full path is within it

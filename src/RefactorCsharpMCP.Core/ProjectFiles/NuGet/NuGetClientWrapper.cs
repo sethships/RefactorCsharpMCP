@@ -41,11 +41,13 @@ public class NuGetClientWrapper : IDisposable
     /// <param name="packageId">The NuGet package identifier.</param>
     /// <param name="version">The package version (optional - latest stable if null).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <param name="timeoutSeconds">Optional timeout override for this operation. If not specified, uses the instance timeout.</param>
     /// <returns>Package metadata or null if not found.</returns>
     public async Task<PackageMetadata?> GetPackageMetadataAsync(
         string packageId,
         string? version = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        int? timeoutSeconds = null)
     {
         var cacheKey = $"{packageId}|{version ?? "latest"}";
 
@@ -54,6 +56,10 @@ public class NuGetClientWrapper : IDisposable
             _logger.LogDebug("Cache hit for package: {PackageId} {Version}", packageId, version);
             return cached.Metadata;
         }
+
+        // Create timeout cancellation token
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds ?? _timeoutSeconds));
 
         try
         {
