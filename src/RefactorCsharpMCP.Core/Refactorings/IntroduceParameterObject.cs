@@ -132,7 +132,7 @@ public class IntroduceParameterObject : RefactoringBase
             CurrentPhase = "Conflict Detection";
             if (ClassAlreadyExists(root, newClassName))
             {
-                return RefactoringResult.Failure(ValidationErrorCode.REFACTORING_FAILED, $"A class with the name '{newClassName}' already exists. Please choose a different name.");
+                return RefactoringResult.Failure(ValidationErrorCode.DUPLICATE_CLASS_NAME, $"A class with the name '{newClassName}' already exists. Please choose a different name.");
             }
 
             // STEP 5: Find the method declaration and symbol
@@ -146,7 +146,7 @@ public class IntroduceParameterObject : RefactoringBase
             var methodSymbol = semanticModel.GetDeclaredSymbol(methodDeclaration) as IMethodSymbol;
             if (methodSymbol == null)
             {
-                return RefactoringResult.Failure(ValidationErrorCode.DATA_FLOW_ANALYSIS_FAILED, $"Unable to resolve symbol for method '{methodName}'.");
+                return RefactoringResult.Failure(ValidationErrorCode.SEMANTIC_MODEL_ERROR, $"Unable to resolve symbol for method '{methodName}'.");
             }
 
             // STEP 6: Find the parameters to group
@@ -169,6 +169,43 @@ public class IntroduceParameterObject : RefactoringBase
             if (parameterSymbols.Count != parameterNames.Length)
             {
                 return RefactoringResult.Failure(ValidationErrorCode.PARAMETER_NOT_FOUND, "Unable to resolve all parameter symbols.");
+            }
+
+            // STEP 6a: Validate parameter types are compatible with parameter objects
+            CurrentPhase = "Parameter Validation";
+
+            // Check for ref/out parameters - not supported in records/classes
+            var hasRefOut = parametersToGroup.Any(p =>
+                p.Modifiers.Any(m =>
+                    m.IsKind(SyntaxKind.RefKeyword) ||
+                    m.IsKind(SyntaxKind.OutKeyword)));
+            if (hasRefOut)
+            {
+                return RefactoringResult.Failure(
+                    ValidationErrorCode.REF_OUT_PARAMETER_UNSUPPORTED,
+                    "Cannot group ref or out parameters into a parameter object. " +
+                    "These parameter types are incompatible with parameter objects.");
+            }
+
+            // Check for optional parameters - default values would be lost
+            var hasOptional = parametersToGroup.Any(p => p.Default != null);
+            if (hasOptional)
+            {
+                return RefactoringResult.Failure(
+                    ValidationErrorCode.OPTIONAL_PARAMETER_UNSUPPORTED,
+                    "Cannot group optional parameters - default values would be lost. " +
+                    "This is not yet supported.");
+            }
+
+            // Check for params parameters - not supported in parameter objects
+            var hasParams = parametersToGroup.Any(p =>
+                p.Modifiers.Any(m => m.IsKind(SyntaxKind.ParamsKeyword)));
+            if (hasParams)
+            {
+                return RefactoringResult.Failure(
+                    ValidationErrorCode.PARAMS_PARAMETER_UNSUPPORTED,
+                    "Cannot group params parameters into a parameter object. " +
+                    "The params modifier is not supported in parameter objects.");
             }
 
             // STEP 7: Get language version to determine syntax features

@@ -1,4 +1,7 @@
+using System.Reflection;
 using FluentAssertions;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using RefactorCsharpMCP.Core.Refactorings;
 
 namespace RefactorCsharpMCP.Tests.Refactorings;
@@ -712,9 +715,9 @@ public class Service
     }
 
     [Fact]
-    public void Execute_WithOptionalParameters_ShouldHandleCorrectly()
+    public void Execute_WithOptionalParameters_ShouldRejectRefactoring()
     {
-        // Arrange - Test CRITICAL #2 fix: semantic model handles optional parameters
+        // Arrange - Test CRITICAL #3 fix: optional parameters must be rejected (default values would be lost)
         var sourceCode = @"
 public class Service
 {
@@ -740,8 +743,9 @@ public class Service
             "net8.0");
 
         // Assert
-        result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public record OptionalParams(int Y, int Z);");
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorMessage.Should().Contain("optional");
+        result.ErrorMessage.Should().Contain("default values");
     }
 
     [Fact]
@@ -892,9 +896,9 @@ public class Service
     }
 
     [Fact]
-    public void Execute_WithRefOutParameters_ShouldGroupCorrectly()
+    public void Execute_WithRefOutParameters_ShouldRejectRefactoring()
     {
-        // Arrange - Test ref/out parameter handling
+        // Arrange - Test CRITICAL #4 fix: ref/out parameters must be rejected (not supported in records/classes)
         var sourceCode = @"
 public class Service
 {
@@ -923,8 +927,9 @@ public class Service
             "net8.0");
 
         // Assert
-        result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public record RefParams(ref int X, out int Y);");
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorMessage.Should().Contain("ref or out");
+        result.ErrorMessage.Should().Contain("incompatible");
     }
 
     [Fact]
@@ -1080,9 +1085,9 @@ public class Service
     }
 
     [Fact]
-    public void Execute_WithParamsParameter_ShouldHandleCorrectly()
+    public void Execute_WithParamsParameter_ShouldRejectRefactoring()
     {
-        // Arrange - Test params parameter
+        // Arrange - Test HIGH #1 fix: params parameters must be rejected (not supported in parameter objects)
         var sourceCode = @"
 public class Service
 {
@@ -1108,7 +1113,248 @@ public class Service
             "net8.0");
 
         // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorMessage.Should().Contain("params");
+        result.ErrorMessage.Should().Contain("not supported");
+    }
+
+    // ============================================================================
+    // COMPILATION VALIDATION TESTS (HIGH #2)
+    // These tests verify that generated code actually compiles
+    // ============================================================================
+
+    [Fact]
+    public void Execute_BasicGrouping_GeneratedCodeShouldCompile()
+    {
+        // Arrange
+        var sourceCode = @"
+using System;
+
+public class Calculator
+{
+    public int Add(int x, int y)
+    {
+        return x + y;
+    }
+
+    public void Test()
+    {
+        var result = Add(1, 2);
+        Console.WriteLine(result);
+    }
+}";
+        var refactoring = new IntroduceParameterObject();
+
+        // Act
+        var result = refactoring.Execute(
+            sourceCode,
+            "Calculator",
+            "Add",
+            new[] { "x", "y" },
+            "Input",
+            "net8.0");
+
+        // Assert
         result.IsSuccess.Should().BeTrue();
-        result.RefactoredCode.Should().Contain("public record Input(int X, params int[] Values);");
+
+        // Verify compilation
+        var compilation = CreateCompilation(result.RefactoredCode);
+        var diagnostics = compilation.GetDiagnostics()
+            .Where(d => d.Severity == DiagnosticSeverity.Error);
+
+        diagnostics.Should().BeEmpty("generated code should compile without errors");
+    }
+
+    [Fact]
+    public void Execute_Net48ClassGeneration_GeneratedCodeShouldCompile()
+    {
+        // Arrange
+        var sourceCode = @"
+using System;
+
+public class Service
+{
+    public void Process(string name, int age, bool active)
+    {
+        Console.WriteLine(string.Format(""{0}, {1}, {2}"", name, age, active));
+    }
+
+    public void Test()
+    {
+        Process(""John"", 30, true);
+    }
+}";
+        var refactoring = new IntroduceParameterObject();
+
+        // Act
+        var result = refactoring.Execute(
+            sourceCode,
+            "Service",
+            "Process",
+            new[] { "name", "age" },
+            "PersonInfo",
+            "net48");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+
+        // Verify compilation
+        var compilation = CreateCompilation(result.RefactoredCode, LanguageVersion.CSharp7_3);
+        var diagnostics = compilation.GetDiagnostics()
+            .Where(d => d.Severity == DiagnosticSeverity.Error);
+
+        diagnostics.Should().BeEmpty("generated code should compile without errors for net48");
+    }
+
+    [Fact]
+    public void Execute_MultipleCallers_GeneratedCodeShouldCompile()
+    {
+        // Arrange
+        var sourceCode = @"
+using System;
+
+public class MathService
+{
+    public int Multiply(int a, int b)
+    {
+        return a * b;
+    }
+
+    public void Caller1()
+    {
+        var result = Multiply(2, 3);
+        Console.WriteLine(result);
+    }
+
+    public void Caller2()
+    {
+        var result = Multiply(4, 5);
+        Console.WriteLine(result);
+    }
+}";
+        var refactoring = new IntroduceParameterObject();
+
+        // Act
+        var result = refactoring.Execute(
+            sourceCode,
+            "MathService",
+            "Multiply",
+            new[] { "a", "b" },
+            "MathInput",
+            "net8.0");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+
+        // Verify compilation
+        var compilation = CreateCompilation(result.RefactoredCode);
+        var diagnostics = compilation.GetDiagnostics()
+            .Where(d => d.Severity == DiagnosticSeverity.Error);
+
+        diagnostics.Should().BeEmpty("generated code with multiple callers should compile without errors");
+    }
+
+    [Fact]
+    public void Execute_NamedArguments_GeneratedCodeShouldCompile()
+    {
+        // Arrange
+        var sourceCode = @"
+using System;
+
+public class DataService
+{
+    public void Save(int id, string name, bool overwrite)
+    {
+        Console.WriteLine($""Saving {id}: {name} (overwrite: {overwrite})"");
+    }
+
+    public void Test()
+    {
+        Save(id: 42, name: ""Document"", overwrite: true);
+        Save(overwrite: false, id: 99, name: ""Report"");
+    }
+}";
+        var refactoring = new IntroduceParameterObject();
+
+        // Act
+        var result = refactoring.Execute(
+            sourceCode,
+            "DataService",
+            "Save",
+            new[] { "id", "name" },
+            "SaveRequest",
+            "net8.0");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+
+        // Verify compilation
+        var compilation = CreateCompilation(result.RefactoredCode);
+        var diagnostics = compilation.GetDiagnostics()
+            .Where(d => d.Severity == DiagnosticSeverity.Error);
+
+        diagnostics.Should().BeEmpty("generated code with named arguments should compile without errors");
+    }
+
+    [Fact]
+    public void Execute_GenericMethod_GeneratedCodeShouldCompile()
+    {
+        // Arrange
+        var sourceCode = @"
+using System;
+
+public class GenericService
+{
+    public void Process<T>(T first, T second)
+    {
+        Console.WriteLine(first.ToString() + "" "" + second.ToString());
+    }
+
+    public void Test()
+    {
+        Process<int>(1, 2);
+        Process<string>(""hello"", ""world"");
+    }
+}";
+        var refactoring = new IntroduceParameterObject();
+
+        // Act
+        var result = refactoring.Execute(
+            sourceCode,
+            "GenericService",
+            "Process",
+            new[] { "first", "second" },
+            "Input",
+            "net8.0");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+
+        // Verify compilation
+        var compilation = CreateCompilation(result.RefactoredCode);
+        var diagnostics = compilation.GetDiagnostics()
+            .Where(d => d.Severity == DiagnosticSeverity.Error);
+
+        diagnostics.Should().BeEmpty("generated code with generic method should compile without errors");
+    }
+
+    // Helper method to create a compilation for testing
+    private static CSharpCompilation CreateCompilation(string sourceCode, LanguageVersion languageVersion = LanguageVersion.CSharp12)
+    {
+        var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode, new CSharpParseOptions(languageVersion));
+
+        var references = new[]
+        {
+            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(Console).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location),
+            MetadataReference.CreateFromFile(Assembly.Load("System.Runtime").Location)
+        };
+
+        return CSharpCompilation.Create(
+            "TestAssembly",
+            new[] { syntaxTree },
+            references,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
     }
 }
