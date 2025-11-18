@@ -3,7 +3,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using RefactorCsharpMCP.Core.Framework;
 using RefactorCsharpMCP.Core.Utilities;
-using RefactorCsharpMCP.Core.Validation;
+using ValidationErrorCode = RefactorCsharpMCP.Core.Validation.ErrorCode;
 
 namespace RefactorCsharpMCP.Core.Refactorings;
 
@@ -94,14 +94,15 @@ public class IntroduceParameterObject : RefactoringBase
 
         if (parameterNames == null || parameterNames.Length == 0)
         {
-            return RefactoringResult.Failure(ErrorCode.MISSING_PARAMETER, "At least one parameter name must be specified.");
+            return RefactoringResult.Failure(ValidationErrorCode.MISSING_PARAMETER, "At least one parameter name must be specified.");
         }
 
         // Validate target framework
         var frameworkValidation = _frameworkValidator.Validate(targetFramework);
-        if (!frameworkValidation.IsSuccess)
+        if (frameworkValidation.ErrorCode != null)
         {
-            return RefactoringResult.Failure(ErrorCode.INVALID_FRAMEWORK, frameworkValidation.ErrorMessage ?? "Invalid target framework.");
+            // Map Framework.ErrorCode to Validation.ErrorCode (same numeric values)
+            return RefactoringResult.Failure((ValidationErrorCode)frameworkValidation.ErrorCode.Value, frameworkValidation.ErrorMessage ?? "Invalid target framework.");
         }
 
         try
@@ -124,14 +125,14 @@ public class IntroduceParameterObject : RefactoringBase
             var classDeclaration = FindClass(root, className);
             if (classDeclaration == null)
             {
-                return RefactoringResult.Failure(ErrorCode.NO_CLASS_FOUND, $"Class '{className}' not found in source code.");
+                return RefactoringResult.Failure(ValidationErrorCode.NO_CLASS_FOUND, $"Class '{className}' not found in source code.");
             }
 
             // STEP 4: Check if parameter object class name already exists
             CurrentPhase = "Conflict Detection";
             if (ClassAlreadyExists(root, newClassName))
             {
-                return RefactoringResult.Failure(ErrorCode.DUPLICATE_CLASS_NAME, $"A class with the name '{newClassName}' already exists. Please choose a different name.");
+                return RefactoringResult.Failure(ValidationErrorCode.REFACTORING_FAILED, $"A class with the name '{newClassName}' already exists. Please choose a different name.");
             }
 
             // STEP 5: Find the method declaration and symbol
@@ -139,13 +140,13 @@ public class IntroduceParameterObject : RefactoringBase
             var methodDeclaration = FindMethod(classDeclaration, methodName);
             if (methodDeclaration == null)
             {
-                return RefactoringResult.Failure(ErrorCode.NO_METHOD_FOUND, $"Method '{methodName}' not found in class '{className}'.");
+                return RefactoringResult.Failure(ValidationErrorCode.NO_METHOD_FOUND, $"Method '{methodName}' not found in class '{className}'.");
             }
 
             var methodSymbol = semanticModel.GetDeclaredSymbol(methodDeclaration) as IMethodSymbol;
             if (methodSymbol == null)
             {
-                return RefactoringResult.Failure(ErrorCode.SEMANTIC_MODEL_ERROR, $"Unable to resolve symbol for method '{methodName}'.");
+                return RefactoringResult.Failure(ValidationErrorCode.DATA_FLOW_ANALYSIS_FAILED, $"Unable to resolve symbol for method '{methodName}'.");
             }
 
             // STEP 6: Find the parameters to group
@@ -157,7 +158,7 @@ public class IntroduceParameterObject : RefactoringBase
             if (parametersToGroup.Count != parameterNames.Length)
             {
                 var foundParams = string.Join(", ", parametersToGroup.Select(p => p.Identifier.Text));
-                return RefactoringResult.Failure(ErrorCode.PARAMETER_NOT_FOUND, $"Not all specified parameters found. Found: {foundParams}");
+                return RefactoringResult.Failure(ValidationErrorCode.PARAMETER_NOT_FOUND, $"Not all specified parameters found. Found: {foundParams}");
             }
 
             // Get parameter symbols for semantic analysis
@@ -167,7 +168,7 @@ public class IntroduceParameterObject : RefactoringBase
 
             if (parameterSymbols.Count != parameterNames.Length)
             {
-                return RefactoringResult.Failure(ErrorCode.PARAMETER_NOT_FOUND, "Unable to resolve all parameter symbols.");
+                return RefactoringResult.Failure(ValidationErrorCode.PARAMETER_NOT_FOUND, "Unable to resolve all parameter symbols.");
             }
 
             // STEP 7: Get language version to determine syntax features
@@ -550,7 +551,7 @@ public class IntroduceParameterObject : RefactoringBase
             string paramObjectName)
         {
             _semanticModel = semanticModel;
-            _parameterSymbols = parameterSymbols.ToHashSet(SymbolEqualityComparer.Default);
+            _parameterSymbols = new HashSet<IParameterSymbol>(parameterSymbols, SymbolEqualityComparer.Default);
             _targetMethod = targetMethod;
             _paramObjectName = paramObjectName;
         }
@@ -597,7 +598,7 @@ public class IntroduceParameterObject : RefactoringBase
         {
             _semanticModel = semanticModel;
             _targetMethod = targetMethod;
-            _parameterSymbols = parameterSymbols.ToHashSet(SymbolEqualityComparer.Default);
+            _parameterSymbols = new HashSet<IParameterSymbol>(parameterSymbols, SymbolEqualityComparer.Default);
             _parameterObjectClassName = parameterObjectClassName;
             _useRecord = useRecord;
         }
