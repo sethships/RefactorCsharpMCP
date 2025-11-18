@@ -283,7 +283,7 @@ public class ConstructorInjection : RefactoringBase
         foreach (var param in injectedParams)
         {
             var paramName = param.Identifier.Text;
-            var memberName = useProperties ? ToPascalCase(paramName) : $"_{paramName}";
+            var memberName = useProperties ? NamingHelper.ToPascalCase(paramName) : $"_{paramName}";
 
             // Replace all references to the parameter with the field/property name
             updatedBody = updatedBody.ReplaceNodes(
