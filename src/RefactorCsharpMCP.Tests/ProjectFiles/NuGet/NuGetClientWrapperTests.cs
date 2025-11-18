@@ -128,8 +128,8 @@ public class NuGetClientWrapperTests
 
             // Assert - Should return false for non-existent package or handle gracefully
             // Network issues in test environment expected
-            Assert.True(result == false || result == true,
-                "Result should be a boolean value indicating compatibility");
+            // Boolean result received without exception
+            Assert.True(true, "Method completed and returned boolean without exception");
         }
         catch (Exception ex)
         {
@@ -313,7 +313,7 @@ public class NuGetClientWrapperTests
         client.ClearCache();
 
         // Assert - ClearCache should complete without exception
-        Assert.True(metadataCallCompleted || !metadataCallCompleted,
-            "ClearCache should work regardless of previous operation success");
+        // ClearCache completed without throwing
+        Assert.True(true, "ClearCache completed without exception regardless of metadata call outcome");
     }
 }
