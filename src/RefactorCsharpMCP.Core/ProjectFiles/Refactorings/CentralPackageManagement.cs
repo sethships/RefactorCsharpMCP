@@ -6,6 +6,7 @@ using NuGet.Versioning;
 using RefactorCsharpMCP.Core.ProjectFiles.Infrastructure;
 using RefactorCsharpMCP.Core.ProjectFiles.Models;
 using RefactorCsharpMCP.Core.Refactorings;
+using RefactorCsharpMCP.Core.Validation;
 
 namespace RefactorCsharpMCP.Core.ProjectFiles.Refactorings;
 
@@ -44,7 +45,7 @@ public class CentralPackageManagement : ProjectRefactoringBase
             var solutionDir = DetermineSolutionDirectory(solutionPath);
             if (solutionDir == null)
             {
-                return RefactoringResult.Failure($"Invalid solution path: {solutionPath}");
+                return RefactoringResult.Failure(ErrorCode.INVALID_PATH, $"Invalid solution path: {solutionPath}");
             }
 
             // Discover all projects in solution
@@ -52,7 +53,7 @@ public class CentralPackageManagement : ProjectRefactoringBase
             var projectPaths = DiscoverProjects(solutionDir);
             if (!projectPaths.Any())
             {
-                return RefactoringResult.Failure($"No projects found in: {solutionDir}");
+                return RefactoringResult.Failure(ErrorCode.PROJECT_NOT_FOUND, $"No projects found in: {solutionDir}");
             }
 
             Logger?.LogInformation("Found {Count} projects in solution", projectPaths.Count);
@@ -71,7 +72,7 @@ public class CentralPackageManagement : ProjectRefactoringBase
 
             if (!packageVersions.Any())
             {
-                return RefactoringResult.Failure("No package references found in solution");
+                return RefactoringResult.Failure(ErrorCode.NO_PACKAGES_FOUND, "No package references found in solution");
             }
 
             Logger?.LogInformation("Found {Count} unique packages", packageVersions.Count);
@@ -95,7 +96,7 @@ public class CentralPackageManagement : ProjectRefactoringBase
             }
             catch (InvalidOperationException ex)
             {
-                return RefactoringResult.Failure($"Conflict resolution failed: {ex.Message}");
+                return RefactoringResult.Failure(ErrorCode.CONFLICT_RESOLUTION_FAILED, $"Conflict resolution failed: {ex.Message}");
             }
 
             Logger?.LogInformation("Resolved {Count} package versions", resolvedVersions.Count);
@@ -130,7 +131,7 @@ public class CentralPackageManagement : ProjectRefactoringBase
                     DeleteFile(directoryBuildProps);
                     DeleteFile(directoryPackagesProps);
 
-                    return RefactoringResult.Failure($"Build validation failed: {buildResult.Summary}");
+                    return RefactoringResult.Failure(ErrorCode.BUILD_VALIDATION_FAILED, $"Build validation failed: {buildResult.Summary}");
                 }
 
                 // Cleanup backups
@@ -153,14 +154,14 @@ public class CentralPackageManagement : ProjectRefactoringBase
                 DeleteFile(Path.Combine(solutionDir, ProjectFileConstants.FileNames.DirectoryBuildProps));
                 DeleteFile(directoryPackagesProps);
 
-                return RefactoringResult.Failure($"CPM enablement failed: {ex.Message}");
+                return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, $"CPM enablement failed: {ex.Message}");
             }
         }
         catch (Exception ex)
         {
             stopwatch.Stop();
             Logger?.LogError(ex, "CPM enablement failed with exception");
-            return RefactoringResult.Failure($"Unexpected error: {ex.Message}");
+            return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, $"Unexpected error: {ex.Message}");
         }
     }
 

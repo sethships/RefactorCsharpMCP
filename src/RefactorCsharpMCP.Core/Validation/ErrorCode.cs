@@ -168,5 +168,85 @@ public enum ErrorCode
     /// Field cannot be made readonly (assigned outside constructor).
     /// For MakeFieldReadonly: Field is assigned in locations other than constructors.
     /// </summary>
-    FIELD_NOT_ASSIGNABLE = 434
+    FIELD_NOT_ASSIGNABLE = 434,
+
+    // File System Errors (440-449: File and directory operations)
+
+    /// <summary>
+    /// Invalid file or directory path.
+    /// For ProjectFiles: Path is malformed, contains invalid characters, or fails validation.
+    /// </summary>
+    INVALID_PATH = 440,
+
+    /// <summary>
+    /// Project file (.csproj) not found at specified path.
+    /// For ProjectFiles: The .csproj file does not exist at the given location.
+    /// </summary>
+    PROJECT_FILE_NOT_FOUND = 441,
+
+    /// <summary>
+    /// No projects found in specified directory or solution.
+    /// For ProjectFiles: Directory contains no .csproj files or solution has no projects.
+    /// </summary>
+    PROJECT_NOT_FOUND = 442,
+
+    /// <summary>
+    /// File is not a valid C# project.
+    /// For ProjectFiles: File exists but is not a recognized C# project format.
+    /// </summary>
+    INVALID_PROJECT_TYPE = 443,
+
+    // Package Management Errors (450-459: NuGet and package operations)
+
+    /// <summary>
+    /// No package references found in project(s).
+    /// For ProjectFiles: Project has no NuGet package references to manage.
+    /// </summary>
+    NO_PACKAGES_FOUND = 450,
+
+    /// <summary>
+    /// Package version conflict detected.
+    /// For ProjectFiles: Multiple projects reference different versions of the same package.
+    /// </summary>
+    PACKAGE_CONFLICT = 451,
+
+    /// <summary>
+    /// Could not resolve package version conflicts.
+    /// For ProjectFiles: Automatic conflict resolution failed, manual intervention required.
+    /// </summary>
+    CONFLICT_RESOLUTION_FAILED = 452,
+
+    /// <summary>
+    /// Central Package Management already enabled.
+    /// For ProjectFiles: Solution already has CPM configuration (Directory.Packages.props exists).
+    /// </summary>
+    ALREADY_CPM_ENABLED = 453,
+
+    // Build/Validation Errors (460-469: Build and compilation validation)
+
+    /// <summary>
+    /// Build validation failed after refactoring.
+    /// For ProjectFiles: Project does not build after applying changes.
+    /// </summary>
+    BUILD_VALIDATION_FAILED = 460,
+
+    /// <summary>
+    /// Project is already in SDK-style format.
+    /// For ProjectFiles: Conversion skipped because project already uses SDK-style format.
+    /// </summary>
+    ALREADY_SDK_STYLE = 461,
+
+    // Lock/Concurrency Errors (470-479: File locking and concurrency)
+
+    /// <summary>
+    /// Could not acquire solution lock within timeout period.
+    /// For ProjectFiles: Another process holds the solution lock or lock acquisition timed out.
+    /// </summary>
+    LOCK_ACQUISITION_FAILED = 470,
+
+    /// <summary>
+    /// Stale lock file detected from terminated process.
+    /// For ProjectFiles: Found orphaned lock file from crashed process, will attempt cleanup.
+    /// </summary>
+    STALE_LOCK_DETECTED = 471
 }

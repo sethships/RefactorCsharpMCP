@@ -5,6 +5,7 @@ using RefactorCsharpMCP.Core.ProjectFiles.Infrastructure;
 using RefactorCsharpMCP.Core.ProjectFiles.Models;
 using RefactorCsharpMCP.Core.ProjectFiles.NuGet;
 using RefactorCsharpMCP.Core.Refactorings;
+using RefactorCsharpMCP.Core.Validation;
 
 namespace RefactorCsharpMCP.Core.ProjectFiles.Refactorings;
 
@@ -58,7 +59,7 @@ public class PackageReferenceManager : ProjectRefactoringBase
             var projectPaths = await DiscoverProjectsAsync(projectPath, options, cancellationToken);
             if (!projectPaths.Any())
             {
-                return RefactoringResult.Failure($"No projects found at: {projectPath}");
+                return RefactoringResult.Failure(ErrorCode.PROJECT_NOT_FOUND, $"No projects found at: {projectPath}");
             }
 
             // For dry-run mode, preview changes
@@ -95,7 +96,7 @@ public class PackageReferenceManager : ProjectRefactoringBase
         {
             stopwatch.Stop();
             Logger?.LogError(ex, "Package reference management failed");
-            return RefactoringResult.Failure($"Unexpected error: {ex.Message}");
+            return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, $"Unexpected error: {ex.Message}");
         }
     }
 
@@ -156,7 +157,7 @@ public class PackageReferenceManager : ProjectRefactoringBase
                         : "Package not found";
 
                 CleanupBackups(options.CreateBackup);
-                return RefactoringResult.Failure(reason);
+                return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, reason);
             }
 
             // Save changes
@@ -193,7 +194,7 @@ public class PackageReferenceManager : ProjectRefactoringBase
         {
             Logger?.LogError(ex, "Failed to execute package operation on {ProjectPath}", projectPath);
             Rollback(projectPath);
-            return RefactoringResult.Failure($"Operation failed: {ex.Message}");
+            return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, $"Operation failed: {ex.Message}");
         }
     }
 
@@ -321,7 +322,7 @@ public class PackageReferenceManager : ProjectRefactoringBase
             Logger?.LogError(ex, "Batch operation failed with exception");
             RollbackAll(modifiedProjects);
             CleanupBackups(options.CreateBackup);
-            return RefactoringResult.Failure($"Batch operation error: {ex.Message}");
+            return RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, $"Batch operation error: {ex.Message}");
         }
     }
 
@@ -372,18 +373,27 @@ public class PackageReferenceManager : ProjectRefactoringBase
     {
         if (string.IsNullOrWhiteSpace(projectPath))
         {
-            return RefactoringResult.Failure("Project path cannot be null or empty");
+            return RefactoringResult.Failure(ErrorCode.MISSING_PARAMETER, "Project path cannot be null or empty");
         }
 
         if (string.IsNullOrWhiteSpace(packageId))
         {
-            return RefactoringResult.Failure("Package ID cannot be null or empty");
+            return RefactoringResult.Failure(ErrorCode.MISSING_PARAMETER, "Package ID cannot be null or empty");
+        }
+
+        // Validate package ID format (alphanumeric, dots, hyphens, underscores)
+        if (!IsValidPackageId(packageId))
+        {
+            return RefactoringResult.Failure(
+                ErrorCode.INVALID_IDENTIFIER,
+                $"Invalid package ID '{packageId}'. " +
+                "Package IDs must contain only alphanumeric characters, dots, hyphens, and underscores.");
         }
 
         if ((operation == PackageOperation.Add || operation == PackageOperation.Update)
             && string.IsNullOrWhiteSpace(version))
         {
-            return RefactoringResult.Failure($"Version is required for {operation} operation");
+            return RefactoringResult.Failure(ErrorCode.MISSING_PARAMETER, $"Version is required for {operation} operation");
         }
 
         return RefactoringResult.Success(string.Empty, "Validation passed");
