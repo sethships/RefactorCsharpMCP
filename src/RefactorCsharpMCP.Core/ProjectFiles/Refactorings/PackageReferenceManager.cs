@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Microsoft.Extensions.Logging;
 using RefactorCsharpMCP.Core.ProjectFiles.Infrastructure;
@@ -580,5 +581,23 @@ public class PackageReferenceManager : ProjectRefactoringBase
 
         Logger?.LogDebug("Removed package {PackageId}", packageId);
         return true;
+    }
+
+    /// <summary>
+    /// Validates that a package ID conforms to NuGet package naming rules.
+    /// Package IDs must contain only alphanumeric characters, dots, hyphens, and underscores.
+    /// </summary>
+    /// <param name="packageId">The package ID to validate.</param>
+    /// <returns>True if the package ID is valid, false otherwise.</returns>
+    private static bool IsValidPackageId(string packageId)
+    {
+        if (string.IsNullOrWhiteSpace(packageId))
+        {
+            return false;
+        }
+
+        // NuGet package IDs: alphanumeric characters, dots, hyphens, underscores
+        // Must not start or end with a dot, and cannot be empty
+        return Regex.IsMatch(packageId, @"^[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)*$");
     }
 }
