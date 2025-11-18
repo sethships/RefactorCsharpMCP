@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using RefactorCsharpMCP.Core.Framework;
+using RefactorCsharpMCP.Core.Utilities;
 using RefactorCsharpMCP.Core.Validation;
 
 namespace RefactorCsharpMCP.Core.Refactorings;
@@ -9,6 +10,14 @@ namespace RefactorCsharpMCP.Core.Refactorings;
 /// <summary>
 /// Provides functionality to replace a group of parameters with a parameter object using Roslyn.
 /// Generates framework-aware parameter objects (record for .NET 8+, class for .NET Framework 4.8).
+///
+/// <para>
+/// <strong>Known Limitations:</strong>
+/// </para>
+/// <list type="bullet">
+/// <item><description>Partial classes are not supported. The refactoring will only process the single class declaration provided in the source code.</description></item>
+/// <item><description>Users are responsible for ensuring parameter types are appropriate for grouping. No validation is performed on type complexity or relationships.</description></item>
+/// </list>
 /// </summary>
 public class IntroduceParameterObject : RefactoringBase
 {
@@ -69,6 +78,8 @@ public class IntroduceParameterObject : RefactoringBase
         string targetFramework)
     {
         // Validate inputs
+        CurrentPhase = "Input Validation";
+
         var sourceValidation = ValidateNonEmpty(sourceCode, "Source code");
         if (!sourceValidation.IsSuccess) return sourceValidation;
 
@@ -95,34 +106,50 @@ public class IntroduceParameterObject : RefactoringBase
 
         try
         {
+            // STEP 1: Parse once and validate
             CurrentPhase = "Syntax Parsing";
-
-            // Parse and validate syntax
             var parseResult = ParseAndValidateSyntax(sourceCode, out var root, out var syntaxTree);
             if (!parseResult.IsSuccess || root == null || syntaxTree == null)
             {
                 return parseResult;
             }
 
-            CurrentPhase = "Method Discovery";
+            // STEP 2: Create compilation (leverage cache if available)
+            CurrentPhase = "Semantic Analysis";
+            var compilation = CreateCompilation(syntaxTree);
+            var semanticModel = compilation.GetSemanticModel(syntaxTree);
 
-            // Find the class declaration
+            // STEP 3: Find the class declaration
+            CurrentPhase = "Class Discovery";
             var classDeclaration = FindClass(root, className);
             if (classDeclaration == null)
             {
                 return RefactoringResult.Failure(ErrorCode.NO_CLASS_FOUND, $"Class '{className}' not found in source code.");
             }
 
-            // Find the method declaration
+            // STEP 4: Check if parameter object class name already exists
+            CurrentPhase = "Conflict Detection";
+            if (ClassAlreadyExists(root, newClassName))
+            {
+                return RefactoringResult.Failure(ErrorCode.DUPLICATE_CLASS_NAME, $"A class with the name '{newClassName}' already exists. Please choose a different name.");
+            }
+
+            // STEP 5: Find the method declaration and symbol
+            CurrentPhase = "Method Discovery";
             var methodDeclaration = FindMethod(classDeclaration, methodName);
             if (methodDeclaration == null)
             {
                 return RefactoringResult.Failure(ErrorCode.NO_METHOD_FOUND, $"Method '{methodName}' not found in class '{className}'.");
             }
 
-            CurrentPhase = "Parameter Extraction";
+            var methodSymbol = semanticModel.GetDeclaredSymbol(methodDeclaration) as IMethodSymbol;
+            if (methodSymbol == null)
+            {
+                return RefactoringResult.Failure(ErrorCode.SEMANTIC_MODEL_ERROR, $"Unable to resolve symbol for method '{methodName}'.");
+            }
 
-            // Find the parameters to group
+            // STEP 6: Find the parameters to group
+            CurrentPhase = "Parameter Resolution";
             var parametersToGroup = methodDeclaration.ParameterList.Parameters
                 .Where(p => parameterNames.Contains(p.Identifier.Text))
                 .ToList();
@@ -133,67 +160,85 @@ public class IntroduceParameterObject : RefactoringBase
                 return RefactoringResult.Failure(ErrorCode.PARAMETER_NOT_FOUND, $"Not all specified parameters found. Found: {foundParams}");
             }
 
+            // Get parameter symbols for semantic analysis
+            var parameterSymbols = methodSymbol.Parameters
+                .Where(p => parameterNames.Contains(p.Name))
+                .ToList();
+
+            if (parameterSymbols.Count != parameterNames.Length)
+            {
+                return RefactoringResult.Failure(ErrorCode.PARAMETER_NOT_FOUND, "Unable to resolve all parameter symbols.");
+            }
+
+            // STEP 7: Get language version to determine syntax features
             CurrentPhase = "Framework Analysis";
+            var languageVersion = _languageMapper.GetLanguageVersion(targetFramework) ?? LanguageVersion.Default;
+            var supportsRecords = languageVersion >= LanguageVersion.CSharp9 && !targetFramework.StartsWith("net4");
 
-            // Get language version to determine syntax features
-            var languageVersion = _languageMapper.GetLanguageVersion(targetFramework) ?? LanguageVersion.CSharp12;
-            var supportsRecords = languageVersion >= LanguageVersion.CSharp9;
-
+            // STEP 8: Generate the parameter object class
             CurrentPhase = "Parameter Object Generation";
-
-            // Generate the parameter object class
             var parameterObjectClass = GenerateParameterObjectClass(
                 newClassName,
                 parametersToGroup,
                 supportsRecords);
 
+            // STEP 9: Update method signature
             CurrentPhase = "Method Signature Update";
-
-            // Update method signature
             var updatedMethod = UpdateMethodSignature(
                 methodDeclaration,
                 parametersToGroup,
                 newClassName,
                 parameterNames);
 
+            // STEP 10: Update method body to use parameter object
             CurrentPhase = "Method Body Update";
-
-            // Update method body to use parameter object
             var finalMethod = UpdateMethodBody(
                 updatedMethod,
-                parametersToGroup,
-                GetParameterObjectParameterName(updatedMethod, newClassName));
+                parameterSymbols,
+                methodSymbol,
+                NamingHelper.ToCamelCase(newClassName),
+                semanticModel);
 
-            CurrentPhase = "Caller Update";
-
-            // Replace the original method with the updated one
+            // STEP 11: Replace the original method with the updated one
+            CurrentPhase = "Class Update";
             var updatedClass = classDeclaration.ReplaceNode(methodDeclaration, finalMethod);
 
-            // Update all callers
+            // STEP 12: Update all callers
+            CurrentPhase = "Caller Update";
             var rootWithUpdatedClass = root.ReplaceNode(classDeclaration, updatedClass);
             var rootWithUpdatedCallers = UpdateCallers(
                 rootWithUpdatedClass,
-                methodName,
-                parametersToGroup,
+                methodSymbol,
+                parameterSymbols,
                 newClassName,
-                supportsRecords);
+                supportsRecords,
+                semanticModel);
 
+            // STEP 13: Insert the parameter object class before the target class
             CurrentPhase = "Assembly";
-
-            // Insert the parameter object class before the target class
             var finalRoot = InsertParameterObjectClass(
                 rootWithUpdatedCallers,
                 updatedClass,
                 parameterObjectClass);
 
             return RefactoringResult.Success(
-                finalRoot.ToFullString(),
+                finalRoot.NormalizeWhitespace().ToFullString(),
                 $"Successfully introduced parameter object '{newClassName}' for {parametersToGroup.Count} parameters in method '{methodName}'.");
         }
         catch (Exception ex)
         {
             return HandleException(ex, "introduce parameter object");
         }
+    }
+
+    /// <summary>
+    /// Checks if a class with the given name already exists in the compilation unit.
+    /// </summary>
+    private bool ClassAlreadyExists(CompilationUnitSyntax root, string className)
+    {
+        return root.DescendantNodes()
+            .OfType<TypeDeclarationSyntax>()
+            .Any(t => t.Identifier.Text == className);
     }
 
     /// <summary>
@@ -231,7 +276,7 @@ public class IntroduceParameterObject : RefactoringBase
                     SyntaxFactory.List<AttributeListSyntax>(),
                     SyntaxFactory.TokenList(),
                     p.Type,
-                    SyntaxFactory.Identifier(ToPascalCase(p.Identifier.Text)),
+                    SyntaxFactory.Identifier(NamingHelper.ToPascalCase(p.Identifier.Text)),
                     null)));
 
         return SyntaxFactory.RecordDeclaration(
@@ -274,7 +319,7 @@ public class IntroduceParameterObject : RefactoringBase
         // Generate properties
         foreach (var param in parameters)
         {
-            var propertyName = ToPascalCase(param.Identifier.Text);
+            var propertyName = NamingHelper.ToPascalCase(param.Identifier.Text);
             var property = SyntaxFactory.PropertyDeclaration(
                 param.Type ?? SyntaxFactory.ParseTypeName("object"),
                 propertyName)
@@ -300,13 +345,13 @@ public class IntroduceParameterObject : RefactoringBase
                     SyntaxFactory.List<AttributeListSyntax>(),
                     SyntaxFactory.TokenList(),
                     p.Type,
-                    SyntaxFactory.Identifier(ToCamelCase(p.Identifier.Text)),
+                    SyntaxFactory.Identifier(NamingHelper.ToCamelCase(p.Identifier.Text)),
                     null)));
 
         var assignments = parameters.Select(p =>
         {
-            var propertyName = ToPascalCase(p.Identifier.Text);
-            var paramName = ToCamelCase(p.Identifier.Text);
+            var propertyName = NamingHelper.ToPascalCase(p.Identifier.Text);
+            var paramName = NamingHelper.ToCamelCase(p.Identifier.Text);
             return (StatementSyntax)SyntaxFactory.ExpressionStatement(
                 SyntaxFactory.AssignmentExpression(
                     SyntaxKind.SimpleAssignmentExpression,
@@ -367,7 +412,7 @@ public class IntroduceParameterObject : RefactoringBase
         string[] parameterNames)
     {
         // Create new parameter for the parameter object
-        var paramObjectParamName = ToCamelCase(parameterObjectClassName);
+        var paramObjectParamName = NamingHelper.ToCamelCase(parameterObjectClassName);
         var paramObjectType = SyntaxFactory.ParseTypeName(parameterObjectClassName);
         var paramObjectParam = SyntaxFactory.Parameter(
             SyntaxFactory.List<AttributeListSyntax>(),
@@ -396,15 +441,19 @@ public class IntroduceParameterObject : RefactoringBase
     /// </summary>
     private MethodDeclarationSyntax UpdateMethodBody(
         MethodDeclarationSyntax method,
-        List<ParameterSyntax> parametersToReplace,
-        string paramObjectName)
+        List<IParameterSymbol> parameterSymbols,
+        IMethodSymbol methodSymbol,
+        string paramObjectName,
+        SemanticModel semanticModel)
     {
         if (method.Body == null)
             return method;
 
-        // Create a rewriter to replace parameter references
+        // Create a rewriter to replace parameter references using semantic model
         var rewriter = new ParameterReferenceRewriter(
-            parametersToReplace.Select(p => p.Identifier.Text).ToHashSet(),
+            semanticModel,
+            parameterSymbols,
+            methodSymbol,
             paramObjectName);
 
         var newBody = (BlockSyntax)rewriter.Visit(method.Body);
@@ -412,28 +461,20 @@ public class IntroduceParameterObject : RefactoringBase
     }
 
     /// <summary>
-    /// Gets the parameter object parameter name from the updated method.
-    /// </summary>
-    private string GetParameterObjectParameterName(
-        MethodDeclarationSyntax method,
-        string parameterObjectClassName)
-    {
-        return ToCamelCase(parameterObjectClassName);
-    }
-
-    /// <summary>
     /// Updates all callers of the method to pass parameter object.
     /// </summary>
     private CompilationUnitSyntax UpdateCallers(
         CompilationUnitSyntax root,
-        string methodName,
-        List<ParameterSyntax> parametersToGroup,
+        IMethodSymbol methodSymbol,
+        List<IParameterSymbol> parameterSymbols,
         string parameterObjectClassName,
-        bool useRecord)
+        bool useRecord,
+        SemanticModel semanticModel)
     {
         var rewriter = new InvocationRewriter(
-            methodName,
-            parametersToGroup.Select(p => p.Identifier.Text).ToHashSet(),
+            semanticModel,
+            methodSymbol,
+            parameterSymbols,
             parameterObjectClassName,
             useRecord);
 
@@ -464,62 +505,67 @@ public class IntroduceParameterObject : RefactoringBase
             {
                 // Insert before the class
                 var index = namespaceDecl.Members.IndexOf(classInNamespace);
-                var newMembers = namespaceDecl.Members.Insert(index, parameterObjectClass);
-                var newNamespace = namespaceDecl.WithMembers(newMembers);
-                return root.ReplaceNode(namespaceDecl, newNamespace);
+                if (index >= 0)
+                {
+                    var newMembers = namespaceDecl.Members.Insert(index, parameterObjectClass);
+                    var newNamespace = namespaceDecl.WithMembers(newMembers);
+                    return root.ReplaceNode(namespaceDecl, newNamespace);
+                }
             }
         }
 
         // Insert at root level if no namespace
-        var classIndex = root.Members.IndexOf(root.Members.OfType<ClassDeclarationSyntax>()
-            .First(c => c.Identifier.Text == targetClass.Identifier.Text));
-        var rootMembers = root.Members.Insert(classIndex, parameterObjectClass);
-        return root.WithMembers(rootMembers);
-    }
+        var classAtRoot = root.Members.OfType<ClassDeclarationSyntax>()
+            .FirstOrDefault(c => c.Identifier.Text == targetClass.Identifier.Text);
 
-    /// <summary>
-    /// Converts a name to PascalCase.
-    /// </summary>
-    private string ToPascalCase(string name)
-    {
-        if (string.IsNullOrEmpty(name))
-            return name;
+        if (classAtRoot != null)
+        {
+            var classIndex = root.Members.IndexOf(classAtRoot);
+            if (classIndex >= 0)
+            {
+                var rootMembers = root.Members.Insert(classIndex, parameterObjectClass);
+                return root.WithMembers(rootMembers);
+            }
+        }
 
-        return char.ToUpperInvariant(name[0]) + name.Substring(1);
-    }
-
-    /// <summary>
-    /// Converts a name to camelCase.
-    /// </summary>
-    private string ToCamelCase(string name)
-    {
-        if (string.IsNullOrEmpty(name))
-            return name;
-
-        return char.ToLowerInvariant(name[0]) + name.Substring(1);
+        // Fallback: append to end if we can't find the class (shouldn't happen)
+        return root.WithMembers(root.Members.Add(parameterObjectClass));
     }
 
     /// <summary>
     /// Syntax rewriter to replace parameter references with parameter object property access.
+    /// Uses semantic model to ensure only actual parameter references are replaced.
     /// </summary>
     private class ParameterReferenceRewriter : CSharpSyntaxRewriter
     {
-        private readonly HashSet<string> _parameterNames;
+        private readonly SemanticModel _semanticModel;
+        private readonly HashSet<IParameterSymbol> _parameterSymbols;
+        private readonly IMethodSymbol _targetMethod;
         private readonly string _paramObjectName;
 
-        public ParameterReferenceRewriter(HashSet<string> parameterNames, string paramObjectName)
+        public ParameterReferenceRewriter(
+            SemanticModel semanticModel,
+            List<IParameterSymbol> parameterSymbols,
+            IMethodSymbol targetMethod,
+            string paramObjectName)
         {
-            _parameterNames = parameterNames;
+            _semanticModel = semanticModel;
+            _parameterSymbols = parameterSymbols.ToHashSet(SymbolEqualityComparer.Default);
+            _targetMethod = targetMethod;
             _paramObjectName = paramObjectName;
         }
 
         public override SyntaxNode? VisitIdentifierName(IdentifierNameSyntax node)
         {
-            // Check if this identifier is one of the parameters we're replacing
-            if (_parameterNames.Contains(node.Identifier.Text))
+            // Use semantic model to verify this identifier is actually a parameter reference
+            var symbol = _semanticModel.GetSymbolInfo(node).Symbol as IParameterSymbol;
+
+            if (symbol != null &&
+                _parameterSymbols.Contains(symbol, SymbolEqualityComparer.Default) &&
+                SymbolEqualityComparer.Default.Equals(symbol.ContainingSymbol, _targetMethod))
             {
-                // Replace with paramObject.PropertyName
-                var propertyName = char.ToUpperInvariant(node.Identifier.Text[0]) + node.Identifier.Text.Substring(1);
+                // Safe to replace - this is our target parameter
+                var propertyName = NamingHelper.ToPascalCase(symbol.Name);
                 return SyntaxFactory.MemberAccessExpression(
                     SyntaxKind.SimpleMemberAccessExpression,
                     SyntaxFactory.IdentifierName(_paramObjectName),
@@ -532,95 +578,107 @@ public class IntroduceParameterObject : RefactoringBase
 
     /// <summary>
     /// Syntax rewriter to update method invocations to pass parameter object.
+    /// Uses semantic model to accurately match arguments to parameters.
     /// </summary>
     private class InvocationRewriter : CSharpSyntaxRewriter
     {
-        private readonly string _methodName;
-        private readonly HashSet<string> _parameterNames;
+        private readonly SemanticModel _semanticModel;
+        private readonly IMethodSymbol _targetMethod;
+        private readonly HashSet<IParameterSymbol> _parameterSymbols;
         private readonly string _parameterObjectClassName;
         private readonly bool _useRecord;
 
         public InvocationRewriter(
-            string methodName,
-            HashSet<string> parameterNames,
+            SemanticModel semanticModel,
+            IMethodSymbol targetMethod,
+            List<IParameterSymbol> parameterSymbols,
             string parameterObjectClassName,
             bool useRecord)
         {
-            _methodName = methodName;
-            _parameterNames = parameterNames;
+            _semanticModel = semanticModel;
+            _targetMethod = targetMethod;
+            _parameterSymbols = parameterSymbols.ToHashSet(SymbolEqualityComparer.Default);
             _parameterObjectClassName = parameterObjectClassName;
             _useRecord = useRecord;
         }
 
         public override SyntaxNode? VisitInvocationExpression(InvocationExpressionSyntax node)
         {
-            // Check if this is an invocation of our target method
-            var methodIdentifier = GetMethodIdentifier(node.Expression);
-            if (methodIdentifier != null && methodIdentifier == _methodName)
-            {
-                // Extract arguments for parameters being grouped
-                var argumentsToGroup = new List<ArgumentSyntax>();
-                var remainingArguments = new List<ArgumentSyntax>();
+            var symbolInfo = _semanticModel.GetSymbolInfo(node);
+            var invokedMethod = symbolInfo.Symbol as IMethodSymbol;
 
-                foreach (var argument in node.ArgumentList.Arguments)
-                {
-                    // Simple heuristic: group first N arguments matching parameter count
-                    if (argumentsToGroup.Count < _parameterNames.Count)
-                    {
-                        argumentsToGroup.Add(argument);
-                    }
-                    else
-                    {
-                        remainingArguments.Add(argument);
-                    }
-                }
+            if (invokedMethod != null &&
+                SymbolEqualityComparer.Default.Equals(invokedMethod, _targetMethod))
+            {
+                // Map arguments to parameters using semantic analysis
+                var argumentMapping = GetArgumentParameterMapping(node, invokedMethod);
+
+                var argumentsToGroup = argumentMapping
+                    .Where(kvp => _parameterSymbols.Contains(kvp.Value, SymbolEqualityComparer.Default))
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+
+                var remainingArguments = argumentMapping
+                    .Where(kvp => !_parameterSymbols.Contains(kvp.Value, SymbolEqualityComparer.Default))
+                    .Select(kvp => kvp.Key)
+                    .ToList();
 
                 // Create parameter object instantiation
-                ArgumentSyntax paramObjectArg;
-                if (_useRecord)
-                {
-                    // new AddressInfo(street, city, zip)
-                    var objectCreation = SyntaxFactory.ObjectCreationExpression(
-                        SyntaxFactory.IdentifierName(_parameterObjectClassName))
-                        .WithArgumentList(
-                            SyntaxFactory.ArgumentList(
-                                SyntaxFactory.SeparatedList(argumentsToGroup.Select(a =>
-                                    SyntaxFactory.Argument(a.Expression)))));
-                    paramObjectArg = SyntaxFactory.Argument(objectCreation);
-                }
-                else
-                {
-                    // new AddressInfo(street, city, zip) - same syntax for class
-                    var objectCreation = SyntaxFactory.ObjectCreationExpression(
-                        SyntaxFactory.IdentifierName(_parameterObjectClassName))
-                        .WithArgumentList(
-                            SyntaxFactory.ArgumentList(
-                                SyntaxFactory.SeparatedList(argumentsToGroup.Select(a =>
-                                    SyntaxFactory.Argument(a.Expression)))));
-                    paramObjectArg = SyntaxFactory.Argument(objectCreation);
-                }
+                var objectCreation = SyntaxFactory.ObjectCreationExpression(
+                    SyntaxFactory.IdentifierName(_parameterObjectClassName))
+                    .WithArgumentList(
+                        SyntaxFactory.ArgumentList(
+                            SyntaxFactory.SeparatedList(argumentsToGroup.Select(a =>
+                                SyntaxFactory.Argument(a.Expression)))));
+
+                var paramObjectArg = SyntaxFactory.Argument(objectCreation);
 
                 // Build new argument list
                 var newArguments = new List<ArgumentSyntax>(remainingArguments);
                 newArguments.Add(paramObjectArg);
 
-                var newArgumentList = SyntaxFactory.ArgumentList(
-                    SyntaxFactory.SeparatedList(newArguments));
-
-                return node.WithArgumentList(newArgumentList);
+                return node.WithArgumentList(
+                    SyntaxFactory.ArgumentList(SyntaxFactory.SeparatedList(newArguments)));
             }
 
             return base.VisitInvocationExpression(node);
         }
 
-        private string? GetMethodIdentifier(ExpressionSyntax expression)
+        /// <summary>
+        /// Maps arguments to parameters using semantic analysis.
+        /// Handles named arguments, positional arguments, and optional parameters correctly.
+        /// </summary>
+        private Dictionary<ArgumentSyntax, IParameterSymbol> GetArgumentParameterMapping(
+            InvocationExpressionSyntax invocation,
+            IMethodSymbol method)
         {
-            return expression switch
+            var mapping = new Dictionary<ArgumentSyntax, IParameterSymbol>();
+            var arguments = invocation.ArgumentList.Arguments;
+
+            for (int i = 0; i < arguments.Count; i++)
             {
-                IdentifierNameSyntax identifier => identifier.Identifier.Text,
-                MemberAccessExpressionSyntax memberAccess => memberAccess.Name.Identifier.Text,
-                _ => null
-            };
+                var argument = arguments[i];
+                IParameterSymbol? parameter = null;
+
+                if (argument.NameColon != null)
+                {
+                    // Named argument - find by name
+                    var paramName = argument.NameColon.Name.Identifier.Text;
+                    parameter = method.Parameters.FirstOrDefault(p => p.Name == paramName);
+                }
+                else
+                {
+                    // Positional argument - use position
+                    parameter = i < method.Parameters.Length ? method.Parameters[i] : null;
+                }
+
+                if (parameter != null)
+                {
+                    mapping[argument] = parameter;
+                }
+            }
+
+            return mapping;
         }
     }
 }

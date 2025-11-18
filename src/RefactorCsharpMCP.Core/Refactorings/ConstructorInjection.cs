@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using RefactorCsharpMCP.Core.Utilities;
 using RefactorCsharpMCP.Core.Validation;
 
 namespace RefactorCsharpMCP.Core.Refactorings;
@@ -110,7 +111,7 @@ public class ConstructorInjection : RefactoringBase
             {
                 var paramType = param.Type ?? SyntaxFactory.ParseTypeName("object");
                 var paramName = param.Identifier.Text;
-                var memberName = useProperties ? ToPascalCase(paramName) : $"_{paramName}";
+                var memberName = useProperties ? NamingHelper.ToPascalCase(paramName) : $"_{paramName}";
 
                 if (useProperties)
                 {
@@ -269,11 +270,6 @@ public class ConstructorInjection : RefactoringBase
         }
     }
 
-    private string ToPascalCase(string text)
-    {
-        if (string.IsNullOrEmpty(text)) return text;
-        return char.ToUpper(text[0]) + text.Substring(1);
-    }
 
     private MethodDeclarationSyntax UpdateMethodBodyReferences(
         MethodDeclarationSyntax method,

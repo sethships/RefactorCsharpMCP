@@ -639,4 +639,476 @@ public class Service
         result.RefactoredCode.Should().Contain("middleParams.B");
         result.RefactoredCode.Should().Contain("middleParams.C");
     }
+
+    [Fact]
+    public void Execute_WithLocalVariableShadowing_ShouldNotReplaceLocalVariable()
+    {
+        // Arrange - Test CRITICAL #1 fix: semantic model prevents false positives
+        var sourceCode = @"
+public class Service
+{
+    public void Process(int x, int y)
+    {
+        int x = 10; // Local variable shadows parameter
+        Console.WriteLine(x + y); // x should NOT be replaced here
+    }
+
+    public void Test()
+    {
+        Process(1, 2);
+    }
+}";
+        var refactoring = new IntroduceParameterObject();
+
+        // Act
+        var result = refactoring.Execute(
+            sourceCode,
+            "Service",
+            "Process",
+            new[] { "x", "y" },
+            "Input",
+            "net8.0");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("public record Input(int X, int Y);");
+        result.RefactoredCode.Should().Contain("Process(Input input)");
+        // The local variable 'x' should remain unchanged, not converted to input.X
+        result.RefactoredCode.Should().Contain("int x = 10;");
+    }
+
+    [Fact]
+    public void Execute_WithNamedArguments_ShouldHandleCorrectly()
+    {
+        // Arrange - Test CRITICAL #2 fix: semantic model handles named arguments
+        var sourceCode = @"
+public class Service
+{
+    public void Process(int x, int y, int z)
+    {
+        Console.WriteLine(x + y + z);
+    }
+
+    public void Test()
+    {
+        Process(z: 3, x: 1, y: 2); // Named arguments out of order
+    }
+}";
+        var refactoring = new IntroduceParameterObject();
+
+        // Act
+        var result = refactoring.Execute(
+            sourceCode,
+            "Service",
+            "Process",
+            new[] { "x", "y" },
+            "Input",
+            "net8.0");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("public record Input(int X, int Y);");
+        result.RefactoredCode.Should().Contain("new Input(1, 2)");
+    }
+
+    [Fact]
+    public void Execute_WithOptionalParameters_ShouldHandleCorrectly()
+    {
+        // Arrange - Test CRITICAL #2 fix: semantic model handles optional parameters
+        var sourceCode = @"
+public class Service
+{
+    public void Process(int x, int y = 10, int z = 20)
+    {
+        Console.WriteLine(x + y + z);
+    }
+
+    public void Test()
+    {
+        Process(1); // Only required parameter provided
+    }
+}";
+        var refactoring = new IntroduceParameterObject();
+
+        // Act
+        var result = refactoring.Execute(
+            sourceCode,
+            "Service",
+            "Process",
+            new[] { "y", "z" },
+            "OptionalParams",
+            "net8.0");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("public record OptionalParams(int Y, int Z);");
+    }
+
+    [Fact]
+    public void Execute_WithMethodOverloads_ShouldOnlyAffectTargetMethod()
+    {
+        // Arrange - Test CRITICAL #2 fix: semantic model distinguishes overloads
+        var sourceCode = @"
+public class Service
+{
+    public void Process(int x, int y)
+    {
+        Console.WriteLine(x + y);
+    }
+
+    public void Process(string x, string y)
+    {
+        Console.WriteLine(x + y);
+    }
+
+    public void Test()
+    {
+        Process(1, 2);
+        Process(""a"", ""b"");
+    }
+}";
+        var refactoring = new IntroduceParameterObject();
+
+        // Act
+        var result = refactoring.Execute(
+            sourceCode,
+            "Service",
+            "Process",
+            new[] { "x", "y" },
+            "Input",
+            "net8.0");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("public record Input(int X, int Y);");
+        // Both overloads should be updated since they have same parameter names
+        result.RefactoredCode.Should().Contain("new Input(1, 2)");
+    }
+
+    [Fact]
+    public void Execute_WithDuplicateClassName_ShouldReturnFailure()
+    {
+        // Arrange - Test HIGH #2 fix: parameter object name conflicts
+        var sourceCode = @"
+public class Input
+{
+    public string Value { get; set; }
+}
+
+public class Service
+{
+    public void Process(int x, int y)
+    {
+        Console.WriteLine(x + y);
+    }
+}";
+        var refactoring = new IntroduceParameterObject();
+
+        // Act
+        var result = refactoring.Execute(
+            sourceCode,
+            "Service",
+            "Process",
+            new[] { "x", "y" },
+            "Input", // This name already exists
+            "net8.0");
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorMessage.Should().Contain("Input");
+        result.ErrorMessage.Should().Contain("already exists");
+    }
+
+    [Fact]
+    public void Execute_WithGenericMethod_ShouldHandleCorrectly()
+    {
+        // Arrange - Test generic method handling
+        var sourceCode = @"
+public class Service
+{
+    public void Process<T>(T x, T y)
+    {
+        Console.WriteLine(x.ToString() + y.ToString());
+    }
+
+    public void Test()
+    {
+        Process<int>(1, 2);
+    }
+}";
+        var refactoring = new IntroduceParameterObject();
+
+        // Act
+        var result = refactoring.Execute(
+            sourceCode,
+            "Service",
+            "Process",
+            new[] { "x", "y" },
+            "Input",
+            "net8.0");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("public record Input(T X, T Y);");
+        result.RefactoredCode.Should().Contain("Process<T>(Input input)");
+    }
+
+    [Fact]
+    public void Execute_WithAsyncMethod_ShouldHandleCorrectly()
+    {
+        // Arrange - Test async method handling
+        var sourceCode = @"
+using System.Threading.Tasks;
+
+public class Service
+{
+    public async Task ProcessAsync(int x, int y)
+    {
+        await Task.Delay(100);
+        Console.WriteLine(x + y);
+    }
+
+    public async Task Test()
+    {
+        await ProcessAsync(1, 2);
+    }
+}";
+        var refactoring = new IntroduceParameterObject();
+
+        // Act
+        var result = refactoring.Execute(
+            sourceCode,
+            "Service",
+            "ProcessAsync",
+            new[] { "x", "y" },
+            "Input",
+            "net8.0");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("public record Input(int X, int Y);");
+        result.RefactoredCode.Should().Contain("ProcessAsync(Input input)");
+        result.RefactoredCode.Should().Contain("new Input(1, 2)");
+    }
+
+    [Fact]
+    public void Execute_WithRefOutParameters_ShouldGroupCorrectly()
+    {
+        // Arrange - Test ref/out parameter handling
+        var sourceCode = @"
+public class Service
+{
+    public void Process(ref int x, out int y, int z)
+    {
+        y = x + z;
+        x = x * 2;
+    }
+
+    public void Test()
+    {
+        int a = 5;
+        int b;
+        Process(ref a, out b, 10);
+    }
+}";
+        var refactoring = new IntroduceParameterObject();
+
+        // Act
+        var result = refactoring.Execute(
+            sourceCode,
+            "Service",
+            "Process",
+            new[] { "x", "y" },
+            "RefParams",
+            "net8.0");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("public record RefParams(ref int X, out int Y);");
+    }
+
+    [Fact]
+    public void Execute_WithMultipleInvocationsWithDifferentArgumentForms_ShouldUpdateAll()
+    {
+        // Arrange - Test multiple invocation styles
+        var sourceCode = @"
+public class Service
+{
+    public void Process(int x, int y, int z)
+    {
+        Console.WriteLine(x + y + z);
+    }
+
+    public void Test()
+    {
+        Process(1, 2, 3); // Positional
+        Process(x: 4, y: 5, z: 6); // Named
+        Process(7, z: 9, y: 8); // Mixed
+    }
+}";
+        var refactoring = new IntroduceParameterObject();
+
+        // Act
+        var result = refactoring.Execute(
+            sourceCode,
+            "Service",
+            "Process",
+            new[] { "x", "y" },
+            "Input",
+            "net8.0");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("public record Input(int X, int Y);");
+        // All three invocations should be updated
+        result.RefactoredCode.Should().Contain("new Input(1, 2)");
+        result.RefactoredCode.Should().Contain("new Input(4, 5)");
+        result.RefactoredCode.Should().Contain("new Input(7, 8)");
+    }
+
+    [Fact]
+    public void Execute_WithNestedMethod_ShouldOnlyAffectTargetMethod()
+    {
+        // Arrange - Test nested method handling
+        var sourceCode = @"
+public class Service
+{
+    public void Outer(int x, int y)
+    {
+        void Inner(int x, int y)
+        {
+            Console.WriteLine(x + y);
+        }
+        Inner(x, y);
+    }
+
+    public void Test()
+    {
+        Outer(1, 2);
+    }
+}";
+        var refactoring = new IntroduceParameterObject();
+
+        // Act
+        var result = refactoring.Execute(
+            sourceCode,
+            "Service",
+            "Outer",
+            new[] { "x", "y" },
+            "Input",
+            "net8.0");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("public record Input(int X, int Y);");
+        result.RefactoredCode.Should().Contain("Outer(Input input)");
+        // Inner method should remain unchanged
+        result.RefactoredCode.Should().Contain("void Inner(int x, int y)");
+    }
+
+    [Fact]
+    public void Execute_WithParameterUsedInLambda_ShouldReplaceInLambdaToo()
+    {
+        // Arrange - Test lambda expression handling
+        var sourceCode = @"
+public class Service
+{
+    public void Process(int x, int y)
+    {
+        var result = new[] { 1, 2, 3 }.Select(n => n * x + y).ToList();
+        Console.WriteLine(string.Join("","", result));
+    }
+
+    public void Test()
+    {
+        Process(2, 5);
+    }
+}";
+        var refactoring = new IntroduceParameterObject();
+
+        // Act
+        var result = refactoring.Execute(
+            sourceCode,
+            "Service",
+            "Process",
+            new[] { "x", "y" },
+            "Input",
+            "net8.0");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("public record Input(int X, int Y);");
+        result.RefactoredCode.Should().Contain("Process(Input input)");
+        // Parameters should be replaced in lambda
+        result.RefactoredCode.Should().Contain("input.X");
+        result.RefactoredCode.Should().Contain("input.Y");
+    }
+
+    [Fact]
+    public void Execute_WithNullableParameters_ShouldHandleCorrectly()
+    {
+        // Arrange - Test nullable parameter types
+        var sourceCode = @"
+public class Service
+{
+    public void Process(int? x, string? y)
+    {
+        Console.WriteLine($""{x} - {y}"");
+    }
+
+    public void Test()
+    {
+        Process(null, null);
+        Process(42, ""test"");
+    }
+}";
+        var refactoring = new IntroduceParameterObject();
+
+        // Act
+        var result = refactoring.Execute(
+            sourceCode,
+            "Service",
+            "Process",
+            new[] { "x", "y" },
+            "Input",
+            "net8.0");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("public record Input(int? X, string? Y);");
+        result.RefactoredCode.Should().Contain("Process(Input input)");
+    }
+
+    [Fact]
+    public void Execute_WithParamsParameter_ShouldHandleCorrectly()
+    {
+        // Arrange - Test params parameter
+        var sourceCode = @"
+public class Service
+{
+    public void Process(int x, params int[] values)
+    {
+        Console.WriteLine(x + values.Sum());
+    }
+
+    public void Test()
+    {
+        Process(10, 1, 2, 3);
+    }
+}";
+        var refactoring = new IntroduceParameterObject();
+
+        // Act
+        var result = refactoring.Execute(
+            sourceCode,
+            "Service",
+            "Process",
+            new[] { "x", "values" },
+            "Input",
+            "net8.0");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("public record Input(int X, params int[] Values);");
+    }
 }
