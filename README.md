@@ -505,6 +505,36 @@ Converts method parameters to constructor-injected fields or properties.
 - net35: Uses explicit properties with backing fields (C# 3.0)
 ```
 
+#### Introduce Parameter Object
+Replaces a group of related parameters with a parameter object. Generates framework-aware parameter objects (record for .NET 8+, class for .NET Framework 4.8).
+
+```bash
+# MCP Tool: introduce_parameter_object
+# Parameters:
+- sourceCode: Complete C# source code
+- className: Name of the class containing the method
+- methodName: Name of the method with parameters to group
+- parameterNames: Comma or semicolon-separated parameter names to group
+- newClassName: Name for the new parameter object class
+- targetFramework: Target .NET framework (e.g., "net8.0", "net48")
+
+# Framework-Aware Behavior:
+- net8.0/net9.0: Generates record with primary constructor (C# 9+)
+  public record AddressInfo(string Street, string City, string Zip);
+- net48/net472/net462: Generates traditional class with readonly properties (C# 7.3)
+  public class AddressInfo {
+    public string Street { get; }
+    public AddressInfo(string street, string city, string zip) { ... }
+  }
+
+# Features:
+- Automatic method signature update
+- Method body transformation (param → paramObject.PropertyName)
+- Caller update (creates parameter object instances at call sites)
+- Preserves remaining parameters not included in the group
+- Single file refactoring (V1)
+```
+
 #### Inline Variable
 Replaces all uses of a local variable with its initialization expression, then removes the variable declaration. Helps simplify code by eliminating unnecessary intermediate variables. Maps to Roslyn diagnostics IDE0059 (unnecessary value assignment) and IDE0058 (expression value never used).
 

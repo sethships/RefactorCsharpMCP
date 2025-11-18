@@ -267,11 +267,12 @@ dotnet test --collect:"XPlat Code Coverage"
 ### Phase 1 (Implemented)
 1. **Extract Method**: Extract selected code into a new method
 2. **Constructor Injection**: Convert method parameters to constructor-injected fields
-3. **Make Field Readonly**: Make fields readonly if only assigned in constructors
-4. **Safe Delete**: Delete methods/classes after verifying no references exist
-5. **Extract Class**: Extract fields and methods into a new class with composition pattern. **Includes optional compilation validation with framework-specific BCL references (enabled by default, Issue #115).**
-6. **Remove Unused Usings**: Remove unused using directives detected via Roslyn diagnostics (IDE0005, CS8019), with framework-aware handling of global usings (C# 10+)
-7. **Inline Method (Part 1)**: Inline a method by replacing its single invocation with the method's body. Supports void methods with simple parameters (primitives, string). Single caller only. Framework-aware with automatic syntax validation.
+3. **Introduce Parameter Object**: Replace a group of related parameters with a parameter object. Generates framework-aware parameter objects (record for .NET 8+, class for .NET Framework 4.8). **Issue #30 - P2 Priority**
+4. **Make Field Readonly**: Make fields readonly if only assigned in constructors
+5. **Safe Delete**: Delete methods/classes after verifying no references exist
+6. **Extract Class**: Extract fields and methods into a new class with composition pattern. **Includes optional compilation validation with framework-specific BCL references (enabled by default, Issue #115).**
+7. **Remove Unused Usings**: Remove unused using directives detected via Roslyn diagnostics (IDE0005, CS8019), with framework-aware handling of global usings (C# 10+)
+8. **Inline Method (Part 1)**: Inline a method by replacing its single invocation with the method's body. Supports void methods with simple parameters (primitives, string). Single caller only. Framework-aware with automatic syntax validation.
 
 ### Phase 2 (Planned - See docs/SDD-Framework-Version-Awareness.md)
 - Framework Version Awareness: Support for targeting different .NET framework versions (net8.0, net48, netstandard2.0, etc.)
@@ -321,11 +322,12 @@ The server exposes MCP tools that can be called from Claude Code:
 
 1. `extract_method`: Extract code into a new method
 2. `constructor_injection`: Convert parameters to constructor-injected dependencies
-3. `make_field_readonly`: Make fields readonly where safe
-4. `safe_delete_method`: Delete methods with reference checking
-5. `extract_class`: Extract fields/methods into a new class
-6. `remove_unused_usings`: Remove unused using directives with framework-aware global using preservation
-7. `inline_method`: Inline a method by replacing its single invocation with the method body (Part 1: void methods, simple parameters, single caller)
+3. `introduce_parameter_object`: Replace a group of related parameters with a parameter object
+4. `make_field_readonly`: Make fields readonly where safe
+5. `safe_delete_method`: Delete methods with reference checking
+6. `extract_class`: Extract fields/methods into a new class
+7. `remove_unused_usings`: Remove unused using directives with framework-aware global using preservation
+8. `inline_method`: Inline a method by replacing its single invocation with the method body (Part 1: void methods, simple parameters, single caller)
 
 Each tool accepts source code and refactoring parameters, returning either:
 - Success: Refactored source code
