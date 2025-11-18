@@ -8,7 +8,7 @@ namespace RefactorCsharpMCP.Tests.ProjectFiles.Infrastructure;
 /// Tests for PathValidator security and path normalization functionality.
 /// CRITICAL: These tests validate path traversal attack prevention.
 /// </summary>
-public class PathValidatorTests
+public class PathValidatorTests : IDisposable
 {
     private readonly string _tempBasePath;
 

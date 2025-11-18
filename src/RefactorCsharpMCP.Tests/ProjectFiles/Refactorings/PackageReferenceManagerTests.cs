@@ -91,6 +91,35 @@ public class PackageReferenceManagerTests : IDisposable
     }
 
     [Theory]
+    [InlineData("Newtonsoft.Json")]          // Standard package
+    [InlineData("Microsoft.Extensions.Logging")] // Multi-segment
+    [InlineData("Package_Name")]             // With underscore
+    [InlineData("Package-Name")]             // With hyphen
+    [InlineData("A")]                        // Single character
+    [InlineData("a.b.c.d")]                  // Multiple segments
+    public async Task ManagePackageReferenceAsync_WithValidPackageId_ShouldAcceptValidFormats(string validPackageId)
+    {
+        // Arrange
+        var projectPath = Path.Combine(_tempBasePath, "TestValidId.csproj");
+        CreateTestProject(projectPath);
+        var options = new ProjectRefactoringOptions { ValidateBuild = false };
+
+        // Act
+        var result = await _manager.ManagePackageReferenceAsync(
+            projectPath,
+            PackageOperation.Add,
+            validPackageId,
+            "1.0.0",
+            options);
+
+        // Assert
+        // Should not fail due to invalid package ID format
+        Assert.NotNull(result);
+        Assert.True(result.IsSuccess || result.ErrorMessage?.Contains("Invalid package ID") == false,
+            $"Valid package ID '{validPackageId}' should not be rejected as invalid");
+    }
+
+    [Theory]
     [InlineData("invalid-version")]
     [InlineData("1.0.0.0.0")]  // Too many version parts
     [InlineData("v1.0.0")]     // Invalid prefix

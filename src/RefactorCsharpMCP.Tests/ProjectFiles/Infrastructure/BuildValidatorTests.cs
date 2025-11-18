@@ -1,3 +1,4 @@
+using System.Security;
 using Microsoft.Extensions.Logging.Abstractions;
 using RefactorCsharpMCP.Core.ProjectFiles.Infrastructure;
 using Xunit;
@@ -9,7 +10,7 @@ namespace RefactorCsharpMCP.Tests.ProjectFiles.Infrastructure;
 /// NOTE: These tests focus on validation logic and error handling.
 /// Actual dotnet build execution is tested in integration tests.
 /// </summary>
-public class BuildValidatorTests
+public class BuildValidatorTests : IDisposable
 {
     private readonly BuildValidator _validator;
     private readonly string _tempBasePath;
@@ -106,7 +107,7 @@ public class BuildValidatorTests
         var maliciousPath = "../../etc/passwd.csproj";
 
         // Act & Assert
-        await Assert.ThrowsAnyAsync<Exception>(async () =>
+        await Assert.ThrowsAsync<SecurityException>(async () =>
             await _validator.ValidateBuildAsync(maliciousPath));
     }
 
@@ -118,7 +119,7 @@ public class BuildValidatorTests
         File.WriteAllText(invalidPath, "fake content");
 
         // Act & Assert
-        await Assert.ThrowsAnyAsync<Exception>(async () =>
+        await Assert.ThrowsAsync<SecurityException>(async () =>
             await _validator.ValidateBuildAsync(invalidPath));
 
         // Cleanup
