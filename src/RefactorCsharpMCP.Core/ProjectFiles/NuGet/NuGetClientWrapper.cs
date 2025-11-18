@@ -21,6 +21,7 @@ public class NuGetClientWrapper : IDisposable
     private readonly SourceCacheContext _cache;
     private readonly SourceRepository _sourceRepository;
     private readonly ConcurrentDictionary<string, PackageMetadataCache> _metadataCache = new();
+    private readonly int _timeoutSeconds = 30; // Default timeout in seconds
 
     public NuGetClientWrapper(ILogger<NuGetClientWrapper>? logger = null, string? sourceUrl = null)
     {
