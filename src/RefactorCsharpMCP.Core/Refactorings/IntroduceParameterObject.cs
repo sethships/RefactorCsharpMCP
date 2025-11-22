@@ -233,9 +233,7 @@ public class IntroduceParameterObject : RefactoringBase
             var finalMethod = UpdateMethodBody(
                 updatedMethod,
                 parameterSymbols,
-                methodSymbol,
-                NamingHelper.ToCamelCase(newClassName),
-                semanticModel);
+                NamingHelper.ToCamelCase(newClassName));
 
             // STEP 11: Replace the original method with the updated one
             CurrentPhase = "Class Update";
@@ -244,13 +242,14 @@ public class IntroduceParameterObject : RefactoringBase
             // STEP 12: Update all callers
             CurrentPhase = "Caller Update";
             var rootWithUpdatedClass = root.ReplaceNode(classDeclaration, updatedClass);
+
+            // Use the original method symbol for caller updates - InvocationRewriter uses name-based matching
             var rootWithUpdatedCallers = UpdateCallers(
                 rootWithUpdatedClass,
                 methodSymbol,
                 parameterSymbols,
                 newClassName,
-                supportsRecords,
-                semanticModel);
+                supportsRecords);
 
             // STEP 13: Insert the parameter object class before the target class
             CurrentPhase = "Assembly";
@@ -480,18 +479,15 @@ public class IntroduceParameterObject : RefactoringBase
     private MethodDeclarationSyntax UpdateMethodBody(
         MethodDeclarationSyntax method,
         List<IParameterSymbol> parameterSymbols,
-        IMethodSymbol methodSymbol,
-        string paramObjectName,
-        SemanticModel semanticModel)
+        string paramObjectName)
     {
         if (method.Body == null)
             return method;
 
-        // Create a rewriter to replace parameter references using semantic model
+        // Create a rewriter to replace parameter references using name-based matching
+        // Uses names instead of semantic model to avoid SyntaxTree identity issues
         var rewriter = new ParameterReferenceRewriter(
-            semanticModel,
             parameterSymbols,
-            methodSymbol,
             paramObjectName);
 
         var newBody = (BlockSyntax)rewriter.Visit(method.Body);
@@ -500,17 +496,16 @@ public class IntroduceParameterObject : RefactoringBase
 
     /// <summary>
     /// Updates all callers of the method to pass parameter object.
+    /// Uses name and argument count matching to avoid SyntaxTree identity issues.
     /// </summary>
     private CompilationUnitSyntax UpdateCallers(
         CompilationUnitSyntax root,
         IMethodSymbol methodSymbol,
         List<IParameterSymbol> parameterSymbols,
         string parameterObjectClassName,
-        bool useRecord,
-        SemanticModel semanticModel)
+        bool useRecord)
     {
         var rewriter = new InvocationRewriter(
-            semanticModel,
             methodSymbol,
             parameterSymbols,
             parameterObjectClassName,
@@ -572,38 +567,32 @@ public class IntroduceParameterObject : RefactoringBase
 
     /// <summary>
     /// Syntax rewriter to replace parameter references with parameter object property access.
-    /// Uses semantic model to ensure only actual parameter references are replaced.
+    /// Uses name-based matching to avoid SyntaxTree identity issues after transformations.
     /// </summary>
     private class ParameterReferenceRewriter : CSharpSyntaxRewriter
     {
-        private readonly SemanticModel _semanticModel;
-        private readonly HashSet<IParameterSymbol> _parameterSymbols;
-        private readonly IMethodSymbol _targetMethod;
+        private readonly HashSet<string> _parameterNames;
         private readonly string _paramObjectName;
 
         public ParameterReferenceRewriter(
-            SemanticModel semanticModel,
             List<IParameterSymbol> parameterSymbols,
-            IMethodSymbol targetMethod,
             string paramObjectName)
         {
-            _semanticModel = semanticModel;
-            _parameterSymbols = new HashSet<IParameterSymbol>(parameterSymbols, SymbolEqualityComparer.Default);
-            _targetMethod = targetMethod;
+            // Extract parameter names from symbols BEFORE tree transformations
+            _parameterNames = new HashSet<string>(
+                parameterSymbols.Select(p => p.Name),
+                StringComparer.Ordinal);
             _paramObjectName = paramObjectName;
         }
 
         public override SyntaxNode? VisitIdentifierName(IdentifierNameSyntax node)
         {
-            // Use semantic model to verify this identifier is actually a parameter reference
-            var symbol = _semanticModel.GetSymbolInfo(node).Symbol as IParameterSymbol;
-
-            if (symbol != null &&
-                _parameterSymbols.Contains(symbol, SymbolEqualityComparer.Default) &&
-                SymbolEqualityComparer.Default.Equals(symbol.ContainingSymbol, _targetMethod))
+            // Use name-based matching instead of semantic model to avoid SyntaxTree identity issues
+            // This is safe because we're only looking within the method body scope
+            if (_parameterNames.Contains(node.Identifier.Text))
             {
-                // Safe to replace - this is our target parameter
-                var propertyName = NamingHelper.ToPascalCase(symbol.Name);
+                // Replace parameter reference with property access
+                var propertyName = NamingHelper.ToPascalCase(node.Identifier.Text);
                 return SyntaxFactory.MemberAccessExpression(
                     SyntaxKind.SimpleMemberAccessExpression,
                     SyntaxFactory.IdentifierName(_paramObjectName),
@@ -616,50 +605,74 @@ public class IntroduceParameterObject : RefactoringBase
 
     /// <summary>
     /// Syntax rewriter to update method invocations to pass parameter object.
-    /// Uses semantic model to accurately match arguments to parameters.
+    /// Uses name and argument count matching to avoid SyntaxTree identity issues.
     /// </summary>
     private class InvocationRewriter : CSharpSyntaxRewriter
     {
-        private readonly SemanticModel _semanticModel;
-        private readonly IMethodSymbol _targetMethod;
-        private readonly HashSet<IParameterSymbol> _parameterSymbols;
+        private readonly string _targetMethodName;
+        private readonly HashSet<string> _parameterNamesToGroup;
+        private readonly List<string> _originalParameterOrder;  // All parameters in order
         private readonly string _parameterObjectClassName;
         private readonly bool _useRecord;
 
         public InvocationRewriter(
-            SemanticModel semanticModel,
             IMethodSymbol targetMethod,
             List<IParameterSymbol> parameterSymbols,
             string parameterObjectClassName,
             bool useRecord)
         {
-            _semanticModel = semanticModel;
-            _targetMethod = targetMethod;
-            _parameterSymbols = new HashSet<IParameterSymbol>(parameterSymbols, SymbolEqualityComparer.Default);
+            _targetMethodName = targetMethod.Name;
+            _parameterNamesToGroup = new HashSet<string>(parameterSymbols.Select(p => p.Name));
+            _originalParameterOrder = targetMethod.Parameters.Select(p => p.Name).ToList();
             _parameterObjectClassName = parameterObjectClassName;
             _useRecord = useRecord;
         }
 
         public override SyntaxNode? VisitInvocationExpression(InvocationExpressionSyntax node)
         {
-            var symbolInfo = _semanticModel.GetSymbolInfo(node);
-            var invokedMethod = symbolInfo.Symbol as IMethodSymbol;
-
-            if (invokedMethod != null &&
-                SymbolEqualityComparer.Default.Equals(invokedMethod, _targetMethod))
+            // Extract method name from invocation
+            string? methodName = node.Expression switch
             {
-                // Map arguments to parameters using semantic analysis
-                var argumentMapping = GetArgumentParameterMapping(node, invokedMethod);
+                IdentifierNameSyntax id => id.Identifier.Text,
+                MemberAccessExpressionSyntax ma => ma.Name.Identifier.Text,
+                _ => null
+            };
 
-                var argumentsToGroup = argumentMapping
-                    .Where(kvp => _parameterSymbols.Contains(kvp.Value, SymbolEqualityComparer.Default))
-                    .Select(kvp => kvp.Key)
-                    .ToList();
+            // Match by method name and original argument count
+            if (methodName == _targetMethodName &&
+                node.ArgumentList.Arguments.Count == _originalParameterOrder.Count)
+            {
+                var arguments = node.ArgumentList.Arguments;
+                var argumentsToGroup = new List<ArgumentSyntax>();
+                var remainingArguments = new List<ArgumentSyntax>();
 
-                var remainingArguments = argumentMapping
-                    .Where(kvp => !_parameterSymbols.Contains(kvp.Value, SymbolEqualityComparer.Default))
-                    .Select(kvp => kvp.Key)
-                    .ToList();
+                // Process each argument positionally or by name
+                for (int i = 0; i < arguments.Count; i++)
+                {
+                    var argument = arguments[i];
+                    string paramName;
+
+                    if (argument.NameColon != null)
+                    {
+                        // Named argument
+                        paramName = argument.NameColon.Name.Identifier.Text;
+                    }
+                    else
+                    {
+                        // Positional argument - map to parameter by position
+                        paramName = _originalParameterOrder[i];
+                    }
+
+                    // Check if this parameter should be grouped
+                    if (_parameterNamesToGroup.Contains(paramName))
+                    {
+                        argumentsToGroup.Add(argument);
+                    }
+                    else
+                    {
+                        remainingArguments.Add(argument);
+                    }
+                }
 
                 // Create parameter object instantiation
                 var objectCreation = SyntaxFactory.ObjectCreationExpression(

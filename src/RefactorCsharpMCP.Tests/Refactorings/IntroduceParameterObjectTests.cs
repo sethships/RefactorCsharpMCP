@@ -121,7 +121,7 @@ public class UserService
 {
     public void RegisterUser(string username, string password, string email)
     {
-        Console.WriteLine($""Registering {username} with {email}"");
+        Console.WriteLine($""Registering {username} with password {password} at {email}"");
     }
 
     public void Test()
