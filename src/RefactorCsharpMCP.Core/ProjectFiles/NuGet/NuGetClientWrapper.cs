@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NuGet.Common;
 using NuGet.Configuration;
 using NuGet.Frameworks;
+using NuGet.Packaging.Core;
 using NuGet.Protocol;
 using NuGet.Protocol.Core.Types;
 using NuGet.Versioning;
@@ -80,7 +81,7 @@ public class NuGetClientWrapper : IDisposable
                 metadata = await resource.GetMetadataAsync(
                     new PackageIdentity(packageId, nugetVersion),
                     _cache,
-                    NullLogger.Instance,
+                    global::NuGet.Common.NullLogger.Instance,
                     cancellationToken);
             }
 
@@ -242,7 +243,7 @@ public class NuGetClientWrapper : IDisposable
             includePrerelease: false,
             includeUnlisted: false,
             _cache,
-            NullLogger.Instance,
+            global::NuGet.Common.NullLogger.Instance,
             cancellationToken);
 
         return metadata
@@ -264,7 +265,7 @@ public class NuGetClientWrapper : IDisposable
             includePrerelease: true,
             includeUnlisted: false,
             _cache,
-            NullLogger.Instance,
+            global::NuGet.Common.NullLogger.Instance,
             cancellationToken);
 
         return metadata
