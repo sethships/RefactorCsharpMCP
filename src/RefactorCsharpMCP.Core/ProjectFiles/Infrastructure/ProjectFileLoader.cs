@@ -308,12 +308,13 @@ public class ProjectFileLoader
 
         if (!string.IsNullOrWhiteSpace(projectTypeGuids))
         {
-            return projectTypeGuids.Contains(ProjectFileConstants.ProjectTypeGuids.AspNetMvc1)
-                || projectTypeGuids.Contains(ProjectFileConstants.ProjectTypeGuids.AspNetMvc2)
-                || projectTypeGuids.Contains(ProjectFileConstants.ProjectTypeGuids.AspNetMvc3)
-                || projectTypeGuids.Contains(ProjectFileConstants.ProjectTypeGuids.AspNetMvc4)
-                || projectTypeGuids.Contains(ProjectFileConstants.ProjectTypeGuids.AspNetMvc5)
-                || projectTypeGuids.Contains(ProjectFileConstants.ProjectTypeGuids.WebApplication);
+            // Use case-insensitive comparison for GUIDs
+            return projectTypeGuids.Contains(ProjectFileConstants.ProjectTypeGuids.AspNetMvc1, StringComparison.OrdinalIgnoreCase)
+                || projectTypeGuids.Contains(ProjectFileConstants.ProjectTypeGuids.AspNetMvc2, StringComparison.OrdinalIgnoreCase)
+                || projectTypeGuids.Contains(ProjectFileConstants.ProjectTypeGuids.AspNetMvc3, StringComparison.OrdinalIgnoreCase)
+                || projectTypeGuids.Contains(ProjectFileConstants.ProjectTypeGuids.AspNetMvc4, StringComparison.OrdinalIgnoreCase)
+                || projectTypeGuids.Contains(ProjectFileConstants.ProjectTypeGuids.AspNetMvc5, StringComparison.OrdinalIgnoreCase)
+                || projectTypeGuids.Contains(ProjectFileConstants.ProjectTypeGuids.WebApplication, StringComparison.OrdinalIgnoreCase);
         }
 
         return false;
