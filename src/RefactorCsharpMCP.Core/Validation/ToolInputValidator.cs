@@ -21,6 +21,27 @@ public static class ToolInputValidator
     /// </summary>
     private static readonly FrameworkValidator Validator = new();
     /// <summary>
+    /// Validates that a string value is not null or whitespace.
+    /// </summary>
+    /// <param name="value">The value to validate.</param>
+    /// <param name="parameterName">The name of the parameter (for error messages).</param>
+    /// <param name="operationName">The name of the operation (for error messages).</param>
+    /// <returns>Null if valid, otherwise a ValidationResult indicating the error.</returns>
+    public static ValidationResult? ValidateNonEmpty(string value, string parameterName, string operationName)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            var capitalizedName = char.ToUpper(parameterName[0]) + parameterName.Substring(1);
+            return ValidationResult.ToolInputError(
+                ErrorCode.MISSING_PARAMETER,
+                $"{capitalizedName} cannot be empty",
+                operationName);
+        }
+
+        return null; // Validation passed
+    }
+
+    /// <summary>
     /// Validates that source code is not null or whitespace.
     /// </summary>
     /// <param name="sourceCode">The source code to validate.</param>

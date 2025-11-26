@@ -94,16 +94,76 @@ public class BuildValidator
             _logger.LogDebug("Using dotnet CLI version: {Version}", version);
 
             // Validate the path to prevent path traversal attacks
-            string validatedPath;
-            if (File.Exists(projectPath))
+            // CRITICAL: Detect relative path traversal attempts (.., ., etc)
+            // Allow absolute paths anywhere on the system for legitimate use cases
+            if (!Path.IsPathRooted(projectPath) && projectPath.Contains(".."))
             {
+                throw new SecurityException(
+                    $"Relative path traversal detected: '{projectPath}'. " +
+                    "Use absolute paths instead.");
+            }
+
+            string validatedPath;
+            try
+            {
+                // Attempt to validate as a file path first (most common case)
+                // No basePath - allow absolute paths anywhere, validate extension only
                 validatedPath = PathValidator.ValidateAndNormalizePath(projectPath);
             }
-            else if (Directory.Exists(projectPath))
+            catch (SecurityException ex) when (ex.Message.Contains("Invalid file extension"))
             {
-                validatedPath = PathValidator.ValidateDirectoryPath(projectPath);
+                // Invalid file extension - might be a directory or solution file
+                // Check if it's a solution file first (before trying as directory)
+                if (projectPath.EndsWith(".sln", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Solution files are valid for building
+                    validatedPath = Path.GetFullPath(projectPath);
+                }
+                else
+                {
+                    // Try as directory
+                    try
+                    {
+                        validatedPath = PathValidator.ValidateDirectoryPath(projectPath);
+                        // Verify it's actually a directory (not just a file with no extension)
+                        if (File.Exists(validatedPath))
+                        {
+                            // It's a file, not a directory - re-throw original SecurityException
+                            throw ex;
+                        }
+                    }
+                    catch (SecurityException)
+                    {
+                        throw; // Re-throw security exceptions from ValidateDirectoryPath
+                    }
+                    catch
+                    {
+                        // ValidateDirectoryPath failed for other reasons - re-throw original exception
+                        throw ex;
+                    }
+                }
             }
-            else
+            catch (SecurityException)
+            {
+                // Security validation failed (e.g., path traversal) - re-throw to propagate to caller
+                throw;
+            }
+            catch (ArgumentException)
+            {
+                // Invalid path format, try as directory
+                try
+                {
+                    validatedPath = PathValidator.ValidateDirectoryPath(projectPath);
+                }
+                catch (SecurityException)
+                {
+                    // Security validation failed - re-throw to propagate to caller
+                    throw;
+                }
+            }
+
+            // Now check if the validated path exists
+            if (!File.Exists(validatedPath) && !Directory.Exists(validatedPath))
             {
                 return BuildValidationResult.Failure(
                     $"Project path not found: {projectPath}. " +
@@ -140,6 +200,11 @@ public class BuildValidator
                     output,
                     errors);
             }
+        }
+        catch (SecurityException)
+        {
+            // Security violations should propagate to caller - do not catch
+            throw;
         }
         catch (TimeoutException ex)
         {

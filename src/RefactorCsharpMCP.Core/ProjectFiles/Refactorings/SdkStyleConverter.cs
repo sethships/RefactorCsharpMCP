@@ -456,8 +456,8 @@ internal class ProjectMetadata
     public required string AssemblyName { get; init; }
     public required string RootNamespace { get; init; }
     public required List<string> TargetFrameworks { get; init; }
-    public required string OutputType { get; set; }
-    public required string Sdk { get; set; }
+    public string OutputType { get; set; } = string.Empty;
+    public string Sdk { get; set; } = string.Empty;
     public string? Nullable { get; set; }
     public string? LangVersion { get; set; }
     public List<PackageReference> PackageReferences { get; init; } = new();

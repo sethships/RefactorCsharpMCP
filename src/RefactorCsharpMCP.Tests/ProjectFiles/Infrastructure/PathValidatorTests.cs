@@ -304,7 +304,9 @@ public class PathValidatorTests : IDisposable
 
         // Assert
         Assert.Equal(Path.GetFullPath(Path.Combine(subDir, "Test.csproj")), result);
-        Assert.DoesNotContain(".", Path.GetFileName(result));
+        // Verify relative path segments (./ and ../) have been resolved
+        Assert.DoesNotContain("./", result);
+        Assert.DoesNotContain("../", result);
 
         // Cleanup
         Directory.Delete(subDir);

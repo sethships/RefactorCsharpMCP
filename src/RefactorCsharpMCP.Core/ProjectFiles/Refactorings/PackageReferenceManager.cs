@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Microsoft.Extensions.Logging;
+using NuGet.Versioning;
 using RefactorCsharpMCP.Core.ProjectFiles.Infrastructure;
 using RefactorCsharpMCP.Core.ProjectFiles.Models;
 using RefactorCsharpMCP.Core.ProjectFiles.NuGet;
@@ -401,7 +402,7 @@ public class PackageReferenceManager : ProjectRefactoringBase
         if ((operation == PackageOperation.Add || operation == PackageOperation.Update)
             && !string.IsNullOrWhiteSpace(version))
         {
-            if (!NuGet.Versioning.NuGetVersion.TryParse(version, out _))
+            if (!NuGetVersion.TryParse(version, out _))
             {
                 return RefactoringResult.Failure(
                     $"Invalid NuGet version format: '{version}'. " +
