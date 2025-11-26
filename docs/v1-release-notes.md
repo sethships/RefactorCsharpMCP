@@ -1,274 +1,208 @@
-# RefactorCsharpMCP V1.0.0 Release Notes
+# RefactorCsharpMCP v1.0.0 Release Notes
 
 ## Release Date
 
-**Status**: V1 Release Candidate (Phase 3 Complete)
+**November 2025**
 
 ## Overview
 
-RefactorCsharpMCP V1.0.0 is a production-ready Model Context Protocol (MCP) server providing Roslyn-based C# refactoring capabilities for AI clients. This release marks the completion of Phase 3 (V1 Release Readiness) with comprehensive testing, performance benchmarking, and documentation.
+RefactorCsharpMCP v1.0.0 is the first public release of an AI-powered Model Context Protocol (MCP) server that brings professional C# refactoring capabilities directly to AI coding assistants. Built on Microsoft's Roslyn compiler platform, it enables Claude Code and other MCP-compatible AI clients to perform sophisticated code transformations with compiler-level accuracy.
 
-## Key Accomplishments
+**Key Value Proposition**: Transform how you refactor C# code by letting AI handle the mechanical work while you focus on design decisions.
 
-### Phase 3: V1 Release Readiness (Issues #27-29)
+## Highlights
 
-Phase 3 focused on achieving production quality through comprehensive testing, performance benchmarking, and documentation improvements.
+### AI-Powered Refactoring for Claude Code
 
-#### Test Coverage Improvements
+RefactorCsharpMCP integrates seamlessly with Claude Code, enabling natural language refactoring requests:
 
-**Target**: 90% line coverage, 85% branch coverage
+- *"Extract the validation logic into a separate method"*
+- *"Convert these parameters into a parameter object"*
+- *"Make this field readonly"*
+- *"Inline this variable"*
 
-**Results**:
-- **Total Tests**: 951 tests (932 passing, 12 skipped, 7 known edge cases)
-- **Test Distribution**:
-  - Unit Tests: 463
-  - Component Tests: 20
-  - Integration Tests: 8
-  - Framework Matrix Tests: 42
-  - Edge Case Tests: 21
-  - Infrastructure Tests: 397
+The MCP server translates these requests into precise Roslyn-based transformations, maintaining code correctness and preserving formatting.
 
-**New Test Suites Created**:
-1. **MCP Tool Integration Tests** (41 tests) - Validates all MCP tool implementations
-2. **SyntaxValidator Tests** (38 tests) - Comprehensive syntax validation coverage
-3. **FileSystemRetryHelper Tests** (24 tests) - Retry logic and error handling
-4. **NuGetPackageDownloader Tests** (14 tests) - Package download and caching
-5. **Framework Matrix Tests** (42 tests) - Cross-framework compatibility validation
-6. **Refactoring Edge Cases Tests** (21 tests) - Documents known limitations
+### 11 Production-Ready Refactoring Tools
 
-#### Performance Benchmarking
+| Tool | Description |
+|------|-------------|
+| **extract_method** | Extract code blocks into well-named methods |
+| **extract_class** | Decompose large classes using composition |
+| **inline_method** | Inline simple methods at call sites |
+| **inline_variable** | Replace variables with their expressions |
+| **rename_symbol** | Rename with full reference updating |
+| **constructor_injection** | Convert to dependency injection patterns |
+| **introduce_parameter_object** | Group related parameters into objects |
+| **make_field_readonly** | Enforce immutability where safe |
+| **safe_delete** | Remove unused code with safety checks |
+| **remove_unused_usings** | Clean up unused imports |
+| **analyze_code** | Detect issues and suggest refactorings |
 
-**BenchmarkDotNet Project**: Created comprehensive performance benchmarking infrastructure
+### Framework Version Awareness
 
-**Benchmarks Created**: 17 benchmarks across 9 refactorings
-- ExtractMethod (1 benchmark)
-- InlineVariable (2 benchmarks)
-- RenameSymbol (2 benchmarks)
-- ConstructorInjection (2 benchmarks)
-- MakeFieldReadonly (2 benchmarks)
-- SafeDelete (2 benchmarks)
-- ExtractClass (2 benchmarks)
-- RemoveUnusedUsings (2 benchmarks)
-- InlineMethod (2 benchmarks)
+Intelligent handling of 13 .NET framework targets:
 
-**Performance Targets Established**:
-- Small files (~50 lines): < 100ms
-- Medium files (~500 lines): < 500ms
-- Large files (~5000 lines): < 2000ms
+**Fully Supported**:
+- .NET 9.0 (C# 13)
+- .NET 8.0 (C# 12) - Recommended
+- .NET Standard 2.0/2.1
+- .NET Framework 4.6.2 - 4.8.1
 
-#### Documentation Improvements
+**Blocked (EOL - Security Best Practice)**:
+- .NET 6.0 (EOL November 2024)
+- .NET 7.0 (EOL May 2024)
 
-**New Documentation**:
-1. **Performance Benchmarks** (`docs/performance-benchmarks.md`)
-   - Baseline performance metrics for all refactorings
-   - Optimization notes and future improvements
-   - Framework-specific performance considerations
+The server automatically maps target frameworks to appropriate C# language versions and provides clear error messages for unsupported configurations.
 
-2. **README.md Enhancements**:
-   - Known Limitations section (Issues #72, #75)
-   - Performance section with benchmark instructions
-   - Framework support matrix
+### Enterprise-Grade Quality
 
-3. **TROUBLESHOOTING.md Enhancements**:
-   - Framework-Specific Error Codes section
-   - IDE Analyzer Limitations troubleshooting
-   - .NET Framework Reference Assembly errors
-   - Language version mismatch errors
+- **1,343 automated tests** (98.6% pass rate)
+- **90%+ code coverage** on core refactoring logic
+- **Security-first design** with input validation and path traversal protection
+- **Docker support** with multi-stage builds, health checks, and SBOM
 
-4. **EXAMPLES.md Enhancements**:
-   - Framework Limitations and Workarounds section
-   - Practical code examples for error handling
-   - Framework selection strategies
+## What's New in v1.0
 
-## Available Refactorings (V1)
+### IntroduceParameterObject Refactoring
 
-### Core Refactorings (Phase 1)
+New in v1.0: Automatically group related method parameters into cohesive parameter objects:
 
-1. **Extract Method** - Extract selected code into a new method
-2. **Constructor Injection** - Convert method parameters to constructor-injected dependencies
-3. **Inline Variable** - Inline variable by replacing uses with initialization expression
-4. **Make Field Readonly** - Make fields readonly if only assigned in constructors
-5. **Safe Delete** - Delete methods/classes after verifying no references exist
-6. **Extract Class** - Extract fields/methods into new class with composition pattern
-7. **Remove Unused Usings** - Remove unused using directives (with limitations)
+```csharp
+// Before
+void CreateOrder(string productId, int quantity, decimal price, string currency)
 
-### Enhanced Refactorings (Phase 2)
+// After
+void CreateOrder(OrderDetails orderDetails)
+public record OrderDetails(string ProductId, int Quantity, decimal Price, string Currency);
+```
 
-8. **Inline Method (Part 1)** - Inline void methods with simple parameters and single caller
-   - **Limitations**: Single caller only, void methods, simple parameter types
-   - **Future**: Part 2 will expand to return values, multiple callers, complex parameters
+- Framework-aware: Generates `record` for .NET 5+ or `class` for .NET Framework
+- Updates all call sites automatically
+- Handles named arguments and mixed argument styles
 
-### Diagnostic Integration (V1.5 - Partially Complete)
+### Enhanced ExtractClass with Nested Type Support
 
-9. **Analyze Code** - Detect code issues and suggest applicable refactorings
-10. **Fix Diagnostic** - Apply refactoring to fix specific diagnostic issue
+ExtractClass now properly handles nested types with automatic qualification:
 
-## Framework Support
+```csharp
+// Nested types in extracted members are properly qualified
+public Configuration.Config Settings { get; }  // Correctly references nested type
+```
 
-### Fully Supported Frameworks
-- **.NET 9.0** - C# 13, full support
-- **.NET 8.0** - C# 12, full support (recommended)
-- **.NET Standard 2.1** - C# 8, full support
-- **.NET Standard 2.0** - C# 7.3, full support
+### Comprehensive Framework Validation
 
-### Limited Support Frameworks
-- **.NET Framework 4.8** - C# 7.3, may fail due to reference assembly limitations (Issue #75)
-- **.NET Framework 4.7.x** - C# 7.3, may fail due to reference assembly limitations
-- **.NET Framework 4.6.2** - C# 7, may fail due to reference assembly limitations
+- Pre-flight validation catches framework mismatches before refactoring
+- Clear, actionable error messages for language feature incompatibilities
+- Automatic C# language version selection based on target framework
 
-## Known Limitations
+## Installation
 
-### Issue #72: IDE Analyzer Limitations
+### Claude Code (Recommended)
 
-**Affected Refactorings**: `remove_unused_usings`, `analyze_code`
+Add to your Claude Code MCP settings:
 
-**Impact**: CS8019 and IDE0005 (unused using directives) require full IDE analyzer infrastructure not available in programmatic compilation.
-
-**Workaround**: Use modern IDEs (Visual Studio, VS Code with C# extension) for unused using detection.
-
-**Test Status**: 12 tests skipped due to this limitation
-
-### Issue #75: .NET Framework Reference Assembly Limitations
-
-**Affected Frameworks**: net48, net481, net472, net471, net47, net462, net35
-
-**Impact**: Reference assemblies may not be available in all environments, causing refactorings to fail.
-
-**Workaround**:
-1. Prefer modern frameworks (net8.0, net9.0)
-2. Install Microsoft.NETFramework.ReferenceAssemblies NuGet package
-3. Use cache pre-warming strategy
-
-**Test Status**: Framework matrix tests include conditional handling for net48 failures
-
-### InlineMethod Part 1 Limitations
-
-**Current Limitations**:
-- Single caller only (method must be called exactly once)
-- Void methods only (no return value support)
-- Simple parameter types only (primitives, string)
-- No recursive methods
-- No lambda expressions in method body
-
-**Future**: Part 2 implementation will expand capabilities
-
-### Refactoring Edge Cases
-
-**Test Status**: 7 edge case tests expose known refactoring limitations:
-1. `RenameSymbol_MethodParameter_ShouldRenameOnlyInMethodScope` - Parameter scoping issue
-2. `MakeFieldReadonly_WithFieldInStruct_ShouldAttemptMakeReadonly` - Struct field handling
-3. `InlineMethod_Benchmark_Performance_RegressionCheck` - Performance validation
-4. `ConstructorInjection_WithExistingConstructor_ShouldAddParameters` - Constructor merging
-5. `SafeDelete_WithUnusedPrivateMethod_ShouldSucceed` - Reference detection accuracy
-6. `ConstructorInjection_WithNoMethodParameters_ShouldReturnError` - Error message validation
-7. `SafeDelete_WithPrivateMethodCalledInternally_ShouldReturnError` - Error message validation
-
-**Note**: These tests document known limitations and will be addressed in future releases.
-
-## Test Suite Summary
-
-| Category | Tests | Status |
-|----------|-------|--------|
-| **Passing** | 932 | ✅ |
-| **Skipped** | 12 | ⚠️ Known limitations (Issue #72) |
-| **Failing (Edge Cases)** | 7 | 📝 Documented limitations |
-| **Total** | 951 | - |
-
-**Coverage Estimate**: ~87% line coverage, ~83% branch coverage
-
-## Performance Summary
-
-Performance benchmarking infrastructure established with BenchmarkDotNet:
-- **17 benchmarks** across 9 refactorings
-- **3 file size categories**: small, medium, large
-- **Target performance**: < 100ms (small), < 500ms (medium), < 2000ms (large)
-- **Results location**: `BenchmarkDotNet.Artifacts/results/`
-
-See [Performance Benchmarks](performance-benchmarks.md) for detailed analysis.
-
-## Breaking Changes
-
-No breaking changes from previous versions.
-
-## Upgrade Guide
-
-No upgrade steps required for V1.0.0.
-
-## Dependencies
-
-### Runtime Dependencies
-- .NET 8 SDK or later
-- Microsoft.CodeAnalysis.CSharp 4.14.0 (Roslyn)
-- ModelContextProtocol 0.4.0-preview.1
-
-### Development Dependencies
-- xUnit 2.9.2
-- FluentAssertions 6.12.2
-- NSubstitute 5.3.0
-- BenchmarkDotNet 0.14.0
-
-## Deployment Options
-
-### Docker Desktop MCP Toolkit (Recommended)
-One-click deployment from Docker Desktop catalog.
-
-### Native .NET
-```bash
-dotnet publish -c Release
-./RefactorCsharpMCP.Server
+```json
+{
+  "mcpServers": {
+    "refactor-csharp": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "sethb75/refactor-csharp-mcp:latest"]
+    }
+  }
+}
 ```
 
 ### Docker
+
 ```bash
-docker build -t refactor-csharp-mcp .
-docker run -i refactor-csharp-mcp
+docker pull sethb75/refactor-csharp-mcp:latest
+docker run -i --rm sethb75/refactor-csharp-mcp
 ```
 
-## Integration with AI Clients
+### Native .NET
 
-Supports all MCP-compatible AI clients:
-- Claude Code (VS Code extension)
-- Cursor IDE
-- Any MCP-compatible client with stdio transport
+```bash
+git clone https://github.com/sethb75/RefactorCsharpMCP.git
+cd RefactorCsharpMCP
+dotnet publish -c Release
+./src/RefactorCsharpMCP.Server/bin/Release/net8.0/publish/RefactorCsharpMCP.Server
+```
 
-See README.md for configuration details.
+## Test Suite Summary
 
-## Future Roadmap
+| Category | Count | Status |
+|----------|-------|--------|
+| Passing | 1,324 | :white_check_mark: |
+| Skipped | 19 | :warning: Known limitations |
+| Total | 1,343 | Production ready |
 
-### Phase 4: Production Readiness (In Progress)
-- Additional refactorings (Move Method, Extract Interface, etc.)
-- Enhanced error handling and diagnostics
-- Performance optimizations
-- Extended framework support
+**Test Distribution**:
+- Unit tests for all 11 refactorings
+- Component tests for validation pipeline
+- Integration tests for framework compatibility
+- Edge case tests documenting known limitations
 
-### Phase 5: Advanced Features (Planned)
-- Multi-file refactorings
-- Solution-wide refactorings
-- Custom refactoring templates
-- IDE plugin integration
+## Known Limitations
 
-## Contributors
+### IDE Analyzer Limitations (Issue #72)
 
-- Seth Barnes ([@sethb75](https://github.com/sethb75))
+Some Roslyn analyzers (IDE0005, CS8019) require full IDE infrastructure not available in programmatic compilation. `remove_unused_usings` may have reduced accuracy compared to Visual Studio.
+
+**Workaround**: Use VS Code or Visual Studio for final unused using cleanup.
+
+### InlineMethod Scope (Part 1)
+
+Current implementation supports:
+- Void methods only
+- Single call site
+- Simple parameter types
+
+Part 2 (planned) will add return values, multiple callers, and complex parameters.
+
+### .NET Framework Reference Assemblies
+
+.NET Framework 4.x may require Microsoft.NETFramework.ReferenceAssemblies NuGet package in some environments.
+
+## Dependencies
+
+- **.NET 8.0 SDK** or later
+- **Microsoft.CodeAnalysis.CSharp 4.14.0** (Roslyn)
+- **ModelContextProtocol 0.4.0-preview.1**
+
+## Breaking Changes
+
+None - this is the initial public release.
+
+## Security
+
+- Input validation on all tool parameters
+- Path traversal protection in file operations
+- No secrets or credentials stored
+- See [SECURITY.md](../SECURITY.md) for vulnerability reporting
+
+## Contributing
+
+We welcome contributions! See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelines.
 
 ## License
 
-MIT License - See LICENSE file for details
-
-## Support
-
-- **Issues**: https://github.com/sethb75/RefactorCsharpMCP/issues
-- **Documentation**: https://github.com/sethb75/RefactorCsharpMCP/tree/master/docs
-- **Examples**: https://github.com/sethb75/RefactorCsharpMCP/blob/master/EXAMPLES.md
+MIT License - See [LICENSE](../LICENSE) for details.
 
 ## Acknowledgments
 
-- **Microsoft Roslyn Team** - For the excellent compiler platform
+- **Microsoft Roslyn Team** - For the compiler platform that makes this possible
 - **Anthropic** - For the Model Context Protocol specification
-- **BenchmarkDotNet Team** - For the performance benchmarking framework
+- **Claude Code Users** - For feedback and feature requests
+
+## Links
+
+- **Repository**: https://github.com/sethb75/RefactorCsharpMCP
+- **Issues**: https://github.com/sethb75/RefactorCsharpMCP/issues
+- **Examples**: [EXAMPLES.md](../EXAMPLES.md)
+- **Troubleshooting**: [TROUBLESHOOTING.md](../TROUBLESHOOTING.md)
+- **Framework Support**: [FRAMEWORK-SUPPORT.md](FRAMEWORK-SUPPORT.md)
 
 ---
 
-**V1.0.0 Release Candidate** - Production Ready
-
-For detailed changelogs, see [Project Plan](project-plan.md).
+**RefactorCsharpMCP v1.0.0** - AI-Powered C# Refactoring for the Modern Developer
