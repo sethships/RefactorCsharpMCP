@@ -57,7 +57,7 @@ The server automatically maps target frameworks to appropriate C# language versi
 
 ### Enterprise-Grade Quality
 
-- **1,343 automated tests** (98.6% pass rate)
+- **1,350 automated tests** (98.2% pass rate)
 - **90%+ code coverage** on core refactoring logic
 - **Security-first design** with input validation and path traversal protection
 - **Docker support** with multi-stage builds, health checks, and SBOM
@@ -133,9 +133,9 @@ dotnet publish -c Release
 
 | Category | Count | Status |
 |----------|-------|--------|
-| Passing | 1,324 | :white_check_mark: |
+| Passing | 1,326 | :white_check_mark: |
 | Skipped | 19 | :warning: Known limitations |
-| Total | 1,343 | Production ready |
+| Total | 1,350 | Production ready |
 
 **Test Distribution**:
 - Unit tests for all 11 refactorings

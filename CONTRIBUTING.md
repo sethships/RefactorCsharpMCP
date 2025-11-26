@@ -163,7 +163,7 @@ RefactorCsharpMCP/
 
 ## Questions?
 
-- Open a [GitHub Discussion](https://github.com/sethb75/RefactorCsharpMCP/discussions) for general questions
+- Open a [GitHub Issue](https://github.com/sethb75/RefactorCsharpMCP/issues) with the `question` label for general questions
 - Check [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for common issues
 - Review [CLAUDE.md](CLAUDE.md) for architecture details
 
