@@ -568,6 +568,8 @@ public class IntroduceParameterObject : RefactoringBase
     /// <summary>
     /// Syntax rewriter to replace parameter references with parameter object property access.
     /// Uses name-based matching to avoid SyntaxTree identity issues after transformations.
+    /// Includes scope validation to prevent incorrectly transforming local variables or
+    /// other declarations that shadow the original parameters.
     /// </summary>
     private class ParameterReferenceRewriter : CSharpSyntaxRewriter
     {
@@ -588,9 +590,15 @@ public class IntroduceParameterObject : RefactoringBase
         public override SyntaxNode? VisitIdentifierName(IdentifierNameSyntax node)
         {
             // Use name-based matching instead of semantic model to avoid SyntaxTree identity issues
-            // This is safe because we're only looking within the method body scope
             if (_parameterNames.Contains(node.Identifier.Text))
             {
+                // Scope validation: Skip transformation if this identifier is part of a declaration
+                // that would shadow the parameter (local variable, catch variable, foreach, etc.)
+                if (IsPartOfDeclaration(node))
+                {
+                    return base.VisitIdentifierName(node);
+                }
+
                 // Replace parameter reference with property access
                 var propertyName = NamingHelper.ToPascalCase(node.Identifier.Text);
                 return SyntaxFactory.MemberAccessExpression(
@@ -601,17 +609,75 @@ public class IntroduceParameterObject : RefactoringBase
 
             return base.VisitIdentifierName(node);
         }
+
+        /// <summary>
+        /// Determines if the identifier is part of a declaration context where it would
+        /// represent a new variable rather than a reference to the original parameter.
+        /// </summary>
+        private bool IsPartOfDeclaration(IdentifierNameSyntax node)
+        {
+            var parent = node.Parent;
+
+            // Check parent chain for declaration contexts
+            while (parent != null)
+            {
+                switch (parent)
+                {
+                    // Variable declaration: string name = ...
+                    case VariableDeclaratorSyntax declarator:
+                        // Only skip if this identifier IS the variable being declared
+                        if (declarator.Identifier.Text == node.Identifier.Text)
+                            return true;
+                        break;
+
+                    // Catch declaration: catch (Exception name)
+                    case CatchDeclarationSyntax catchDecl:
+                        if (catchDecl.Identifier.Text == node.Identifier.Text)
+                            return true;
+                        break;
+
+                    // Foreach variable: foreach (var name in ...)
+                    case ForEachStatementSyntax forEach:
+                        if (forEach.Identifier.Text == node.Identifier.Text)
+                            return true;
+                        break;
+
+                    // Pattern matching: case string name:
+                    case SingleVariableDesignationSyntax designation:
+                        if (designation.Identifier.Text == node.Identifier.Text)
+                            return true;
+                        break;
+
+                    // Parameter in lambda/local function: (name) => ...
+                    case ParameterSyntax paramSyntax:
+                        if (paramSyntax.Identifier.Text == node.Identifier.Text)
+                            return true;
+                        break;
+
+                    // Stop at method body level - don't traverse further up
+                    case BlockSyntax:
+                    case ArrowExpressionClauseSyntax:
+                        return false;
+                }
+
+                parent = parent.Parent;
+            }
+
+            return false;
+        }
     }
 
     /// <summary>
     /// Syntax rewriter to update method invocations to pass parameter object.
     /// Uses name and argument count matching to avoid SyntaxTree identity issues.
+    /// Includes signature validation to prevent matching wrong method overloads.
     /// </summary>
     private class InvocationRewriter : CSharpSyntaxRewriter
     {
         private readonly string _targetMethodName;
         private readonly HashSet<string> _parameterNamesToGroup;
         private readonly List<string> _originalParameterOrder;  // All parameters in order
+        private readonly HashSet<string> _allParameterNames;    // For validating named arguments
         private readonly string _parameterObjectClassName;
         private readonly bool _useRecord;
 
@@ -624,6 +690,7 @@ public class IntroduceParameterObject : RefactoringBase
             _targetMethodName = targetMethod.Name;
             _parameterNamesToGroup = new HashSet<string>(parameterSymbols.Select(p => p.Name));
             _originalParameterOrder = targetMethod.Parameters.Select(p => p.Name).ToList();
+            _allParameterNames = new HashSet<string>(_originalParameterOrder);
             _parameterObjectClassName = parameterObjectClassName;
             _useRecord = useRecord;
         }
@@ -643,6 +710,14 @@ public class IntroduceParameterObject : RefactoringBase
                 node.ArgumentList.Arguments.Count == _originalParameterOrder.Count)
             {
                 var arguments = node.ArgumentList.Arguments;
+
+                // Signature validation: Verify named arguments match expected parameter names
+                // This helps distinguish between overloaded methods with same name/count
+                if (!ValidateArgumentSignature(arguments))
+                {
+                    return base.VisitInvocationExpression(node);
+                }
+
                 var argumentsToGroup = new List<ArgumentSyntax>();
                 var remainingArguments = new List<ArgumentSyntax>();
 
@@ -693,6 +768,31 @@ public class IntroduceParameterObject : RefactoringBase
             }
 
             return base.VisitInvocationExpression(node);
+        }
+
+        /// <summary>
+        /// Validates that the invocation's arguments match the expected method signature.
+        /// This helps distinguish between overloaded methods with the same name and argument count.
+        /// </summary>
+        /// <param name="arguments">The arguments from the invocation expression.</param>
+        /// <returns>True if the arguments appear to match the target method signature.</returns>
+        private bool ValidateArgumentSignature(SeparatedSyntaxList<ArgumentSyntax> arguments)
+        {
+            // Check all named arguments reference valid parameter names
+            foreach (var argument in arguments)
+            {
+                if (argument.NameColon != null)
+                {
+                    var namedParam = argument.NameColon.Name.Identifier.Text;
+                    if (!_allParameterNames.Contains(namedParam))
+                    {
+                        // Named argument doesn't match any parameter - wrong overload
+                        return false;
+                    }
+                }
+            }
+
+            return true;
         }
 
         /// <summary>
