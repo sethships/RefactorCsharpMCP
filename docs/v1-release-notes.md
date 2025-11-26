@@ -23,7 +23,7 @@ RefactorCsharpMCP integrates seamlessly with Claude Code, enabling natural langu
 
 The MCP server translates these requests into precise Roslyn-based transformations, maintaining code correctness and preserving formatting.
 
-### 11 Production-Ready Refactoring Tools
+### 11 Production-Ready MCP Tools (10 Refactorings + 1 Analysis)
 
 | Tool | Description |
 |------|-------------|

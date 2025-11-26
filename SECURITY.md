@@ -42,6 +42,7 @@ When reporting a vulnerability, please include:
 2. We will investigate and validate the issue
 3. We will work on a fix and coordinate disclosure timing with you
 4. We will credit you in the security advisory (unless you prefer anonymity)
+5. For confirmed vulnerabilities, we will request a CVE ID when appropriate
 
 ### Scope
 

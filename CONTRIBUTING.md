@@ -99,6 +99,7 @@ Use clear, descriptive titles:
 - `fix: Handle null parameters in InlineMethod`
 - `docs: Update README with new examples`
 - `test: Add edge case tests for RenameSymbol`
+- `refactor: Simplify ExtractClass orchestration logic`
 
 ## Coding Standards
 
