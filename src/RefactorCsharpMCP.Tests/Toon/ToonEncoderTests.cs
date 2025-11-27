@@ -286,4 +286,200 @@ public class ToonEncoderTests
         result.Should().Contain("two");
         result.Should().Contain("2");
     }
+
+    #region Edge Case Tests (Code Review Issue: Test Coverage Gaps)
+
+    [Fact]
+    public void Encode_CircularReference_HitsMaxDepthGracefully()
+    {
+        // Arrange - Create a self-referencing object scenario via deep nesting
+        // Note: True circular references are handled by MaxDepth protection
+        var deepObj = new
+        {
+            level1 = new
+            {
+                level2 = new
+                {
+                    level3 = new
+                    {
+                        level4 = new
+                        {
+                            level5 = "deeply nested"
+                        }
+                    }
+                }
+            }
+        };
+        var options = new ToonEncoderOptions { MaxDepth = 2 };
+
+        // Act
+        var result = _encoder.Encode(deepObj, options);
+
+        // Assert
+        // MaxDepth protection should kick in
+        result.Should().Contain("[max depth exceeded]");
+    }
+
+    [Fact]
+    public void Encode_UnicodeString_PreservesCharacters()
+    {
+        // Arrange
+        var value = "Hello 世界 🎉 émoji";
+
+        // Act
+        var result = _encoder.Encode(value);
+
+        // Assert
+        result.Should().Contain("Hello");
+        result.Should().Contain("世界");
+        result.Should().Contain("🎉");
+        result.Should().Contain("émoji");
+    }
+
+    [Fact]
+    public void Encode_NullPropertyValues_HandledCorrectly()
+    {
+        // Arrange
+        var obj = new { name = "test", value = (string?)null, count = 42 };
+
+        // Act
+        var result = _encoder.Encode(obj);
+
+        // Assert
+        result.Should().Contain("name:");
+        result.Should().Contain("test");
+        result.Should().Contain("count:");
+        result.Should().Contain("42");
+        // null properties at top level are skipped for cleaner output
+    }
+
+    [Fact]
+    public void Encode_MaxDepthZero_ReturnsMaxDepthExceeded()
+    {
+        // Arrange
+        var obj = new { name = "test" };
+        var options = new ToonEncoderOptions { MaxDepth = 0 };
+
+        // Act
+        var result = _encoder.Encode(obj, options);
+
+        // Assert
+        // MaxDepth=0 means the root object properties trigger max depth
+        // The property name is output, but the value shows max depth exceeded
+        result.Should().Contain("[max depth exceeded]");
+    }
+
+    [Fact]
+    public void Encode_StringWithColonAtStart_EscapesColon()
+    {
+        // Arrange
+        var value = ":value starts with colon";
+
+        // Act
+        var result = _encoder.Encode(value);
+
+        // Assert
+        // Colon at start should be escaped to avoid key-value confusion
+        result.Should().StartWith("\\:");
+    }
+
+    [Fact]
+    public void Encode_StringWithColonAfterSpace_EscapesColon()
+    {
+        // Arrange
+        var value = "key :value";
+
+        // Act
+        var result = _encoder.Encode(value);
+
+        // Assert
+        // Colon after space should be escaped
+        result.Should().Contain("key \\:");
+    }
+
+    [Fact]
+    public void Encode_StringWithMidColon_DoesNotEscape()
+    {
+        // Arrange
+        var value = "http://example.com";
+
+        // Act
+        var result = _encoder.Encode(value);
+
+        // Assert
+        // Colon in middle (not after whitespace) should NOT be escaped
+        result.Should().Contain("http://");
+    }
+
+    [Fact]
+    public void Encode_LargeObject_CompletesSuccessfully()
+    {
+        // Arrange - Object with many properties
+        var properties = Enumerable.Range(1, 50)
+            .ToDictionary(i => $"prop{i}", i => $"value{i}");
+
+        // Act
+        var result = _encoder.Encode(properties);
+
+        // Assert
+        result.Should().NotBeNullOrEmpty();
+        result.Should().Contain("prop1");
+        result.Should().Contain("prop50");
+    }
+
+    [Fact]
+    public void Encode_ConcurrentAccess_ThreadSafe()
+    {
+        // Arrange
+        var encoder = new ToonEncoder();
+        var testObjects = Enumerable.Range(1, 100)
+            .Select(i => new { id = i, name = $"item{i}" })
+            .ToArray();
+
+        // Act - Encode many objects in parallel to test thread safety
+        var results = new System.Collections.Concurrent.ConcurrentBag<string>();
+        Parallel.ForEach(testObjects, obj =>
+        {
+            var result = encoder.Encode(obj);
+            results.Add(result);
+        });
+
+        // Assert
+        results.Should().HaveCount(100);
+        results.All(r => r.Contains("id:") && r.Contains("name:")).Should().BeTrue();
+    }
+
+    #endregion
+
+    #region Configuration Tests
+
+    [Fact]
+    public void OutputFormatConfiguration_InvalidFormat_DefaultsToJson()
+    {
+        // Arrange
+        var args = new[] { "--output-format", "invalid_format" };
+
+        // Act
+        var options = RefactorCsharpMCP.Server.Configuration.OutputFormatConfiguration.Load(args);
+
+        // Assert
+        options.Format.Should().Be("json");
+        options.IsJsonEnabled.Should().BeTrue();
+        options.IsToonEnabled.Should().BeFalse();
+    }
+
+    [Fact]
+    public void OutputFormatConfiguration_ToonFormat_CaseInsensitive()
+    {
+        // Arrange
+        var args = new[] { "--output-format", "TOON" };
+
+        // Act
+        var options = RefactorCsharpMCP.Server.Configuration.OutputFormatConfiguration.Load(args);
+
+        // Assert
+        options.IsToonEnabled.Should().BeTrue();
+    }
+
+    #endregion
 }

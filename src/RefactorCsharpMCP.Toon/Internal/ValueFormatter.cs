@@ -60,12 +60,14 @@ internal static class ValueFormatter
     /// <summary>
     /// Escapes special characters in a string value.
     /// </summary>
+    /// <remarks>
+    /// TOON strings don't need quotes, but special characters are escaped:
+    /// - Backslash (\) - escape character itself
+    /// - Comma (,) - field separator in tabular rows
+    /// - Colon (:) at start or after whitespace - could be confused with key-value separator
+    /// </remarks>
     private static string EscapeString(string value)
     {
-        // TOON strings don't need quotes, but we need to escape:
-        // - Commas (used in tabular data)
-        // - Colons at the start (could be confused with key-value)
-        // - Leading/trailing whitespace preservation
         var sb = new StringBuilder(value.Length);
 
         for (int i = 0; i < value.Length; i++)
@@ -77,8 +79,16 @@ internal static class ValueFormatter
                     sb.Append("\\\\");
                     break;
                 case ',':
-                    // Only escape commas - they're significant in tabular rows
+                    // Commas are significant in tabular rows
                     sb.Append("\\,");
+                    break;
+                case ':':
+                    // Only escape colon if it's at the start or after whitespace
+                    // to avoid confusion with key-value separator
+                    if (i == 0 || char.IsWhiteSpace(value[i - 1]))
+                        sb.Append("\\:");
+                    else
+                        sb.Append(c);
                     break;
                 default:
                     sb.Append(c);

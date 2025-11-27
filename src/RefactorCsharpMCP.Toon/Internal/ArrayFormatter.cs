@@ -39,10 +39,8 @@ internal static class ArrayFormatter
         if (IsPrimitiveType(elementType))
             return false;
 
-        // Get public instance properties
-        properties = elementType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.CanRead && p.GetIndexParameters().Length == 0)
-            .ToArray();
+        // Get public instance properties (use shared cache)
+        properties = ToonEncoder.GetCachedProperties(elementType);
 
         // Need at least one property for tabular format
         return properties.Length > 0;
@@ -112,6 +110,13 @@ internal static class ArrayFormatter
     /// Formats a single cell value for tabular output.
     /// Handles nested objects by converting them to a compact representation.
     /// </summary>
+    /// <remarks>
+    /// For nested complex objects, only the first 3 public properties are serialized
+    /// to maintain readable cell widths in tabular output. This is an intentional
+    /// design decision to prevent excessively long rows that would degrade readability.
+    /// Full object details should be accessed via dedicated object encoding at the
+    /// top level rather than nested within table cells.
+    /// </remarks>
     private static string FormatCellValue(object? value, ToonEncoderOptions options)
     {
         if (value == null)
@@ -133,10 +138,9 @@ internal static class ArrayFormatter
             return $"[{string.Join(";", items)}]";
         }
 
-        // Complex objects in cells - serialize key properties
-        var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.CanRead && p.GetIndexParameters().Length == 0)
-            .Take(3) // Limit to avoid overly long cells
+        // Complex objects in cells - serialize key properties (use shared cache)
+        var props = ToonEncoder.GetCachedProperties(type)
+            .Take(3) // Limit to first 3 properties to avoid overly long cells
             .ToArray();
 
         if (props.Length == 0)

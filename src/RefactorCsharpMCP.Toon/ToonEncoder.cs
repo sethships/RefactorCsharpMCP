@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text;
 using RefactorCsharpMCP.Toon.Internal;
@@ -19,6 +20,12 @@ namespace RefactorCsharpMCP.Toon;
 /// </remarks>
 public class ToonEncoder : IToonEncoder
 {
+    /// <summary>
+    /// Cache for type property metadata to avoid repeated reflection calls.
+    /// Uses ConcurrentDictionary for thread-safe access.
+    /// </summary>
+    private static readonly ConcurrentDictionary<Type, PropertyInfo[]> PropertyCache = new();
+
     private readonly ToonEncoderOptions _defaultOptions;
 
     /// <summary>
@@ -94,14 +101,25 @@ public class ToonEncoder : IToonEncoder
     }
 
     /// <summary>
+    /// Gets cached property metadata for a type, avoiding repeated reflection calls.
+    /// </summary>
+    /// <param name="type">The type to get properties for.</param>
+    /// <returns>Array of readable public instance properties without indexers.</returns>
+    internal static PropertyInfo[] GetCachedProperties(Type type)
+    {
+        return PropertyCache.GetOrAdd(type, t =>
+            t.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Where(p => p.CanRead && p.GetIndexParameters().Length == 0)
+                .ToArray());
+    }
+
+    /// <summary>
     /// Encodes an object's properties to TOON format.
     /// </summary>
     private void EncodeObject(object obj, StringBuilder sb, int indent, ToonEncoderOptions options, int depth)
     {
         var type = obj.GetType();
-        var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.CanRead && p.GetIndexParameters().Length == 0)
-            .ToArray();
+        var properties = GetCachedProperties(type);
 
         if (properties.Length == 0)
         {

@@ -16,6 +16,25 @@ public static class OutputFormatConfiguration
     public const string CliArgPrefix = "--output-format";
 
     /// <summary>
+    /// JSON output format identifier (default).
+    /// </summary>
+    public const string FormatJson = "json";
+
+    /// <summary>
+    /// TOON output format identifier.
+    /// </summary>
+    public const string FormatToon = "toon";
+
+    /// <summary>
+    /// Set of valid output format values (case-insensitive comparison).
+    /// </summary>
+    private static readonly HashSet<string> ValidFormats = new(StringComparer.OrdinalIgnoreCase)
+    {
+        FormatJson,
+        FormatToon
+    };
+
+    /// <summary>
     /// Loads output format options from environment and CLI arguments.
     /// Precedence: CLI > Environment > Default (json)
     /// </summary>
@@ -37,6 +56,15 @@ public static class OutputFormatConfiguration
         if (!string.IsNullOrWhiteSpace(cliFormat))
         {
             options.Format = cliFormat;
+        }
+
+        // 3. Validate format and default to JSON if invalid
+        if (!ValidFormats.Contains(options.Format))
+        {
+            Console.Error.WriteLine(
+                $"Warning: Invalid output format '{options.Format}' specified. " +
+                $"Valid formats: {string.Join(", ", ValidFormats)}. Defaulting to '{FormatJson}'.");
+            options.Format = FormatJson;
         }
 
         return options;
