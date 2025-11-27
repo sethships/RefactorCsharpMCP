@@ -1,4 +1,5 @@
 using FluentAssertions;
+using RefactorCsharpMCP.Server.Formatting;
 using RefactorCsharpMCP.Server.Tools;
 using System.Text.Json;
 
@@ -10,7 +11,7 @@ public class RemoveUnusedUsingsToolTests
     public async Task RemoveUnusedUsings_WithUnusedUsings_ShouldAttemptRemoval()
     {
         // Arrange
-        var tool = new RemoveUnusedUsingsTool();
+        var tool = new RemoveUnusedUsingsTool(new JsonResponseFormatter());
         var sourceCode = @"using System;
 using System.Linq;  // Unused
 using System.Collections.Generic;  // Unused
@@ -51,7 +52,7 @@ public class Calculator
     public async Task RemoveUnusedUsings_WithEmptySourceCode_ShouldReturnError()
     {
         // Arrange
-        var tool = new RemoveUnusedUsingsTool();
+        var tool = new RemoveUnusedUsingsTool(new JsonResponseFormatter());
 
         // Act
         var result = await tool.RemoveUnusedUsings("", "net8.0");
@@ -68,7 +69,7 @@ public class Calculator
     public async Task RemoveUnusedUsings_WithSourceCodeExceeding1MB_ShouldReturnError()
     {
         // Arrange
-        var tool = new RemoveUnusedUsingsTool();
+        var tool = new RemoveUnusedUsingsTool(new JsonResponseFormatter());
         var largeSourceCode = new string('x', 1_000_001); // Just over 1MB
 
         // Act
@@ -86,7 +87,7 @@ public class Calculator
     public async Task RemoveUnusedUsings_WithEmptyTargetFramework_ShouldReturnError()
     {
         // Arrange
-        var tool = new RemoveUnusedUsingsTool();
+        var tool = new RemoveUnusedUsingsTool(new JsonResponseFormatter());
         var sourceCode = "using System;";
 
         // Act
@@ -104,7 +105,7 @@ public class Calculator
     public async Task RemoveUnusedUsings_WithAllUsingsUsed_ShouldPreserveUsings()
     {
         // Arrange
-        var tool = new RemoveUnusedUsingsTool();
+        var tool = new RemoveUnusedUsingsTool(new JsonResponseFormatter());
         var sourceCode = @"using System;
 using System.Linq;
 using System.Collections.Generic;
@@ -145,7 +146,7 @@ public class Calculator
     public async Task RemoveUnusedUsings_WithNet48Framework_ShouldExecute()
     {
         // Arrange
-        var tool = new RemoveUnusedUsingsTool();
+        var tool = new RemoveUnusedUsingsTool(new JsonResponseFormatter());
         var sourceCode = @"using System;
 using System.Text;  // Unused
 
@@ -182,7 +183,7 @@ public class Test
     public async Task RemoveUnusedUsings_WithNoUsings_ShouldSucceed()
     {
         // Arrange
-        var tool = new RemoveUnusedUsingsTool();
+        var tool = new RemoveUnusedUsingsTool(new JsonResponseFormatter());
         var sourceCode = @"public class Test
 {
     public void Method()
@@ -210,7 +211,7 @@ public class Test
     public async Task RemoveUnusedUsings_WithDifferentFrameworks_ShouldHandleCorrectly(string framework)
     {
         // Arrange
-        var tool = new RemoveUnusedUsingsTool();
+        var tool = new RemoveUnusedUsingsTool(new JsonResponseFormatter());
         var sourceCode = @"using System;
 
 public class Test

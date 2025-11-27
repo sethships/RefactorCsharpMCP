@@ -1,4 +1,5 @@
 using FluentAssertions;
+using RefactorCsharpMCP.Server.Formatting;
 using RefactorCsharpMCP.Server.Tools;
 using System.Text.Json;
 
@@ -10,7 +11,7 @@ public class RenameSymbolToolTests
     public async Task RenameSymbol_WithValidLocalVariable_ShouldReturnSuccessResponse()
     {
         // Arrange
-        var tool = new RenameSymbolTool();
+        var tool = new RenameSymbolTool(new JsonResponseFormatter());
         var sourceCode = @"public class Calculator
 {
     public void Calculate()
@@ -40,7 +41,7 @@ public class RenameSymbolToolTests
     public async Task RenameSymbol_WithEmptySourceCode_ShouldReturnError()
     {
         // Arrange
-        var tool = new RenameSymbolTool();
+        var tool = new RenameSymbolTool(new JsonResponseFormatter());
 
         // Act
         var result = await tool.RenameSymbol("", lineNumber: 1, columnNumber: 1, newName: "newName");
@@ -57,7 +58,7 @@ public class RenameSymbolToolTests
     public async Task RenameSymbol_WithSourceCodeExceeding1MB_ShouldReturnError()
     {
         // Arrange
-        var tool = new RenameSymbolTool();
+        var tool = new RenameSymbolTool(new JsonResponseFormatter());
         var largeSourceCode = new string('x', 1_000_001); // Just over 1MB
 
         // Act
@@ -75,7 +76,7 @@ public class RenameSymbolToolTests
     public async Task RenameSymbol_WithInvalidLineNumber_ShouldReturnError()
     {
         // Arrange
-        var tool = new RenameSymbolTool();
+        var tool = new RenameSymbolTool(new JsonResponseFormatter());
         var sourceCode = "public class Test { }";
 
         // Act - Line number 0 (invalid)
@@ -93,7 +94,7 @@ public class RenameSymbolToolTests
     public async Task RenameSymbol_WithInvalidColumnNumber_ShouldReturnError()
     {
         // Arrange
-        var tool = new RenameSymbolTool();
+        var tool = new RenameSymbolTool(new JsonResponseFormatter());
         var sourceCode = "public class Test { }";
 
         // Act - Column number 0 (invalid)
@@ -111,7 +112,7 @@ public class RenameSymbolToolTests
     public async Task RenameSymbol_WithEmptyNewName_ShouldReturnError()
     {
         // Arrange
-        var tool = new RenameSymbolTool();
+        var tool = new RenameSymbolTool(new JsonResponseFormatter());
         var sourceCode = "public class Test { private int value; }";
 
         // Act
@@ -132,7 +133,7 @@ public class RenameSymbolToolTests
     public async Task RenameSymbol_WithInvalidIdentifierName_ShouldReturnError(string invalidName)
     {
         // Arrange
-        var tool = new RenameSymbolTool();
+        var tool = new RenameSymbolTool(new JsonResponseFormatter());
         var sourceCode = "public class Test { private int value; }";
 
         // Act
@@ -150,7 +151,7 @@ public class RenameSymbolToolTests
     public async Task RenameSymbol_WithPrivateField_ShouldRenameAllReferences()
     {
         // Arrange
-        var tool = new RenameSymbolTool();
+        var tool = new RenameSymbolTool(new JsonResponseFormatter());
         var sourceCode = @"public class Service
 {
     private int _count;
@@ -192,7 +193,7 @@ public class RenameSymbolToolTests
     public async Task RenameSymbol_WithMethodParameter_ShouldRenameInMethodScope()
     {
         // Arrange
-        var tool = new RenameSymbolTool();
+        var tool = new RenameSymbolTool(new JsonResponseFormatter());
         var sourceCode = @"public class Math
 {
     public int Double(int input)
@@ -220,7 +221,7 @@ public class RenameSymbolToolTests
     public async Task RenameSymbol_WithValidUnderscorePrefixedName_ShouldSucceed()
     {
         // Arrange
-        var tool = new RenameSymbolTool();
+        var tool = new RenameSymbolTool(new JsonResponseFormatter());
         var sourceCode = "public class Test { private int value; }";
 
         // Act - Rename to underscore-prefixed name (common for private fields)

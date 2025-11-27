@@ -1,4 +1,5 @@
 using FluentAssertions;
+using RefactorCsharpMCP.Server.Formatting;
 using RefactorCsharpMCP.Server.Tools;
 using System.Text.Json;
 
@@ -10,7 +11,7 @@ public class InlineMethodToolTests
     public async Task InlineMethod_WithValidVoidMethod_ShouldReturnSuccessResponse()
     {
         // Arrange
-        var tool = new InlineMethodTool();
+        var tool = new InlineMethodTool(new JsonResponseFormatter());
         var sourceCode = @"public class Calculator
 {
     public void DisplayResult(int value)
@@ -50,7 +51,7 @@ public class InlineMethodToolTests
     public async Task InlineMethod_WithEmptySourceCode_ShouldReturnError()
     {
         // Arrange
-        var tool = new InlineMethodTool();
+        var tool = new InlineMethodTool(new JsonResponseFormatter());
 
         // Act
         var result = await tool.InlineMethod("", lineNumber: 1, columnNumber: 1);
@@ -67,7 +68,7 @@ public class InlineMethodToolTests
     public async Task InlineMethod_WithSourceCodeExceeding1MB_ShouldReturnError()
     {
         // Arrange
-        var tool = new InlineMethodTool();
+        var tool = new InlineMethodTool(new JsonResponseFormatter());
         var largeSourceCode = new string('x', 1_000_001); // Just over 1MB
 
         // Act
@@ -85,7 +86,7 @@ public class InlineMethodToolTests
     public async Task InlineMethod_WithInvalidLineNumber_ShouldReturnError()
     {
         // Arrange
-        var tool = new InlineMethodTool();
+        var tool = new InlineMethodTool(new JsonResponseFormatter());
         var sourceCode = "public class Test { }";
 
         // Act - Line number 0 (invalid)
@@ -103,7 +104,7 @@ public class InlineMethodToolTests
     public async Task InlineMethod_WithLineNumberTooLarge_ShouldReturnError()
     {
         // Arrange
-        var tool = new InlineMethodTool();
+        var tool = new InlineMethodTool(new JsonResponseFormatter());
         var sourceCode = "public class Test { }";
 
         // Act - Line number > 100000
@@ -121,7 +122,7 @@ public class InlineMethodToolTests
     public async Task InlineMethod_WithInvalidColumnNumber_ShouldReturnError()
     {
         // Arrange
-        var tool = new InlineMethodTool();
+        var tool = new InlineMethodTool(new JsonResponseFormatter());
         var sourceCode = "public class Test { }";
 
         // Act - Column number 0 (invalid)
@@ -139,7 +140,7 @@ public class InlineMethodToolTests
     public async Task InlineMethod_WithEmptyTargetFramework_ShouldReturnError()
     {
         // Arrange
-        var tool = new InlineMethodTool();
+        var tool = new InlineMethodTool(new JsonResponseFormatter());
         var sourceCode = "public class Test { }";
 
         // Act
@@ -157,7 +158,7 @@ public class InlineMethodToolTests
     public async Task InlineMethod_WithNet48Framework_ShouldRespectFrameworkValidation()
     {
         // Arrange
-        var tool = new InlineMethodTool();
+        var tool = new InlineMethodTool(new JsonResponseFormatter());
         var sourceCode = @"public class Calculator
 {
     public void Compute()
@@ -195,7 +196,7 @@ public class InlineMethodToolTests
     public async Task InlineMethod_WithMultipleCallSites_ShouldHandlePartialSupport()
     {
         // Arrange
-        var tool = new InlineMethodTool();
+        var tool = new InlineMethodTool(new JsonResponseFormatter());
         var sourceCode = @"public class Math
 {
     public void Process()

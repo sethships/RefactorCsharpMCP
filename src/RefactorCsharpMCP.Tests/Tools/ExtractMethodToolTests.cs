@@ -1,4 +1,5 @@
 using FluentAssertions;
+using RefactorCsharpMCP.Server.Formatting;
 using RefactorCsharpMCP.Server.Tools;
 using System.Text.Json;
 
@@ -10,7 +11,7 @@ public class ExtractMethodToolTests
     public async Task ExtractMethod_WithValidInput_ShouldReturnSuccessResponse()
     {
         // Arrange
-        var tool = new ExtractMethodTool();
+        var tool = new ExtractMethodTool(new JsonResponseFormatter());
         var sourceCode = @"public class TestClass
 {
     public void Method()
@@ -38,7 +39,7 @@ public class ExtractMethodToolTests
     public async Task ExtractMethod_WithInvalidInput_ShouldReturnErrorResponse()
     {
         // Arrange
-        var tool = new ExtractMethodTool();
+        var tool = new ExtractMethodTool(new JsonResponseFormatter());
 
         // Act
         var result = await tool.ExtractMethod("", 1, 2, "TestMethod");
@@ -56,7 +57,7 @@ public class ExtractMethodToolTests
     public async Task ExtractMethod_WithInvalidLineRange_ShouldReturnErrorResponse()
     {
         // Arrange
-        var tool = new ExtractMethodTool();
+        var tool = new ExtractMethodTool(new JsonResponseFormatter());
         var sourceCode = "public class Test { }";
 
         // Act

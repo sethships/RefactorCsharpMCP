@@ -5,6 +5,7 @@ using RefactorCsharpMCP.Core.Refactorings;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using RefactorCsharpMCP.Core.Validation;
+using RefactorCsharpMCP.Server.Formatting;
 
 namespace RefactorCsharpMCP.Server.Tools;
 
@@ -14,6 +15,16 @@ namespace RefactorCsharpMCP.Server.Tools;
 [McpServerToolType]
 public class FixDiagnosticTool
 {
+    private readonly IResponseFormatter _formatter;
+
+    /// <summary>
+    /// Creates a new FixDiagnosticTool with the specified response formatter.
+    /// </summary>
+    public FixDiagnosticTool(IResponseFormatter formatter)
+    {
+        _formatter = formatter;
+    }
+
     /// <summary>
     /// Automatically fixes a specific Roslyn diagnostic by applying the appropriate refactoring.
     /// </summary>
@@ -39,29 +50,29 @@ public class FixDiagnosticTool
 
         if (validation != null)
         {
-            return validation;
+            return _formatter.Format(validation);
         }
 
         // Validate diagnostic ID (tool-specific validation)
         if (string.IsNullOrWhiteSpace(diagnosticId))
         {
-            return new
+            return _formatter.Format(new
             {
                 success = false,
                 error = "Diagnostic ID cannot be empty",
                 message = "Fix failed: Diagnostic ID cannot be empty"
-            };
+            });
         }
 
         // Validate diagnostic ID pattern
         if (!IsValidDiagnosticIdPattern(diagnosticId, out var validationError))
         {
-            return new
+            return _formatter.Format(new
             {
                 success = false,
                 error = validationError,
                 message = $"Fix failed: {validationError}"
-            };
+            });
         }
 
         // Dispatch to appropriate refactoring based on diagnostic ID
@@ -90,35 +101,35 @@ public class FixDiagnosticTool
             // Return result
             if (result.IsSuccess)
             {
-                return new
+                return _formatter.Format(new
                 {
                     success = true,
                     message = result.Message,
                     refactoredCode = result.RefactoredCode,
                     diagnosticId = diagnosticId,
                     appliedRefactoring = GetRefactoringName(diagnosticId)
-                };
+                });
             }
             else
             {
-                return new
+                return _formatter.Format(new
                 {
                     success = false,
                     message = result.Message,
                     error = result.ErrorMessage,
                     diagnosticId = diagnosticId
-                };
+                });
             }
         }
         catch (Exception ex)
         {
-            return new
+            return _formatter.Format(new
             {
                 success = false,
                 message = $"Unexpected error applying fix for {diagnosticId}: {ex.Message}",
                 error = ex.Message,
                 diagnosticId = diagnosticId
-            };
+            });
         }
     }
 

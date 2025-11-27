@@ -1,4 +1,5 @@
 using FluentAssertions;
+using RefactorCsharpMCP.Server.Formatting;
 using RefactorCsharpMCP.Server.Tools;
 using System.Text.Json;
 
@@ -10,7 +11,7 @@ public class AnalyzeCodeToolTests
     public async Task AnalyzeCode_WithValidInput_ShouldReturnSuccessResponse()
     {
         // Arrange
-        var tool = new AnalyzeCodeTool();
+        var tool = new AnalyzeCodeTool(new JsonResponseFormatter());
         var sourceCode = @"
 using System;
 
@@ -38,7 +39,7 @@ public class Test
     public async Task AnalyzeCode_WithEmptySourceCode_ShouldReturnError()
     {
         // Arrange
-        var tool = new AnalyzeCodeTool();
+        var tool = new AnalyzeCodeTool(new JsonResponseFormatter());
 
         // Act
         var result = await tool.AnalyzeCode("", "net8.0");
@@ -55,7 +56,7 @@ public class Test
     public async Task AnalyzeCode_WithEmptyFramework_ShouldReturnError()
     {
         // Arrange
-        var tool = new AnalyzeCodeTool();
+        var tool = new AnalyzeCodeTool(new JsonResponseFormatter());
         var sourceCode = "public class Test { }";
 
         // Act
@@ -73,7 +74,7 @@ public class Test
     public async Task AnalyzeCode_WithSyntaxErrors_ShouldReturnErrorDiagnostics()
     {
         // Arrange
-        var tool = new AnalyzeCodeTool();
+        var tool = new AnalyzeCodeTool(new JsonResponseFormatter());
         var sourceCode = @"
 public class Test
 {
@@ -100,7 +101,7 @@ public class Test
     public async Task AnalyzeCode_WithSeverityFilter_ShouldFilterByLevel()
     {
         // Arrange
-        var tool = new AnalyzeCodeTool();
+        var tool = new AnalyzeCodeTool(new JsonResponseFormatter());
         var sourceCode = @"
 using System;
 
@@ -130,7 +131,7 @@ public class Test
     public async Task AnalyzeCode_DiagnosticStructure_ShouldContainAllFields()
     {
         // Arrange
-        var tool = new AnalyzeCodeTool();
+        var tool = new AnalyzeCodeTool(new JsonResponseFormatter());
         var sourceCode = @"
 public class Test
 {
@@ -165,7 +166,7 @@ public class Test
     public async Task AnalyzeCode_SummaryStructure_ShouldContainAllCounts()
     {
         // Arrange
-        var tool = new AnalyzeCodeTool();
+        var tool = new AnalyzeCodeTool(new JsonResponseFormatter());
         var sourceCode = @"
 using System;
 
@@ -196,7 +197,7 @@ public class Test
     public async Task AnalyzeCode_WithLargeSourceCode_ShouldReturnError()
     {
         // Arrange
-        var tool = new AnalyzeCodeTool();
+        var tool = new AnalyzeCodeTool(new JsonResponseFormatter());
         var largeSource = new string('x', 2 * 1024 * 1024); // > 1MB
 
         // Act
@@ -218,7 +219,7 @@ public class Test
     public async Task AnalyzeCode_WithSupportedFrameworks_ShouldSucceed(string framework)
     {
         // Arrange
-        var tool = new AnalyzeCodeTool();
+        var tool = new AnalyzeCodeTool(new JsonResponseFormatter());
         var sourceCode = @"
 using System;
 

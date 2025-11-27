@@ -1,4 +1,5 @@
 using FluentAssertions;
+using RefactorCsharpMCP.Server.Formatting;
 using RefactorCsharpMCP.Server.Tools;
 using System.Text.Json;
 
@@ -10,7 +11,7 @@ public class ConstructorInjectionToolTests
     public async Task ConstructorInjection_WithValidInput_ShouldReturnSuccessResponse()
     {
         // Arrange
-        var tool = new ConstructorInjectionTool();
+        var tool = new ConstructorInjectionTool(new JsonResponseFormatter());
         var sourceCode = @"public class UserService
 {
     public void CreateUser(ILogger logger, string username)
@@ -36,7 +37,7 @@ public class ConstructorInjectionToolTests
     public async Task ConstructorInjection_WithMultipleParameters_ShouldParseCommaSeparated()
     {
         // Arrange
-        var tool = new ConstructorInjectionTool();
+        var tool = new ConstructorInjectionTool(new JsonResponseFormatter());
         var sourceCode = @"public class DataService
 {
     public void Process(ILogger logger, IConfig config, string data)
@@ -66,7 +67,7 @@ public class ConstructorInjectionToolTests
     public async Task ConstructorInjection_WithProperties_ShouldIndicatePropertyInjection()
     {
         // Arrange
-        var tool = new ConstructorInjectionTool();
+        var tool = new ConstructorInjectionTool(new JsonResponseFormatter());
         var sourceCode = @"public class Service
 {
     public void Execute(ILogger logger)
@@ -92,7 +93,7 @@ public class ConstructorInjectionToolTests
     public async Task ConstructorInjection_WithInvalidInput_ShouldReturnErrorResponse()
     {
         // Arrange
-        var tool = new ConstructorInjectionTool();
+        var tool = new ConstructorInjectionTool(new JsonResponseFormatter());
 
         // Act
         var result = await tool.ConstructorInjection("", "TestClass", "TestMethod", "param", false);
@@ -110,7 +111,7 @@ public class ConstructorInjectionToolTests
     public async Task ConstructorInjection_WithSemicolonSeparator_ShouldParseParameters()
     {
         // Arrange
-        var tool = new ConstructorInjectionTool();
+        var tool = new ConstructorInjectionTool(new JsonResponseFormatter());
         var sourceCode = @"public class TestService
 {
     public void Method(ILogger logger, IConfig config)

@@ -1,4 +1,5 @@
 using FluentAssertions;
+using RefactorCsharpMCP.Server.Formatting;
 using RefactorCsharpMCP.Server.Tools;
 using System.Text.Json;
 
@@ -10,7 +11,7 @@ public class MakeFieldReadonlyToolTests
     public async Task MakeFieldReadonly_WithValidInput_ShouldReturnSuccessResponse()
     {
         // Arrange
-        var tool = new MakeFieldReadonlyTool();
+        var tool = new MakeFieldReadonlyTool(new JsonResponseFormatter());
         var sourceCode = @"public class Service
 {
     private ILogger _logger;
@@ -36,7 +37,7 @@ public class MakeFieldReadonlyToolTests
     public async Task MakeFieldReadonly_WithInvalidClassName_ShouldReturnError()
     {
         // Arrange
-        var tool = new MakeFieldReadonlyTool();
+        var tool = new MakeFieldReadonlyTool(new JsonResponseFormatter());
         var sourceCode = "public class Test { }";
 
         // Act
@@ -54,7 +55,7 @@ public class MakeFieldReadonlyToolTests
     public async Task MakeFieldReadonly_WithEmptySourceCode_ShouldReturnError()
     {
         // Arrange
-        var tool = new MakeFieldReadonlyTool();
+        var tool = new MakeFieldReadonlyTool(new JsonResponseFormatter());
 
         // Act
         var result = await tool.MakeFieldReadonly("", "Test", "_field");
@@ -71,7 +72,7 @@ public class MakeFieldReadonlyToolTests
     public async Task MakeFieldReadonly_WithFieldAssignedInMethod_ShouldReturnError()
     {
         // Arrange
-        var tool = new MakeFieldReadonlyTool();
+        var tool = new MakeFieldReadonlyTool(new JsonResponseFormatter());
         var sourceCode = @"public class Counter
 {
     private int _value;

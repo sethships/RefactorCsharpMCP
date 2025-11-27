@@ -21,10 +21,11 @@ RefactorCsharpMCP enables AI-assisted refactoring of C# code through the Model C
 ### Key Features
 
 - **Framework-Aware Refactoring (v1.0)**: Ensures refactored code matches your target framework's C# language version (13 supported frameworks: net9.0, net8.0, .NET Framework 4.x, .NET Standard)
+- **TOON Format Support**: Token-Oriented Object Notation for 30-60% token reduction in LLM interactions
 - **Roslyn-Based Refactoring**: Leverages Microsoft's Roslyn for accurate C# code analysis and transformation
 - **MCP Protocol Support**: Standard stdio transport for AI client integration
 - **Docker Desktop MCP Toolkit Compatible**: One-click deployment from Docker Desktop
-- **Comprehensive Testing**: 1063 tests (1045 passing, 98.3% pass rate) including 388+ framework compatibility tests
+- **Comprehensive Testing**: 1367 tests (1342 passing, 98.2% pass rate) including 388+ framework compatibility tests
 - **Diagnostic Integration (v1.5)**: Analyze code with 500+ Roslyn diagnostic rules and automatically fix issues
 
 ## Technology Stack
@@ -138,6 +139,45 @@ dotnet run --project src/RefactorCsharpMCP.Server
 ```
 
 The server will start and listen for MCP requests via stdio transport.
+
+### Output Format Configuration
+
+RefactorCsharpMCP supports two output formats for MCP tool responses:
+
+#### JSON (Default)
+Standard JSON output, compatible with all MCP clients:
+```bash
+# No configuration needed - JSON is the default
+dotnet run --project src/RefactorCsharpMCP.Server
+```
+
+#### TOON (Token-Oriented Object Notation)
+Compact format optimized for LLM interactions, achieving 30-60% token reduction:
+```bash
+# Enable via environment variable
+export REFACTOR_CSHARP_OUTPUT_FORMAT=toon
+dotnet run --project src/RefactorCsharpMCP.Server
+
+# Windows PowerShell
+$env:REFACTOR_CSHARP_OUTPUT_FORMAT = "toon"
+dotnet run --project src/RefactorCsharpMCP.Server
+
+# Windows CMD
+set REFACTOR_CSHARP_OUTPUT_FORMAT=toon
+dotnet run --project src/RefactorCsharpMCP.Server
+```
+
+**TOON Format Features:**
+- **Unquoted strings**: Removes unnecessary quotes for simple values
+- **Tabular arrays**: Renders object arrays in efficient table format
+- **Base64 multiline**: Encodes multi-line strings as `base64:...` for compact representation
+- **Indentation control**: Configurable indentation for nested structures
+- **CamelCase conversion**: Optional property name transformation
+
+**Docker with TOON:**
+```bash
+docker run --rm -i -e REFACTOR_CSHARP_OUTPUT_FORMAT=toon refactor-csharp-mcp:latest
+```
 
 ### Docker Deployment
 
@@ -914,8 +954,9 @@ Part of the DevTools repository by Seth.
 
 **Status**: v1.0 Release - Framework Version Awareness ✅
 **Version**: 1.0.0
-**Tests**: 1063 tests (1045 passing, 98.3% pass rate) including 388+ framework compatibility tests
+**Tests**: 1367 tests (1342 passing, 98.2% pass rate) including 388+ framework compatibility tests
 **Frameworks**: 13 supported (Modern .NET, .NET Framework, .NET Standard)
 **Docker**: Multi-stage build, SHA256 pinned, HEALTHCHECK enabled, SBOM generation
 **Performance**: Compiled regex validation, ReDoS protection, three-tier reference assembly caching
+**Output Formats**: JSON (default), TOON (30-60% token reduction for LLM interactions)
 **Documentation**: Framework Support Guide, Technical Specification, Comprehensive Examples
