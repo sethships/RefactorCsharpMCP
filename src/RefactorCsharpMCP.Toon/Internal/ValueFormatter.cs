@@ -32,10 +32,18 @@ internal static class ValueFormatter
     /// <summary>
     /// Formats a string value, applying Base64 encoding for multi-line strings if enabled.
     /// </summary>
+    /// <remarks>
+    /// Empty strings return empty output. This is an intentional design decision for TOON format
+    /// to minimize token usage. Consumers should treat empty output as an empty string value,
+    /// distinct from null which is explicitly encoded as "null".
+    /// </remarks>
     public static string FormatString(string value, ToonEncoderOptions options)
     {
         if (string.IsNullOrEmpty(value))
             return string.Empty;
+
+        // Defensive null check for internal usage
+        options ??= ToonEncoderOptions.Default;
 
         // Check if multi-line and Base64 encoding is enabled
         if (options.Base64EncodeMultilineStrings && ContainsNewline(value))
@@ -118,7 +126,8 @@ internal static class ValueFormatter
     /// </summary>
     public static string FormatPropertyName(string name, ToonEncoderOptions options)
     {
-        if (!options.UseCamelCase || string.IsNullOrEmpty(name))
+        // Defensive null check - return name unchanged if options is null
+        if (options == null || !options.UseCamelCase || string.IsNullOrEmpty(name))
             return name;
 
         // Already lowercase first char

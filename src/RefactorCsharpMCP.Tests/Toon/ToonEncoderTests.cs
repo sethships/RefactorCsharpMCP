@@ -449,6 +449,111 @@ public class ToonEncoderTests
         results.All(r => r.Contains("id:") && r.Contains("name:")).Should().BeTrue();
     }
 
+    [Fact]
+    public void Encode_ConcurrentAccess_CacheConsistency()
+    {
+        // Arrange - Test that cached PropertyInfo[] is consistent across concurrent accesses
+        var encoder = new ToonEncoder();
+        var sameTypeObjects = Enumerable.Range(1, 50)
+            .Select(i => new { id = i, name = $"item{i}", value = i * 10 })
+            .ToArray();
+
+        // Act - Encode the same type from multiple threads to stress the cache
+        var results = new System.Collections.Concurrent.ConcurrentBag<string>();
+        var exceptions = new System.Collections.Concurrent.ConcurrentBag<Exception>();
+
+        Parallel.ForEach(sameTypeObjects, new ParallelOptions { MaxDegreeOfParallelism = 10 }, obj =>
+        {
+            try
+            {
+                // Multiple encodes of the same object type to hit the cache
+                for (int i = 0; i < 5; i++)
+                {
+                    var result = encoder.Encode(obj);
+                    results.Add(result);
+                }
+            }
+            catch (Exception ex)
+            {
+                exceptions.Add(ex);
+            }
+        });
+
+        // Assert - No exceptions and all results are valid
+        exceptions.Should().BeEmpty("cache access should be thread-safe");
+        results.Should().HaveCount(250); // 50 objects * 5 encodes each
+        // Verify all results have consistent structure (same properties in same order)
+        var distinctStructures = results.Select(r =>
+        {
+            var hasId = r.Contains("id:");
+            var hasName = r.Contains("name:");
+            var hasValue = r.Contains("value:");
+            return $"{hasId}-{hasName}-{hasValue}";
+        }).Distinct().ToList();
+        distinctStructures.Should().HaveCount(1, "all encodings should have consistent property structure");
+    }
+
+    [Fact]
+    public void Encode_StringWithBackslash_EscapesBackslash()
+    {
+        // Arrange - Windows file path with backslashes
+        var value = @"C:\path\to\file";
+
+        // Act
+        var result = _encoder.Encode(value);
+
+        // Assert
+        // Backslashes should be escaped to avoid parsing issues
+        result.Should().Be(@"C:\\path\\to\\file");
+    }
+
+    [Fact]
+    public void Encode_StringWithComma_EscapesComma()
+    {
+        // Arrange - String containing commas (significant in tabular rows)
+        var value = "value1,value2,value3";
+
+        // Act
+        var result = _encoder.Encode(value);
+
+        // Assert
+        // Commas should be escaped to avoid confusion with field separators
+        result.Should().Be(@"value1\,value2\,value3");
+    }
+
+    [Fact]
+    public void Encode_NullableValueType_HandledCorrectly()
+    {
+        // Arrange - Object with nullable value types
+        var obj = new { count = (int?)42, missing = (int?)null, flag = (bool?)true };
+
+        // Act
+        var result = _encoder.Encode(obj);
+
+        // Assert
+        result.Should().Contain("count:");
+        result.Should().Contain("42");
+        result.Should().Contain("flag:");
+        result.Should().Contain("true");
+        // null properties at top level are skipped
+    }
+
+    [Fact]
+    public void Encode_StringWithMultipleEscapeCharacters_EscapesAll()
+    {
+        // Arrange - String with multiple special characters
+        var value = @"path\to\file, key :value";
+
+        // Act
+        var result = _encoder.Encode(value);
+
+        // Assert
+        // Should escape: backslash, comma, and colon after space
+        result.Should().Contain(@"path\\to\\file");
+        result.Should().Contain(@"\,");
+        result.Should().Contain(@"\:");
+    }
+
     #endregion
 
     #region Configuration Tests

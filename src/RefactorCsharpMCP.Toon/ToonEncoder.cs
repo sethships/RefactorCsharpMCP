@@ -24,6 +24,16 @@ public class ToonEncoder : IToonEncoder
     /// Cache for type property metadata to avoid repeated reflection calls.
     /// Uses ConcurrentDictionary for thread-safe access.
     /// </summary>
+    /// <remarks>
+    /// Design Note: This cache uses ConcurrentDictionary rather than ConditionalWeakTable because:
+    /// 1. Type objects from loaded assemblies are typically never garbage collected
+    /// 2. MCP server usage involves relatively static types (tool responses, configuration objects)
+    /// 3. The memory footprint per cached type is minimal (just PropertyInfo[] references)
+    /// 4. ConditionalWeakTable would only help with dynamically generated types (Reflection.Emit),
+    ///    which are not expected in typical MCP tool response scenarios.
+    /// For applications with heavy dynamic type generation, consider implementing a cache
+    /// size limit or using a time-based eviction strategy.
+    /// </remarks>
     private static readonly ConcurrentDictionary<Type, PropertyInfo[]> PropertyCache = new();
 
     private readonly ToonEncoderOptions _defaultOptions;
