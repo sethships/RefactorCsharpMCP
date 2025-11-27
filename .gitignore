@@ -159,5 +159,3 @@ sbom-output/
 app/
 publish/
 
-# Test harness temporary output
-TestBug118/refactored-output.cs
