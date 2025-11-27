@@ -3,6 +3,7 @@ using System.ComponentModel;
 using ModelContextProtocol.Server;
 using RefactorCsharpMCP.Core.Refactorings;
 using RefactorCsharpMCP.Core.Validation;
+using RefactorCsharpMCP.Server.Formatting;
 
 namespace RefactorCsharpMCP.Server.Tools;
 
@@ -12,6 +13,16 @@ namespace RefactorCsharpMCP.Server.Tools;
 [McpServerToolType]
 public class ExtractMethodTool
 {
+    private readonly IResponseFormatter _formatter;
+
+    /// <summary>
+    /// Creates a new ExtractMethodTool with the specified response formatter.
+    /// </summary>
+    public ExtractMethodTool(IResponseFormatter formatter)
+    {
+        _formatter = formatter;
+    }
+
     /// <summary>
     /// Extracts the specified lines of code into a new method.
     /// </summary>
@@ -38,7 +49,7 @@ public class ExtractMethodTool
 
         if (validation != null)
         {
-            return Task.FromResult<object>(validation);
+            return Task.FromResult(_formatter.Format(validation));
         }
 
         // Validate line range using shared validator first
@@ -46,18 +57,18 @@ public class ExtractMethodTool
                            ?? ToolInputValidator.ValidateLineNumber(endLine, "Refactoring", 1, 100_000);
         if (lineValidation != null)
         {
-            return Task.FromResult<object>(lineValidation);
+            return Task.FromResult(_formatter.Format(lineValidation));
         }
 
         // Additional range validation (tool-specific)
         if (startLine > endLine)
         {
-            return Task.FromResult<object>(new
+            return Task.FromResult(_formatter.Format(new
             {
                 success = false,
                 error = "Start line must be less than or equal to end line",
                 message = $"Refactoring failed: Start line {startLine} is greater than end line {endLine}"
-            });
+            }));
         }
 
         // Execute the refactoring
@@ -67,21 +78,21 @@ public class ExtractMethodTool
         // Return result as an object that MCP can serialize
         if (result.IsSuccess)
         {
-            return Task.FromResult<object>(new
+            return Task.FromResult(_formatter.Format(new
             {
                 success = true,
                 message = result.Message,
                 refactoredCode = result.RefactoredCode
-            });
+            }));
         }
         else
         {
-            return Task.FromResult<object>(new
+            return Task.FromResult(_formatter.Format(new
             {
                 success = false,
                 message = result.Message,
                 error = result.ErrorMessage
-            });
+            }));
         }
     }
 }

@@ -4,6 +4,7 @@ using ModelContextProtocol.Server;
 using RefactorCsharpMCP.Core.Diagnostics;
 using Microsoft.CodeAnalysis;
 using RefactorCsharpMCP.Core.Validation;
+using RefactorCsharpMCP.Server.Formatting;
 
 namespace RefactorCsharpMCP.Server.Tools;
 
@@ -14,13 +15,15 @@ namespace RefactorCsharpMCP.Server.Tools;
 public class AnalyzeCodeTool
 {
     private readonly DiagnosticAnalyzer _analyzer;
+    private readonly IResponseFormatter _formatter;
 
     /// <summary>
-    /// Creates a new AnalyzeCodeTool instance.
+    /// Creates a new AnalyzeCodeTool with the specified response formatter.
     /// </summary>
-    public AnalyzeCodeTool()
+    public AnalyzeCodeTool(IResponseFormatter formatter)
     {
         _analyzer = new DiagnosticAnalyzer();
+        _formatter = formatter;
     }
 
     /// <summary>
@@ -45,7 +48,7 @@ public class AnalyzeCodeTool
 
         if (validation != null)
         {
-            return validation;
+            return _formatter.Format(validation);
         }
 
         // Parse severity level
@@ -57,7 +60,7 @@ public class AnalyzeCodeTool
         // Return result as an object that MCP can serialize
         if (result.Success)
         {
-            return new
+            return _formatter.Format(new
             {
                 success = true,
                 diagnostics = result.Diagnostics.Select(d => new
@@ -86,16 +89,16 @@ public class AnalyzeCodeTool
                          $"{result.Summary.ErrorCount} error(s), " +
                          $"{result.Summary.WarningCount} warning(s), " +
                          $"{result.Summary.InfoCount} info(s)"
-            };
+            });
         }
         else
         {
-            return new
+            return _formatter.Format(new
             {
                 success = false,
                 message = result.ErrorMessage,
                 error = result.ErrorMessage
-            };
+            });
         }
     }
 

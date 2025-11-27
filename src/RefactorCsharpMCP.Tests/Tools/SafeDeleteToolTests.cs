@@ -1,4 +1,5 @@
 using FluentAssertions;
+using RefactorCsharpMCP.Server.Formatting;
 using RefactorCsharpMCP.Server.Tools;
 using System.Text.Json;
 
@@ -10,7 +11,7 @@ public class SafeDeleteToolTests
     public async Task SafeDeleteMethod_WithValidInput_ShouldReturnSuccessResponse()
     {
         // Arrange
-        var tool = new SafeDeleteTool();
+        var tool = new SafeDeleteTool(new JsonResponseFormatter());
         var sourceCode = @"public class Service
 {
     private void UnusedHelper()
@@ -39,7 +40,7 @@ public class SafeDeleteToolTests
     public async Task SafeDeleteMethod_WithInvalidClassName_ShouldReturnError()
     {
         // Arrange
-        var tool = new SafeDeleteTool();
+        var tool = new SafeDeleteTool(new JsonResponseFormatter());
         var sourceCode = "public class Test { }";
 
         // Act
@@ -57,7 +58,7 @@ public class SafeDeleteToolTests
     public async Task SafeDeleteMethod_WithEmptySourceCode_ShouldReturnError()
     {
         // Arrange
-        var tool = new SafeDeleteTool();
+        var tool = new SafeDeleteTool(new JsonResponseFormatter());
 
         // Act
         var result = await tool.SafeDeleteMethod("", "Test", "method");
@@ -74,7 +75,7 @@ public class SafeDeleteToolTests
     public async Task SafeDeleteMethod_WithReferencedMethod_ShouldReturnError()
     {
         // Arrange
-        var tool = new SafeDeleteTool();
+        var tool = new SafeDeleteTool(new JsonResponseFormatter());
         var sourceCode = @"public class Calculator
 {
     public int Add(int a, int b)

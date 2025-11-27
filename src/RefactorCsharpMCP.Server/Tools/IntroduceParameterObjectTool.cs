@@ -3,6 +3,7 @@ using System.ComponentModel;
 using ModelContextProtocol.Server;
 using RefactorCsharpMCP.Core.Refactorings;
 using RefactorCsharpMCP.Core.Validation;
+using RefactorCsharpMCP.Server.Formatting;
 
 namespace RefactorCsharpMCP.Server.Tools;
 
@@ -12,6 +13,16 @@ namespace RefactorCsharpMCP.Server.Tools;
 [McpServerToolType]
 public class IntroduceParameterObjectTool
 {
+    private readonly IResponseFormatter _formatter;
+
+    /// <summary>
+    /// Creates a new IntroduceParameterObjectTool with the specified response formatter.
+    /// </summary>
+    public IntroduceParameterObjectTool(IResponseFormatter formatter)
+    {
+        _formatter = formatter;
+    }
+
     /// <summary>
     /// Replaces a group of method parameters with a parameter object.
     /// Generates framework-aware parameter objects (record for .NET 8+, class for .NET Framework 4.8).
@@ -43,7 +54,7 @@ public class IntroduceParameterObjectTool
 
         if (validation != null)
         {
-            return Task.FromResult<object>(validation);
+            return Task.FromResult(_formatter.Format(validation));
         }
 
         // Parse parameter names
@@ -54,12 +65,12 @@ public class IntroduceParameterObjectTool
 
         if (paramNames.Length == 0 || paramNames.Length > 20)
         {
-            return Task.FromResult<object>(new
+            return Task.FromResult(_formatter.Format(new
             {
                 success = false,
                 error = "Must specify between 1 and 20 parameters",
                 message = "Refactoring failed: Must specify between 1 and 20 parameters"
-            });
+            }));
         }
 
         // Execute the refactoring
@@ -69,7 +80,7 @@ public class IntroduceParameterObjectTool
         // Return result as an object that MCP can serialize
         if (result.IsSuccess)
         {
-            return Task.FromResult<object>(new
+            return Task.FromResult(_formatter.Format(new
             {
                 success = true,
                 message = result.Message,
@@ -77,16 +88,16 @@ public class IntroduceParameterObjectTool
                 parameterObjectClassName = newClassName,
                 groupedParameters = paramNames,
                 targetFramework = targetFramework
-            });
+            }));
         }
         else
         {
-            return Task.FromResult<object>(new
+            return Task.FromResult(_formatter.Format(new
             {
                 success = false,
                 message = result.Message,
                 error = result.ErrorMessage
-            });
+            }));
         }
     }
 }

@@ -10,12 +10,19 @@ RefactorCsharpMCP is a Model Context Protocol (MCP) server providing Roslyn-base
 
 ## Architecture
 
-The project is organized into three main components:
+The project is organized into four main components:
 
 - **RefactorCsharpMCP.Server**: MCP server with stdio transport, implements MCP tools for refactoring operations
   - **Utilities**: Shared validation helpers (`ToolInputValidator`) consolidating input validation across all 11 MCP tools (Sprint 5, Issue #92)
+  - **Configuration**: Output format configuration (`OutputFormatOptions`, `OutputFormatConfiguration`)
+  - **Formatting**: Response formatter abstraction (`IResponseFormatter`, `JsonResponseFormatter`, `ToonResponseFormatter`)
 - **RefactorCsharpMCP.Core**: Core refactoring logic using Roslyn, analysis utilities, and refactoring algorithms
-- **RefactorCsharpMCP.Tests**: Comprehensive test suite with 1063 tests covering unit, component, and integration testing (1045 passing, 98.3%)
+- **RefactorCsharpMCP.Toon**: Token-Oriented Object Notation (TOON) encoder library for compact LLM-optimized output
+  - **IToonEncoder**: Interface for encoding objects to TOON format
+  - **ToonEncoder**: Core encoding implementation with configurable options
+  - **ToonEncoderOptions**: Configuration for Base64 encoding, indentation, camelCase, max depth
+  - **Internal**: ValueFormatter (escaping, Base64), ArrayFormatter (tabular format)
+- **RefactorCsharpMCP.Tests**: Comprehensive test suite with 1367 tests covering unit, component, and integration testing (1342 passing, 98.2%)
 
 ### Shared Refactoring Infrastructure
 

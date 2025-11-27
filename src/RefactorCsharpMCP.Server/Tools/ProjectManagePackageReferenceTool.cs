@@ -3,6 +3,7 @@ using RefactorCsharpMCP.Core.ProjectFiles.Refactorings;
 using RefactorCsharpMCP.Core.Validation;
 using System.ComponentModel;
 using ModelContextProtocol.Server;
+using RefactorCsharpMCP.Server.Formatting;
 
 namespace RefactorCsharpMCP.Server.Tools;
 
@@ -13,6 +14,16 @@ namespace RefactorCsharpMCP.Server.Tools;
 [McpServerToolType]
 public class ProjectManagePackageReferenceTool
 {
+    private readonly IResponseFormatter _formatter;
+
+    /// <summary>
+    /// Creates a new ProjectManagePackageReferenceTool with the specified response formatter.
+    /// </summary>
+    public ProjectManagePackageReferenceTool(IResponseFormatter formatter)
+    {
+        _formatter = formatter;
+    }
+
     /// <summary>
     /// Manages a NuGet package reference in a project or solution.
     /// </summary>
@@ -43,18 +54,18 @@ public class ProjectManagePackageReferenceTool
 
         if (validation != null)
         {
-            return validation;
+            return _formatter.Format(validation);
         }
 
         // Validate project path exists
         if (!File.Exists(projectPath) && !Directory.Exists(projectPath))
         {
-            return new
+            return _formatter.Format(new
             {
                 success = false,
                 error = $"Project path not found: {projectPath}",
                 message = $"Package Management failed: Project path not found"
-            };
+            });
         }
 
         // Parse operation
@@ -71,24 +82,24 @@ public class ProjectManagePackageReferenceTool
         }
         catch (ArgumentException ex)
         {
-            return new
+            return _formatter.Format(new
             {
                 success = false,
                 error = ex.Message,
                 message = "Package Management failed: Invalid operation"
-            };
+            });
         }
 
         // Validate version is provided for add/update operations
         if ((packageOperation == PackageOperation.Add || packageOperation == PackageOperation.Update)
             && string.IsNullOrWhiteSpace(version))
         {
-            return new
+            return _formatter.Format(new
             {
                 success = false,
                 error = $"Version is required for {operation} operation",
                 message = $"Package Management failed: Version required for {operation}"
-            };
+            });
         }
 
         // Create options
@@ -118,7 +129,7 @@ public class ProjectManagePackageReferenceTool
             // Return result
             if (result.IsSuccess)
             {
-                return new
+                return _formatter.Format(new
                 {
                     success = true,
                     message = result.Message,
@@ -127,30 +138,30 @@ public class ProjectManagePackageReferenceTool
                     version = version,
                     dryRun = dryRun,
                     buildValidated = validateBuild && !dryRun
-                };
+                });
             }
             else
             {
-                return new
+                return _formatter.Format(new
                 {
                     success = false,
                     error = result.Message,
                     message = $"Package Management failed: {result.Message}",
                     operation = operation,
                     packageId = packageId
-                };
+                });
             }
         }
         catch (Exception ex)
         {
-            return new
+            return _formatter.Format(new
             {
                 success = false,
                 error = ex.Message,
                 message = $"Package Management failed with exception: {ex.Message}",
                 operation = operation,
                 packageId = packageId
-            };
+            });
         }
     }
 }

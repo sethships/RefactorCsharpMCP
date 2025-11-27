@@ -3,6 +3,7 @@ using System.ComponentModel;
 using ModelContextProtocol.Server;
 using RefactorCsharpMCP.Core.Refactorings;
 using RefactorCsharpMCP.Core.Validation;
+using RefactorCsharpMCP.Server.Formatting;
 
 namespace RefactorCsharpMCP.Server.Tools;
 
@@ -13,6 +14,16 @@ namespace RefactorCsharpMCP.Server.Tools;
 [McpServerToolType]
 public class InlineVariableTool
 {
+    private readonly IResponseFormatter _formatter;
+
+    /// <summary>
+    /// Creates a new InlineVariableTool with the specified response formatter.
+    /// </summary>
+    public InlineVariableTool(IResponseFormatter formatter)
+    {
+        _formatter = formatter;
+    }
+
     /// <summary>
     /// Inlines a variable by replacing all its uses with its initialization expression.
     /// </summary>
@@ -38,7 +49,7 @@ public class InlineVariableTool
 
         if (validation != null)
         {
-            return validation;
+            return _formatter.Format(validation);
         }
 
         // Execute the refactoring with framework-aware validation
@@ -48,21 +59,21 @@ public class InlineVariableTool
         // Return result as an object that MCP can serialize
         if (result.IsSuccess)
         {
-            return new
+            return _formatter.Format(new
             {
                 success = true,
                 message = result.Message,
                 refactoredCode = result.RefactoredCode
-            };
+            });
         }
         else
         {
-            return new
+            return _formatter.Format(new
             {
                 success = false,
                 message = result.Message,
                 error = result.ErrorMessage
-            };
+            });
         }
     }
 }

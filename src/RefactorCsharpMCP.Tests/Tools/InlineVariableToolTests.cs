@@ -1,4 +1,5 @@
 using FluentAssertions;
+using RefactorCsharpMCP.Server.Formatting;
 using RefactorCsharpMCP.Server.Tools;
 using System.Text.Json;
 
@@ -10,7 +11,7 @@ public class InlineVariableToolTests
     public async Task InlineVariable_WithValidVariable_ShouldReturnSuccessResponse()
     {
         // Arrange
-        var tool = new InlineVariableTool();
+        var tool = new InlineVariableTool(new JsonResponseFormatter());
         var sourceCode = @"public class Calculator
 {
     public int Calculate()
@@ -36,7 +37,7 @@ public class InlineVariableToolTests
     public async Task InlineVariable_WithEmptySourceCode_ShouldReturnError()
     {
         // Arrange
-        var tool = new InlineVariableTool();
+        var tool = new InlineVariableTool(new JsonResponseFormatter());
 
         // Act
         var result = await tool.InlineVariable("", lineNumber: 1, columnNumber: 1);
@@ -53,7 +54,7 @@ public class InlineVariableToolTests
     public async Task InlineVariable_WithSourceCodeExceeding1MB_ShouldReturnError()
     {
         // Arrange
-        var tool = new InlineVariableTool();
+        var tool = new InlineVariableTool(new JsonResponseFormatter());
         var largeSourceCode = new string('x', 1_000_001); // Just over 1MB
 
         // Act
@@ -71,7 +72,7 @@ public class InlineVariableToolTests
     public async Task InlineVariable_WithInvalidLineNumber_ShouldReturnError()
     {
         // Arrange
-        var tool = new InlineVariableTool();
+        var tool = new InlineVariableTool(new JsonResponseFormatter());
         var sourceCode = "public class Test { }";
 
         // Act - Line number 0 (invalid)
@@ -89,7 +90,7 @@ public class InlineVariableToolTests
     public async Task InlineVariable_WithLineNumberTooLarge_ShouldReturnError()
     {
         // Arrange
-        var tool = new InlineVariableTool();
+        var tool = new InlineVariableTool(new JsonResponseFormatter());
         var sourceCode = "public class Test { }";
 
         // Act - Line number > 100000
@@ -107,7 +108,7 @@ public class InlineVariableToolTests
     public async Task InlineVariable_WithInvalidColumnNumber_ShouldReturnError()
     {
         // Arrange
-        var tool = new InlineVariableTool();
+        var tool = new InlineVariableTool(new JsonResponseFormatter());
         var sourceCode = "public class Test { }";
 
         // Act - Column number 0 (invalid)
@@ -125,7 +126,7 @@ public class InlineVariableToolTests
     public async Task InlineVariable_WithEmptyTargetFramework_ShouldReturnError()
     {
         // Arrange
-        var tool = new InlineVariableTool();
+        var tool = new InlineVariableTool(new JsonResponseFormatter());
         var sourceCode = "public class Test { }";
 
         // Act
@@ -143,7 +144,7 @@ public class InlineVariableToolTests
     public async Task InlineVariable_WithMultipleReferences_ShouldInlineAll()
     {
         // Arrange
-        var tool = new InlineVariableTool();
+        var tool = new InlineVariableTool(new JsonResponseFormatter());
         var sourceCode = @"public class Calculator
 {
     public int Compute()
@@ -174,7 +175,7 @@ public class InlineVariableToolTests
     public async Task InlineVariable_WithNet48Framework_ShouldRespectFrameworkValidation()
     {
         // Arrange
-        var tool = new InlineVariableTool();
+        var tool = new InlineVariableTool(new JsonResponseFormatter());
         var sourceCode = @"public class Test
 {
     public void Method()

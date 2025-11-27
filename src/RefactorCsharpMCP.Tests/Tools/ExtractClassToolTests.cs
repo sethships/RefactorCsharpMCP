@@ -1,4 +1,5 @@
 using FluentAssertions;
+using RefactorCsharpMCP.Server.Formatting;
 using RefactorCsharpMCP.Server.Tools;
 using System.Text.Json;
 
@@ -10,7 +11,7 @@ public class ExtractClassToolTests
     public async Task ExtractClass_WithValidInput_ShouldReturnSuccessResponse()
     {
         // Arrange
-        var tool = new ExtractClassTool();
+        var tool = new ExtractClassTool(new JsonResponseFormatter());
         var sourceCode = @"public class Service
 {
     private ILogger _logger;
@@ -42,7 +43,7 @@ public class ExtractClassToolTests
     public async Task ExtractClass_WithInvalidClassName_ShouldReturnError()
     {
         // Arrange
-        var tool = new ExtractClassTool();
+        var tool = new ExtractClassTool(new JsonResponseFormatter());
         var sourceCode = "public class Test { }";
 
         // Act
@@ -64,7 +65,7 @@ public class ExtractClassToolTests
     public async Task ExtractClass_WithEmptySourceCode_ShouldReturnError()
     {
         // Arrange
-        var tool = new ExtractClassTool();
+        var tool = new ExtractClassTool(new JsonResponseFormatter());
 
         // Act
         var result = await tool.ExtractClass(
@@ -85,7 +86,7 @@ public class ExtractClassToolTests
     public async Task ExtractClass_WithNonExistentField_ShouldReturnError()
     {
         // Arrange
-        var tool = new ExtractClassTool();
+        var tool = new ExtractClassTool(new JsonResponseFormatter());
         var sourceCode = @"public class Service
 {
     private ILogger _logger;
@@ -111,7 +112,7 @@ public class ExtractClassToolTests
     public async Task ExtractClass_WithMethodsOnly_ShouldReturnSuccess()
     {
         // Arrange
-        var tool = new ExtractClassTool();
+        var tool = new ExtractClassTool(new JsonResponseFormatter());
         var sourceCode = @"public class Service
 {
     private string _data;
@@ -161,7 +162,7 @@ public class ExtractClassToolTests
     public async Task ExtractClass_WithNullFieldsAndMethods_ShouldReturnError()
     {
         // Arrange
-        var tool = new ExtractClassTool();
+        var tool = new ExtractClassTool(new JsonResponseFormatter());
         var sourceCode = "public class Test { private int _field; }";
 
         // Act - Both fieldNames and methodNames are empty/null
@@ -184,7 +185,7 @@ public class ExtractClassToolTests
     public async Task ExtractClass_WithEmptyFieldsAndMethods_ShouldReturnError()
     {
         // Arrange
-        var tool = new ExtractClassTool();
+        var tool = new ExtractClassTool(new JsonResponseFormatter());
         var sourceCode = "public class Test { private int _field; }";
 
         // Act - Both fieldNames and methodNames are empty strings
@@ -207,7 +208,7 @@ public class ExtractClassToolTests
     public async Task ExtractClass_ServicePattern_ShouldReturnSuccess()
     {
         // Arrange - Real-world service class extraction scenario
-        var tool = new ExtractClassTool();
+        var tool = new ExtractClassTool(new JsonResponseFormatter());
         var sourceCode = @"using System;
 
 public class InlineMethod

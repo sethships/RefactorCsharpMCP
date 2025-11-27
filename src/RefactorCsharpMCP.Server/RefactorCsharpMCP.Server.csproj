@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\RefactorCsharpMCP.Core\RefactorCsharpMCP.Core.csproj" />
+    <ProjectReference Include="..\RefactorCsharpMCP.Toon\RefactorCsharpMCP.Toon.csproj" />
   </ItemGroup>
 
   <ItemGroup>

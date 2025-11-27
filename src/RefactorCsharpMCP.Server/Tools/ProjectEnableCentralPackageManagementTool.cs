@@ -3,6 +3,7 @@ using RefactorCsharpMCP.Core.ProjectFiles.Refactorings;
 using RefactorCsharpMCP.Core.Validation;
 using System.ComponentModel;
 using ModelContextProtocol.Server;
+using RefactorCsharpMCP.Server.Formatting;
 
 namespace RefactorCsharpMCP.Server.Tools;
 
@@ -13,6 +14,16 @@ namespace RefactorCsharpMCP.Server.Tools;
 [McpServerToolType]
 public class ProjectEnableCentralPackageManagementTool
 {
+    private readonly IResponseFormatter _formatter;
+
+    /// <summary>
+    /// Creates a new ProjectEnableCentralPackageManagementTool with the specified response formatter.
+    /// </summary>
+    public ProjectEnableCentralPackageManagementTool(IResponseFormatter formatter)
+    {
+        _formatter = formatter;
+    }
+
     /// <summary>
     /// Enables Central Package Management for a solution.
     /// </summary>
@@ -34,18 +45,18 @@ public class ProjectEnableCentralPackageManagementTool
 
         if (validation != null)
         {
-            return validation;
+            return _formatter.Format(validation);
         }
 
         // Validate solution path exists
         if (!Directory.Exists(solutionPath) && !File.Exists(solutionPath))
         {
-            return new
+            return _formatter.Format(new
             {
                 success = false,
                 error = $"Solution path not found: {solutionPath}",
                 message = "Central Package Management failed: Solution path not found"
-            };
+            });
         }
 
         // Parse conflict strategy
@@ -64,12 +75,12 @@ public class ProjectEnableCentralPackageManagementTool
         }
         catch (ArgumentException ex)
         {
-            return new
+            return _formatter.Format(new
             {
                 success = false,
                 error = ex.Message,
                 message = "Central Package Management failed: Invalid conflict strategy"
-            };
+            });
         }
 
         // Create options
@@ -98,7 +109,7 @@ public class ProjectEnableCentralPackageManagementTool
                 // Check if conflicts were resolved
                 var hasConflicts = result.Message.Contains("Resolved") && result.Message.Contains("conflicts");
 
-                return new
+                return _formatter.Format(new
                 {
                     success = true,
                     message = result.Message,
@@ -112,28 +123,28 @@ public class ProjectEnableCentralPackageManagementTool
                         "Directory.Packages.props"
                     },
                     warning = hasConflicts ? $"Version conflicts resolved using '{conflictStrategy}' strategy" : null
-                };
+                });
             }
             else
             {
-                return new
+                return _formatter.Format(new
                 {
                     success = false,
                     error = result.Message,
                     message = $"Central Package Management failed: {result.Message}",
                     solutionPath = solutionPath
-                };
+                });
             }
         }
         catch (Exception ex)
         {
-            return new
+            return _formatter.Format(new
             {
                 success = false,
                 error = ex.Message,
                 message = $"Central Package Management failed with exception: {ex.Message}",
                 solutionPath = solutionPath
-            };
+            });
         }
     }
 }

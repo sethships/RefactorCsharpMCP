@@ -4,8 +4,15 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using RefactorCsharpMCP.Core.Validation.Handlers;
+using RefactorCsharpMCP.Server.Configuration;
+using RefactorCsharpMCP.Server.Formatting;
+using RefactorCsharpMCP.Toon;
 
 var builder = Host.CreateApplicationBuilder(args);
+
+// Load output format configuration (env var + CLI args)
+// Supports: REFACTOR_CSHARP_OUTPUT_FORMAT=toon or --output-format toon
+var outputFormatOptions = OutputFormatConfiguration.Load(args);
 
 // Configure logging
 // NOTE: Console logging is disabled for stdio transport to prevent corrupting JSON-RPC messages
@@ -24,6 +31,19 @@ var version = Assembly.GetExecutingAssembly()
 // Handlers are registered as singletons for performance (stateless, reusable)
 builder.Services.AddSingleton<IParseDiagnosticHandler, ParseDiagnosticHandler>();
 builder.Services.AddSingleton<ISemanticDiagnosticHandler, SemanticDiagnosticHandler>();
+
+// Register TOON encoder and response formatter (Issue #145)
+// Default: JSON format (pass-through), TOON format requires explicit opt-in
+builder.Services.AddSingleton(outputFormatOptions);
+builder.Services.AddSingleton<IToonEncoder, ToonEncoder>();
+if (outputFormatOptions.IsToonEnabled)
+{
+    builder.Services.AddSingleton<IResponseFormatter, ToonResponseFormatter>();
+}
+else
+{
+    builder.Services.AddSingleton<IResponseFormatter, JsonResponseFormatter>();
+}
 
 // Configure MCP server with stdio transport
 // Server name: refactor-csharp-mcp

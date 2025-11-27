@@ -1,4 +1,5 @@
 using FluentAssertions;
+using RefactorCsharpMCP.Server.Formatting;
 using RefactorCsharpMCP.Server.Tools;
 using System.Text.Json;
 
@@ -10,7 +11,7 @@ public class FixDiagnosticToolTests
     public async Task FixDiagnostic_WithEmptySourceCode_ShouldReturnError()
     {
         // Arrange
-        var tool = new FixDiagnosticTool();
+        var tool = new FixDiagnosticTool(new JsonResponseFormatter());
 
         // Act
         var result = await tool.FixDiagnostic("", "IDE0005", 1, 1, "net8.0");
@@ -27,7 +28,7 @@ public class FixDiagnosticToolTests
     public async Task FixDiagnostic_WithEmptyDiagnosticId_ShouldReturnError()
     {
         // Arrange
-        var tool = new FixDiagnosticTool();
+        var tool = new FixDiagnosticTool(new JsonResponseFormatter());
         var sourceCode = "public class Test { }";
 
         // Act
@@ -45,7 +46,7 @@ public class FixDiagnosticToolTests
     public async Task FixDiagnostic_WithEmptyFramework_ShouldReturnError()
     {
         // Arrange
-        var tool = new FixDiagnosticTool();
+        var tool = new FixDiagnosticTool(new JsonResponseFormatter());
         var sourceCode = "public class Test { }";
 
         // Act
@@ -63,7 +64,7 @@ public class FixDiagnosticToolTests
     public async Task FixDiagnostic_WithUnsupportedDiagnostic_ShouldReturnError()
     {
         // Arrange
-        var tool = new FixDiagnosticTool();
+        var tool = new FixDiagnosticTool(new JsonResponseFormatter());
         var sourceCode = "public class Test { }";
 
         // Act
@@ -82,7 +83,7 @@ public class FixDiagnosticToolTests
     public async Task FixDiagnostic_ResponseStructure_ContainsAllFields()
     {
         // Arrange
-        var tool = new FixDiagnosticTool();
+        var tool = new FixDiagnosticTool(new JsonResponseFormatter());
         var sourceCode = @"
 using System;
 using System.Linq;  // Unused
@@ -113,7 +114,7 @@ public class Test
     public async Task FixDiagnostic_IDE0005_MapsToRemoveUnusedUsings()
     {
         // Arrange
-        var tool = new FixDiagnosticTool();
+        var tool = new FixDiagnosticTool(new JsonResponseFormatter());
         var sourceCode = @"
 using System;
 
@@ -144,7 +145,7 @@ public class Test
     public async Task FixDiagnostic_CS8019_MapsToRemoveUnusedUsings()
     {
         // Arrange
-        var tool = new FixDiagnosticTool();
+        var tool = new FixDiagnosticTool(new JsonResponseFormatter());
         var sourceCode = @"
 using System;
 
@@ -175,7 +176,7 @@ public class Test
     public async Task FixDiagnostic_WithLargeSourceCode_ShouldReturnError()
     {
         // Arrange
-        var tool = new FixDiagnosticTool();
+        var tool = new FixDiagnosticTool(new JsonResponseFormatter());
         var largeSource = new string('x', 2 * 1024 * 1024); // > 1MB
 
         // Act
@@ -196,7 +197,7 @@ public class Test
     public async Task FixDiagnostic_DiagnosticIdCaseInsensitive_ShouldWork(string diagnosticId)
     {
         // Arrange
-        var tool = new FixDiagnosticTool();
+        var tool = new FixDiagnosticTool(new JsonResponseFormatter());
         var sourceCode = @"
 using System;
 
@@ -224,7 +225,7 @@ public class Test
     public async Task FixDiagnostic_IDE0044_WithInvalidLocation_ShouldReturnError()
     {
         // Arrange
-        var tool = new FixDiagnosticTool();
+        var tool = new FixDiagnosticTool(new JsonResponseFormatter());
         var sourceCode = @"
 public class Test
 {
@@ -250,7 +251,7 @@ public class Test
     public async Task FixDiagnostic_WithOutOfBoundsLine_ShouldReturnError()
     {
         // Arrange
-        var tool = new FixDiagnosticTool();
+        var tool = new FixDiagnosticTool(new JsonResponseFormatter());
         var sourceCode = @"
 public class Test
 {
@@ -273,7 +274,7 @@ public class Test
     public async Task FixDiagnostic_WithOutOfBoundsColumn_ShouldReturnError()
     {
         // Arrange
-        var tool = new FixDiagnosticTool();
+        var tool = new FixDiagnosticTool(new JsonResponseFormatter());
         var sourceCode = @"
 public class Test
 {
@@ -303,7 +304,7 @@ public class Test
     public async Task FixDiagnostic_WithInvalidDiagnosticIdPattern_ShouldReturnError(string invalidId)
     {
         // Arrange
-        var tool = new FixDiagnosticTool();
+        var tool = new FixDiagnosticTool(new JsonResponseFormatter());
         var sourceCode = "public class Test { }";
 
         // Act

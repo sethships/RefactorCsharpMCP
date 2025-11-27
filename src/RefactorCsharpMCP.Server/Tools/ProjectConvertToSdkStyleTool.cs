@@ -3,6 +3,7 @@ using RefactorCsharpMCP.Core.ProjectFiles.Refactorings;
 using RefactorCsharpMCP.Core.Validation;
 using System.ComponentModel;
 using ModelContextProtocol.Server;
+using RefactorCsharpMCP.Server.Formatting;
 
 namespace RefactorCsharpMCP.Server.Tools;
 
@@ -13,6 +14,16 @@ namespace RefactorCsharpMCP.Server.Tools;
 [McpServerToolType]
 public class ProjectConvertToSdkStyleTool
 {
+    private readonly IResponseFormatter _formatter;
+
+    /// <summary>
+    /// Creates a new ProjectConvertToSdkStyleTool with the specified response formatter.
+    /// </summary>
+    public ProjectConvertToSdkStyleTool(IResponseFormatter formatter)
+    {
+        _formatter = formatter;
+    }
+
     /// <summary>
     /// Converts a legacy .NET Framework project to SDK-style format.
     /// </summary>
@@ -34,29 +45,29 @@ public class ProjectConvertToSdkStyleTool
 
         if (validation != null)
         {
-            return validation;
+            return _formatter.Format(validation);
         }
 
         // Validate project file exists
         if (!File.Exists(projectPath))
         {
-            return new
+            return _formatter.Format(new
             {
                 success = false,
                 error = $"Project file not found: {projectPath}",
                 message = "SDK Conversion failed: Project file not found"
-            };
+            });
         }
 
         // Validate it's a .csproj file
         if (!projectPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
         {
-            return new
+            return _formatter.Format(new
             {
                 success = false,
                 error = "Not a C# project file (must end with .csproj)",
                 message = "SDK Conversion failed: Invalid file type"
-            };
+            });
         }
 
         // Create options
@@ -85,7 +96,7 @@ public class ProjectConvertToSdkStyleTool
                 // Check if this was an ASP.NET Web App conversion
                 var isWebAppWarning = result.Message.Contains("ASP.NET Web Application");
 
-                return new
+                return _formatter.Format(new
                 {
                     success = true,
                     message = result.Message,
@@ -93,28 +104,28 @@ public class ProjectConvertToSdkStyleTool
                     dryRun = dryRun,
                     buildValidated = validateBuild && !dryRun,
                     warning = isWebAppWarning ? "ASP.NET Web Application converted - manual ASP.NET Core migration recommended" : null
-                };
+                });
             }
             else
             {
-                return new
+                return _formatter.Format(new
                 {
                     success = false,
                     error = result.Message,
                     message = $"SDK Conversion failed: {result.Message}",
                     projectPath = projectPath
-                };
+                });
             }
         }
         catch (Exception ex)
         {
-            return new
+            return _formatter.Format(new
             {
                 success = false,
                 error = ex.Message,
                 message = $"SDK Conversion failed with exception: {ex.Message}",
                 projectPath = projectPath
-            };
+            });
         }
     }
 }

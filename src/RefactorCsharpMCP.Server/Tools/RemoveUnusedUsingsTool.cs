@@ -3,6 +3,7 @@ using System.ComponentModel;
 using ModelContextProtocol.Server;
 using RefactorCsharpMCP.Core.Refactorings;
 using RefactorCsharpMCP.Core.Validation;
+using RefactorCsharpMCP.Server.Formatting;
 
 namespace RefactorCsharpMCP.Server.Tools;
 
@@ -12,6 +13,16 @@ namespace RefactorCsharpMCP.Server.Tools;
 [McpServerToolType]
 public class RemoveUnusedUsingsTool
 {
+    private readonly IResponseFormatter _formatter;
+
+    /// <summary>
+    /// Creates a new RemoveUnusedUsingsTool with the specified response formatter.
+    /// </summary>
+    public RemoveUnusedUsingsTool(IResponseFormatter formatter)
+    {
+        _formatter = formatter;
+    }
+
     /// <summary>
     /// Removes unused using directives from C# source code.
     /// Framework-aware: preserves global using directives (C# 10+) for net8.0, net9.0.
@@ -32,7 +43,7 @@ public class RemoveUnusedUsingsTool
 
         if (validation != null)
         {
-            return validation;
+            return _formatter.Format(validation);
         }
 
         // Execute the refactoring
@@ -42,21 +53,21 @@ public class RemoveUnusedUsingsTool
         // Return result as an object that MCP can serialize
         if (result.IsSuccess)
         {
-            return new
+            return _formatter.Format(new
             {
                 success = true,
                 message = result.Message,
                 refactoredCode = result.RefactoredCode
-            };
+            });
         }
         else
         {
-            return new
+            return _formatter.Format(new
             {
                 success = false,
                 message = result.Message,
                 error = result.ErrorMessage
-            };
+            });
         }
     }
 }

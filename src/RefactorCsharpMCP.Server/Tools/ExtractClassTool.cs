@@ -3,6 +3,7 @@ using System.ComponentModel;
 using ModelContextProtocol.Server;
 using RefactorCsharpMCP.Core.Refactorings;
 using RefactorCsharpMCP.Core.Validation;
+using RefactorCsharpMCP.Server.Formatting;
 
 namespace RefactorCsharpMCP.Server.Tools;
 
@@ -12,6 +13,16 @@ namespace RefactorCsharpMCP.Server.Tools;
 [McpServerToolType]
 public class ExtractClassTool
 {
+    private readonly IResponseFormatter _formatter;
+
+    /// <summary>
+    /// Creates a new ExtractClassTool with the specified response formatter.
+    /// </summary>
+    public ExtractClassTool(IResponseFormatter formatter)
+    {
+        _formatter = formatter;
+    }
+
     /// <summary>
     /// Extracts specified fields, methods, and nested types into a new class with optional compilation validation.
     /// </summary>
@@ -44,7 +55,7 @@ public class ExtractClassTool
 
         if (validation != null)
         {
-            return validation;
+            return _formatter.Format(validation);
         }
 
         // Execute the refactoring with optional compilation validation
@@ -63,21 +74,21 @@ public class ExtractClassTool
         // Return result as an object that MCP can serialize
         if (result.IsSuccess)
         {
-            return new
+            return _formatter.Format(new
             {
                 success = true,
                 message = result.Message,
                 refactoredCode = result.RefactoredCode
-            };
+            });
         }
         else
         {
-            return new
+            return _formatter.Format(new
             {
                 success = false,
                 message = result.Message,
                 error = result.ErrorMessage
-            };
+            });
         }
     }
 }

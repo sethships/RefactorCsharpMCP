@@ -3,6 +3,7 @@ using System.ComponentModel;
 using ModelContextProtocol.Server;
 using RefactorCsharpMCP.Core.Refactorings;
 using RefactorCsharpMCP.Core.Validation;
+using RefactorCsharpMCP.Server.Formatting;
 
 namespace RefactorCsharpMCP.Server.Tools;
 
@@ -12,6 +13,16 @@ namespace RefactorCsharpMCP.Server.Tools;
 [McpServerToolType]
 public class RenameSymbolTool
 {
+    private readonly IResponseFormatter _formatter;
+
+    /// <summary>
+    /// Creates a new RenameSymbolTool with the specified response formatter.
+    /// </summary>
+    public RenameSymbolTool(IResponseFormatter formatter)
+    {
+        _formatter = formatter;
+    }
+
     /// <summary>
     /// Renames a symbol at the specified position throughout the file.
     /// </summary>
@@ -40,7 +51,7 @@ public class RenameSymbolTool
 
         if (validation != null)
         {
-            return Task.FromResult<object>(validation);
+            return Task.FromResult(_formatter.Format(validation));
         }
 
         // Execute the refactoring
@@ -50,21 +61,21 @@ public class RenameSymbolTool
         // Return result as an object that MCP can serialize
         if (result.IsSuccess)
         {
-            return Task.FromResult<object>(new
+            return Task.FromResult(_formatter.Format(new
             {
                 success = true,
                 message = result.Message,
                 refactoredCode = result.RefactoredCode
-            });
+            }));
         }
         else
         {
-            return Task.FromResult<object>(new
+            return Task.FromResult(_formatter.Format(new
             {
                 success = false,
                 message = result.Message,
                 error = result.ErrorMessage
-            });
+            }));
         }
     }
 }

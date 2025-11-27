@@ -3,6 +3,7 @@ using System.ComponentModel;
 using ModelContextProtocol.Server;
 using RefactorCsharpMCP.Core.Refactorings;
 using RefactorCsharpMCP.Core.Validation;
+using RefactorCsharpMCP.Server.Formatting;
 
 namespace RefactorCsharpMCP.Server.Tools;
 
@@ -12,6 +13,16 @@ namespace RefactorCsharpMCP.Server.Tools;
 [McpServerToolType]
 public class ConstructorInjectionTool
 {
+    private readonly IResponseFormatter _formatter;
+
+    /// <summary>
+    /// Creates a new ConstructorInjectionTool with the specified response formatter.
+    /// </summary>
+    public ConstructorInjectionTool(IResponseFormatter formatter)
+    {
+        _formatter = formatter;
+    }
+
     /// <summary>
     /// Converts method parameters to constructor-injected fields or properties.
     /// </summary>
@@ -41,7 +52,7 @@ public class ConstructorInjectionTool
 
         if (validation != null)
         {
-            return Task.FromResult<object>(validation);
+            return Task.FromResult(_formatter.Format(validation));
         }
 
         // Parse parameter names
@@ -52,12 +63,12 @@ public class ConstructorInjectionTool
 
         if (paramNames.Length == 0 || paramNames.Length > 20)
         {
-            return Task.FromResult<object>(new
+            return Task.FromResult(_formatter.Format(new
             {
                 success = false,
                 error = "Must specify between 1 and 20 parameters",
                 message = "Refactoring failed: Must specify between 1 and 20 parameters"
-            });
+            }));
         }
 
         // Execute the refactoring
@@ -67,23 +78,23 @@ public class ConstructorInjectionTool
         // Return result as an object that MCP can serialize
         if (result.IsSuccess)
         {
-            return Task.FromResult<object>(new
+            return Task.FromResult(_formatter.Format(new
             {
                 success = true,
                 message = result.Message,
                 refactoredCode = result.RefactoredCode,
                 injectedParameters = paramNames,
                 injectionType = useProperties ? "properties" : "fields"
-            });
+            }));
         }
         else
         {
-            return Task.FromResult<object>(new
+            return Task.FromResult(_formatter.Format(new
             {
                 success = false,
                 message = result.Message,
                 error = result.ErrorMessage
-            });
+            }));
         }
     }
 }

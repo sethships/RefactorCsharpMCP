@@ -3,6 +3,7 @@ using System.ComponentModel;
 using ModelContextProtocol.Server;
 using RefactorCsharpMCP.Core.Refactorings;
 using RefactorCsharpMCP.Core.Validation;
+using RefactorCsharpMCP.Server.Formatting;
 
 namespace RefactorCsharpMCP.Server.Tools;
 
@@ -13,6 +14,16 @@ namespace RefactorCsharpMCP.Server.Tools;
 [McpServerToolType]
 public class InlineMethodTool
 {
+    private readonly IResponseFormatter _formatter;
+
+    /// <summary>
+    /// Creates a new InlineMethodTool with the specified response formatter.
+    /// </summary>
+    public InlineMethodTool(IResponseFormatter formatter)
+    {
+        _formatter = formatter;
+    }
+
     /// <summary>
     /// Inlines a method by replacing all invocations with the method's body, then removes the method declaration.
     /// Part 2 capabilities: void methods, multiple call sites, automatic identifier conflict resolution.
@@ -40,7 +51,7 @@ public class InlineMethodTool
 
         if (validation != null)
         {
-            return validation;
+            return _formatter.Format(validation);
         }
 
         // Execute the refactoring with framework-aware validation
@@ -50,21 +61,21 @@ public class InlineMethodTool
         // Return result as an object that MCP can serialize
         if (result.IsSuccess)
         {
-            return new
+            return _formatter.Format(new
             {
                 success = true,
                 message = result.Message,
                 refactoredCode = result.RefactoredCode
-            };
+            });
         }
         else
         {
-            return new
+            return _formatter.Format(new
             {
                 success = false,
                 message = result.Message,
                 error = result.ErrorMessage
-            };
+            });
         }
     }
 }
