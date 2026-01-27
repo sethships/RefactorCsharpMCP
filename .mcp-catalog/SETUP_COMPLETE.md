@@ -43,7 +43,7 @@ mcp-python-refactoring, playwright, refactor-csharp-mcp
 ### 4. MCP Configuration Updated
 
 Updated Claude Code MCP configuration to use only the gateway:
-- **File**: `C:\Users\seth\.claude\mcp_servers.json`
+- **File**: `%USERPROFILE%\.claude\mcp_servers.json` (Windows) or `~/.claude/mcp_servers.json` (Linux/macOS)
 - **Removed**: Standalone `refactor-csharp-mcp` server entry
 - **Kept**: Single `MCP_DOCKER` gateway entry
 - **Result**: All tools (Docker + RefactorCsharpMCP) accessible through one connection
@@ -177,7 +177,7 @@ If you prefer the standalone server approach:
        "refactor-csharp-mcp": {
          "command": "docker",
          "args": ["compose", "run", "--rm", "refactor-csharp-mcp"],
-         "cwd": "C:\\src\\RefactorCsharpMCP",
+         "cwd": "/path/to/RefactorCsharpMCP",
          "type": "stdio"
        }
      }

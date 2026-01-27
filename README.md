@@ -939,11 +939,15 @@ For detailed troubleshooting guidance, see [TROUBLESHOOTING.md](TROUBLESHOOTING.
 
 ## Contributing
 
-RefactorCsharpMCP is part of the DevTools repository. See the project plan for development guidelines and architecture details.
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to contribute to this project.
+
+Before contributing, please read our [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
-Part of the DevTools repository by Seth.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+Copyright (c) 2025-2026 Seth Bibler
 
 ## Related Projects
 

@@ -1,11 +1,11 @@
 # Real-World RefactorCsharpMCP Examples
 
-This document shows real examples of how RefactorCsharpMCP tools were used in the [passgen project](https://github.com/sethb75/passgen/tree/refactor/high-priority-code-cleanup).
+This document shows real examples of how RefactorCsharpMCP tools can be used to improve C# codebases through automated refactoring.
 
-## Project: passgen - Password Generator
+## Example Project: Console Application Refactoring
 
-**Branch**: `refactor/high-priority-code-cleanup`
-**Commit**: 5a03825d1777ad38ce29414573c74ec68e34605e
+The following examples demonstrate common refactoring patterns applied to a typical console application codebase.
+
 **Impact**: Reduced ~200+ lines through method extraction, improved maintainability
 
 ## Refactoring #1: MenuController.BuildCurrentOptions()
@@ -340,7 +340,6 @@ separate validation methods for each concern?
 
 ## References
 
-- **Repository**: https://github.com/sethb75/passgen
-- **Branch**: refactor/high-priority-code-cleanup
-- **Commit**: 5a03825d1777ad38ce29414573c74ec68e34605e
-- **Test Suite**: 207 tests passing
+- **RefactorCsharpMCP Repository**: https://github.com/sethb75/RefactorCsharpMCP
+- **MCP Specification**: https://modelcontextprotocol.io/
+- **Roslyn Documentation**: https://docs.microsoft.com/en-us/dotnet/csharp/roslyn-sdk/

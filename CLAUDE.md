@@ -439,10 +439,3 @@ See **docs/SDD-Framework-Version-Awareness.md** for detailed plans on:
 - Reference assembly resolution
 - Enhanced error handling with structured error codes
 
----
-
-## Private Configuration Overlay
-
-The following private configuration extends these project-specific guidelines with personal preferences, MCP configurations, and private instructions. This file is bootstrapped from a private repository at session start.
-
-@.claude/private-config/bootstrap/CLAUDE.private.md
