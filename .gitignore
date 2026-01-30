@@ -48,7 +48,8 @@ bld/
 # Private Claude Code configurations (bootstrapped at session start)
 .claude/private-config/
 
-# Skills are dynamically symlinked by bootstrap script
+# Commands and skills are dynamically symlinked by bootstrap script
+.claude/commands/
 .claude/skills/
 
 # Environment files
@@ -60,6 +61,14 @@ bld/
 
 # Code review feedback files
 review-feedback*.md
+cr-*.md
+pr-*-review.md
+
+# Benchmark artifacts
+**/BenchmarkDotNet.Artifacts/
+
+# Generated reports (not tracked)
+PUBLIC-RELEASE-READINESS-REPORT.md
 
 # Rider
 .idea/

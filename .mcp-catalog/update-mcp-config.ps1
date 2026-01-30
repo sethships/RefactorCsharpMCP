@@ -1,8 +1,9 @@
 # Update Claude Code MCP Configuration to Use Custom Catalog
 # This script backs up and updates the MCP configuration to use the custom catalog
 
-$mcpConfigPath = "C:\Users\seth\.claude\mcp_servers.json"
-$backupPath = "C:\Users\seth\.claude\mcp_servers.json.backup.$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+# Use environment variables for user-specific paths
+$mcpConfigPath = "$env:USERPROFILE\.claude\mcp_servers.json"
+$backupPath = "$env:USERPROFILE\.claude\mcp_servers.json.backup.$(Get-Date -Format 'yyyyMMdd-HHmmss')"
 
 Write-Host "Updating Claude Code MCP configuration..." -ForegroundColor Cyan
 

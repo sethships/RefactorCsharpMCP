@@ -60,7 +60,7 @@ docker mcp catalog show my-mcp-catalog
 
 ### Update Claude Code MCP Configuration
 
-After setting up the catalog, update `C:\Users\seth\.claude\mcp_servers.json`:
+After setting up the catalog, update your Claude Code MCP configuration (`%USERPROFILE%\.claude\mcp_servers.json` on Windows):
 
 ```json
 {
@@ -69,9 +69,9 @@ After setting up the catalog, update `C:\Users\seth\.claude\mcp_servers.json`:
       "command": "docker",
       "args": ["mcp", "gateway", "run", "--catalog", "my-mcp-catalog"],
       "env": {
-        "LOCALAPPDATA": "C:\\Users\\seth\\AppData\\Local",
-        "ProgramData": "C:\\ProgramData",
-        "ProgramFiles": "C:\\Program Files"
+        "LOCALAPPDATA": "${LOCALAPPDATA}",
+        "ProgramData": "${ProgramData}",
+        "ProgramFiles": "${ProgramFiles}"
       },
       "type": "stdio"
     }
@@ -151,8 +151,8 @@ docker mcp catalog import catalog.yaml
 If Docker can't find the RefactorCsharpMCP image:
 
 ```bash
-# Build the image
-cd C:\src\RefactorCsharpMCP
+# Build the image (from the repository root)
+cd /path/to/RefactorCsharpMCP
 docker build -t refactor-csharp-mcp:latest .
 
 # Verify it exists

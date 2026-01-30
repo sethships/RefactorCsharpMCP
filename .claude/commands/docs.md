@@ -1,1 +1,0 @@
-../private-config/global/.claude/commands/docs.md

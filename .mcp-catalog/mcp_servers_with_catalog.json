@@ -4,9 +4,9 @@
       "command": "docker",
       "args": ["mcp", "gateway", "run", "--catalog", "my-mcp-catalog"],
       "env": {
-        "LOCALAPPDATA": "C:\\Users\\seth\\AppData\\Local",
-        "ProgramData": "C:\\ProgramData",
-        "ProgramFiles": "C:\\Program Files"
+        "LOCALAPPDATA": "${LOCALAPPDATA}",
+        "ProgramData": "${ProgramData}",
+        "ProgramFiles": "${ProgramFiles}"
       },
       "type": "stdio"
     }

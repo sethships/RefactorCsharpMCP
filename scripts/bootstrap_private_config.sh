@@ -94,12 +94,30 @@ check_required_tools() {
     return 0
 }
 
+load_env_file() {
+    # Load environment variables from .env file if it exists
+    # This allows users to store PRIVATE_CLAUDE_CONFIG_REPO_URL in .env
+    if [ -f ".env" ]; then
+        log_info "Loading environment from .env file..."
+        # Export variables from .env, ignoring comments and empty lines
+        set -a
+        # shellcheck disable=SC1091
+        source .env 2>/dev/null || true
+        set +a
+        log_success "Environment file loaded"
+    fi
+}
+
 check_environment_variables() {
+    # First try to load from .env file
+    load_env_file
+
     if [ -z "$PRIVATE_CLAUDE_CONFIG_REPO_URL" ]; then
-        log_error "PRIVATE_CLAUDE_CONFIG_REPO_URL environment variable is not set"
-        log_error "Please set this to your private config repository URL"
-        log_error "Example: export PRIVATE_CLAUDE_CONFIG_REPO_URL=https://github.com/user/ClaudeCodeConfigs"
-        return 1
+        # Not an error - gracefully skip private config bootstrap
+        log_info "PRIVATE_CLAUDE_CONFIG_REPO_URL not set - skipping private config bootstrap"
+        log_info "This is normal for public repository users without private config"
+        log_info "To enable: set PRIVATE_CLAUDE_CONFIG_REPO_URL in .env or environment"
+        return 100  # Special exit code indicating graceful skip
     fi
 
     log_success "Environment variables validated"
@@ -394,7 +412,16 @@ main() {
 
     # Validate prerequisites
     check_required_tools || exit $?
-    check_environment_variables || exit $?
+
+    # Check environment variables - exit code 100 means graceful skip
+    check_environment_variables
+    local env_result=$?
+    if [ $env_result -eq 100 ]; then
+        log_success "Private config bootstrap skipped (no config URL set)"
+        exit 0  # Exit with success - this is expected for public repo users
+    elif [ $env_result -ne 0 ]; then
+        exit $env_result
+    fi
 
     # Clone or update config repo
     clone_or_update_config_repo || exit $?

@@ -79,9 +79,9 @@
         "run"
       ],
       "env": {
-        "LOCALAPPDATA": "C:\\Users\\seth\\AppData\\Local",
-        "ProgramData": "C:\\ProgramData",
-        "ProgramFiles": "C:\\Program Files"
+        "LOCALAPPDATA": "${LOCALAPPDATA}",
+        "ProgramData": "${ProgramData}",
+        "ProgramFiles": "${ProgramFiles}"
       },
       "type": "stdio"
     }
