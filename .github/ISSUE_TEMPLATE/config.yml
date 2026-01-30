@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://github.com/sethships/RefactorCsharpMCP/blob/master/README.md
+    about: Check the README documentation before opening an issue
+  - name: Troubleshooting Guide
+    url: https://github.com/sethships/RefactorCsharpMCP/blob/master/TROUBLESHOOTING.md
+    about: Common issues and solutions
+  - name: Examples
+    url: https://github.com/sethships/RefactorCsharpMCP/blob/master/EXAMPLES.md
+    about: Example refactorings with input/output code samples
