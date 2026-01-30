@@ -4,8 +4,8 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.x     | :white_check_mark: |
-| < 1.0   | :x:                |
+| 0.x (current) | :white_check_mark: |
+| Future 1.x | :white_check_mark: |
 
 ## Reporting a Vulnerability
 
@@ -17,7 +17,7 @@ We take security vulnerabilities seriously. If you discover a security issue, pl
 
 Instead, use one of these methods:
 
-1. **GitHub Security Advisory** (Preferred): Use GitHub's [private vulnerability reporting](https://github.com/sethb75/RefactorCsharpMCP/security/advisories/new) feature to submit a report directly.
+1. **GitHub Security Advisory** (Preferred): Use GitHub's [private vulnerability reporting](https://github.com/sethships/RefactorCsharpMCP/security/advisories/new) feature to submit a report directly.
 
 2. **Private Issue**: Create a private security report via GitHub's security tab.
 
