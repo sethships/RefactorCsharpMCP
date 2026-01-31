@@ -8,6 +8,12 @@ namespace RefactorCsharpMCP.Tests.Refactorings;
 /// Framework matrix tests - verifies refactorings work correctly across all supported frameworks.
 /// Tests cross-framework compatibility and framework-specific behavior.
 /// </summary>
+/// <remarks>
+/// Uses [Collection("CacheTests")] to serialize access to the shared reference assembly cache.
+/// This prevents race conditions when multiple framework tests run in parallel and access
+/// the ReferenceAssemblyCache disk operations (Issue #148).
+/// </remarks>
+[Collection("CacheTests")]
 public class FrameworkMatrixTests
 {
     #region Extract Method - Framework Matrix
