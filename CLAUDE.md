@@ -22,7 +22,7 @@ The project is organized into four main components:
   - **ToonEncoder**: Core encoding implementation with configurable options
   - **ToonEncoderOptions**: Configuration for Base64 encoding, indentation, camelCase, max depth
   - **Internal**: ValueFormatter (escaping, Base64), ArrayFormatter (tabular format)
-- **RefactorCsharpMCP.Tests**: Comprehensive test suite with 1367 tests covering unit, component, and integration testing (1342 passing, 98.2%)
+- **RefactorCsharpMCP.Tests**: Comprehensive test suite with 1387 tests covering unit, component, and integration testing (1368 passing, 98.6%)
 
 ### Shared Refactoring Infrastructure
 
@@ -147,6 +147,66 @@ Solves the Roslyn Identity Paradox for nested type qualification by separating s
 - **Semantic-Based (Primary)**: O(1) symbol lookup + O(n) references via Roslyn's indexed search. Highly efficient for well-formed code with resolved dependencies.
 - **Syntax-Based (Fallback)**: O(n) tree traversal per extracted symbol where n = number of syntax nodes in source class. Only triggers when semantic search returns zero results (typically due to unresolved dependencies).
 - **Trade-off**: Syntax fallback sacrifices precision (name-based matching) for robustness (works without complete type information). Performance impact is minimal as it only activates when semantic analysis is unavailable.
+
+### IntroduceParameterObject Facade Pattern Architecture
+
+The **IntroduceParameterObject** refactoring implements a clean facade pattern (Issue #87), decomposing a 1193-line monolithic class into specialized components:
+
+- **IntroduceParameterObject.cs** (265 lines, facade): Thin orchestration layer providing input validation and delegation
+  - Input validation for source code, class/method names, and parameter lists
+  - Framework validation using `FrameworkValidator` and `LanguageVersionMapper`
+  - 14-phase workflow coordination with clear phase tracking
+  - Exception handling with structured error contexts
+  - Located in `src/RefactorCsharpMCP.Core/Refactorings/`
+
+- **ParameterObjectGenerator** (175 lines): Framework-aware type generation
+  - `Generate()`: Entry point selecting record vs class based on framework
+  - `GenerateRecordDeclaration()`: Creates C# 9+ records with primary constructors
+  - `GenerateClassDeclaration()`: Creates traditional classes with properties and constructor
+  - Located in `src/RefactorCsharpMCP.Core/Refactorings/IntroduceParameterObjectComponents/`
+
+- **MethodSignatureUpdater** (50 lines): Method signature transformation
+  - `UpdateSignature()`: Replaces grouped parameters with parameter object parameter
+  - Preserves non-grouped parameters in their original positions
+  - Uses `NamingHelper` for consistent camelCase parameter naming
+
+- **ShadowingAwareRewriter** (482 lines): **CRITICAL** syntax rewriter handling 9+ shadowing scenarios
+  - Replaces parameter references with parameter object property access
+  - Uses name-based matching to avoid SyntaxTree identity issues
+  - Tracks shadowed names during tree traversal to correctly handle:
+    1. Catch clause variables
+    2. ForEach loop variables
+    3. Simple lambda parameters
+    4. Parenthesized lambda parameters
+    5. Local function parameters
+    6. For loop variables
+    7. Using statement variables
+    8. Pattern matching variables (if, switch expression, switch section)
+    9. LINQ range variables (from, let, join, into, continuations)
+  - Helper methods: `CollectPatternVariables`, `CollectLinqRangeVariables`, `IsDeclarationIdentifier`
+
+- **InvocationTransformer** (141 lines): Caller site transformation
+  - `VisitInvocationExpression()`: Updates method invocations to pass parameter objects
+  - `ValidateArgumentSignature()`: Distinguishes overloads via named argument validation
+  - Handles both positional and named arguments correctly
+  - Creates object creation expressions for parameter object instantiation
+
+- **TypeInsertionHelper** (66 lines): Syntax tree insertion
+  - `InsertParameterObjectClass()`: Inserts generated type at correct location
+  - Handles namespace-scoped and root-level insertion
+  - Preserves source order by inserting before target class
+
+**Benefits of Facade Pattern:**
+- 78% reduction in main file size (1193 → 265 lines, 928 lines eliminated)
+- Clear separation of concerns: validation, generation, signature update, body rewriting, caller update, insertion
+- Independent testing and optimization of each component
+- Simplified maintenance with focused responsibilities
+- All components under 500 lines (largest is ShadowingAwareRewriter at 482 lines)
+
+**Key Design Decisions:**
+- **Name-based matching**: Uses parameter names instead of semantic model for reference replacement to avoid SyntaxTree identity issues after transformations
+- **Comprehensive shadowing detection**: Handles all C# scoping constructs that could introduce local variables with the same name as method parameters
+- **Framework awareness**: Generates modern records for .NET 8+ or traditional classes for .NET Framework 4.8
 
 ## Build and Development
 
