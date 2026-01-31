@@ -568,13 +568,15 @@ public class IntroduceParameterObject : RefactoringBase
     /// <summary>
     /// Syntax rewriter to replace parameter references with parameter object property access.
     /// Uses name-based matching to avoid SyntaxTree identity issues after transformations.
-    /// Includes scope validation to prevent incorrectly transforming local variables or
-    /// other declarations that shadow the original parameters.
+    /// Tracks shadowed names during tree traversal to correctly handle local declarations
+    /// (catch variables, foreach variables, lambda parameters, pattern matching, etc.)
+    /// that shadow the original method parameters.
     /// </summary>
     private class ParameterReferenceRewriter : CSharpSyntaxRewriter
     {
         private readonly HashSet<string> _parameterNames;
         private readonly string _paramObjectName;
+        private readonly HashSet<string> _shadowedNames = new(StringComparer.Ordinal);
 
         public ParameterReferenceRewriter(
             List<IParameterSymbol> parameterSymbols,
@@ -589,18 +591,25 @@ public class IntroduceParameterObject : RefactoringBase
 
         public override SyntaxNode? VisitIdentifierName(IdentifierNameSyntax node)
         {
-            // Use name-based matching instead of semantic model to avoid SyntaxTree identity issues
-            if (_parameterNames.Contains(node.Identifier.Text))
+            var identName = node.Identifier.Text;
+
+            // Skip if this parameter name is currently shadowed by a local declaration
+            if (_shadowedNames.Contains(identName))
             {
-                // Scope validation: Skip transformation if this identifier is part of a declaration
-                // that would shadow the parameter (local variable, catch variable, foreach, etc.)
-                if (IsPartOfDeclaration(node))
+                return base.VisitIdentifierName(node);
+            }
+
+            // Use name-based matching instead of semantic model to avoid SyntaxTree identity issues
+            if (_parameterNames.Contains(identName))
+            {
+                // Scope validation: Skip transformation if this identifier IS a declaration itself
+                if (IsDeclarationIdentifier(node))
                 {
                     return base.VisitIdentifierName(node);
                 }
 
                 // Replace parameter reference with property access
-                var propertyName = NamingHelper.ToPascalCase(node.Identifier.Text);
+                var propertyName = NamingHelper.ToPascalCase(identName);
                 return SyntaxFactory.MemberAccessExpression(
                     SyntaxKind.SimpleMemberAccessExpression,
                     SyntaxFactory.IdentifierName(_paramObjectName),
@@ -611,52 +620,25 @@ public class IntroduceParameterObject : RefactoringBase
         }
 
         /// <summary>
-        /// Determines if the identifier is part of a declaration context where it would
-        /// represent a new variable rather than a reference to the original parameter.
+        /// Determines if the identifier IS the declaration itself (not a reference within scope).
         /// </summary>
-        private bool IsPartOfDeclaration(IdentifierNameSyntax node)
+        private bool IsDeclarationIdentifier(IdentifierNameSyntax node)
         {
             var parent = node.Parent;
 
-            // Check parent chain for declaration contexts
             while (parent != null)
             {
                 switch (parent)
                 {
                     // Variable declaration: string name = ...
                     case VariableDeclaratorSyntax declarator:
-                        // Only skip if this identifier IS the variable being declared
                         if (declarator.Identifier.Text == node.Identifier.Text)
                             return true;
                         break;
 
-                    // Catch declaration: catch (Exception name)
-                    case CatchDeclarationSyntax catchDecl:
-                        if (catchDecl.Identifier.Text == node.Identifier.Text)
-                            return true;
-                        break;
-
-                    // Foreach variable: foreach (var name in ...)
-                    case ForEachStatementSyntax forEach:
-                        if (forEach.Identifier.Text == node.Identifier.Text)
-                            return true;
-                        break;
-
-                    // Pattern matching: case string name:
-                    case SingleVariableDesignationSyntax designation:
-                        if (designation.Identifier.Text == node.Identifier.Text)
-                            return true;
-                        break;
-
-                    // Parameter in lambda/local function: (name) => ...
-                    case ParameterSyntax paramSyntax:
-                        if (paramSyntax.Identifier.Text == node.Identifier.Text)
-                            return true;
-                        break;
-
-                    // Stop at method body level - don't traverse further up
-                    case BlockSyntax:
-                    case ArrowExpressionClauseSyntax:
+                    // Stop at statement/expression level
+                    case StatementSyntax:
+                    case ExpressionSyntax when parent is not MemberAccessExpressionSyntax:
                         return false;
                 }
 
@@ -664,6 +646,310 @@ public class IntroduceParameterObject : RefactoringBase
             }
 
             return false;
+        }
+
+        public override SyntaxNode? VisitCatchClause(CatchClauseSyntax node)
+        {
+            var catchVarName = node.Declaration?.Identifier.Text;
+            if (catchVarName != null && _parameterNames.Contains(catchVarName))
+            {
+                _shadowedNames.Add(catchVarName);
+                var result = base.VisitCatchClause(node);
+                _shadowedNames.Remove(catchVarName);
+                return result;
+            }
+            return base.VisitCatchClause(node);
+        }
+
+        public override SyntaxNode? VisitForEachStatement(ForEachStatementSyntax node)
+        {
+            var varName = node.Identifier.Text;
+            if (_parameterNames.Contains(varName))
+            {
+                _shadowedNames.Add(varName);
+                var result = base.VisitForEachStatement(node);
+                _shadowedNames.Remove(varName);
+                return result;
+            }
+            return base.VisitForEachStatement(node);
+        }
+
+        public override SyntaxNode? VisitSimpleLambdaExpression(SimpleLambdaExpressionSyntax node)
+        {
+            var paramName = node.Parameter.Identifier.Text;
+            if (_parameterNames.Contains(paramName))
+            {
+                _shadowedNames.Add(paramName);
+                var result = base.VisitSimpleLambdaExpression(node);
+                _shadowedNames.Remove(paramName);
+                return result;
+            }
+            return base.VisitSimpleLambdaExpression(node);
+        }
+
+        public override SyntaxNode? VisitParenthesizedLambdaExpression(ParenthesizedLambdaExpressionSyntax node)
+        {
+            // Collect all lambda parameters that shadow method parameters
+            var shadowingParams = node.ParameterList.Parameters
+                .Select(p => p.Identifier.Text)
+                .Where(name => _parameterNames.Contains(name))
+                .ToList();
+
+            if (shadowingParams.Count > 0)
+            {
+                foreach (var name in shadowingParams)
+                    _shadowedNames.Add(name);
+
+                var result = base.VisitParenthesizedLambdaExpression(node);
+
+                foreach (var name in shadowingParams)
+                    _shadowedNames.Remove(name);
+
+                return result;
+            }
+            return base.VisitParenthesizedLambdaExpression(node);
+        }
+
+        public override SyntaxNode? VisitLocalFunctionStatement(LocalFunctionStatementSyntax node)
+        {
+            // Collect all local function parameters that shadow method parameters
+            var shadowingParams = node.ParameterList.Parameters
+                .Select(p => p.Identifier.Text)
+                .Where(name => _parameterNames.Contains(name))
+                .ToList();
+
+            if (shadowingParams.Count > 0)
+            {
+                foreach (var name in shadowingParams)
+                    _shadowedNames.Add(name);
+
+                var result = base.VisitLocalFunctionStatement(node);
+
+                foreach (var name in shadowingParams)
+                    _shadowedNames.Remove(name);
+
+                return result;
+            }
+            return base.VisitLocalFunctionStatement(node);
+        }
+
+        public override SyntaxNode? VisitForStatement(ForStatementSyntax node)
+        {
+            // Collect all for loop variables that shadow method parameters
+            var shadowingVars = new List<string>();
+            if (node.Declaration != null)
+            {
+                foreach (var variable in node.Declaration.Variables)
+                {
+                    var varName = variable.Identifier.Text;
+                    if (_parameterNames.Contains(varName))
+                        shadowingVars.Add(varName);
+                }
+            }
+
+            if (shadowingVars.Count > 0)
+            {
+                foreach (var name in shadowingVars)
+                    _shadowedNames.Add(name);
+
+                var result = base.VisitForStatement(node);
+
+                foreach (var name in shadowingVars)
+                    _shadowedNames.Remove(name);
+
+                return result;
+            }
+            return base.VisitForStatement(node);
+        }
+
+        public override SyntaxNode? VisitUsingStatement(UsingStatementSyntax node)
+        {
+            // Collect all using statement variables that shadow method parameters
+            var shadowingVars = new List<string>();
+            if (node.Declaration != null)
+            {
+                foreach (var variable in node.Declaration.Variables)
+                {
+                    var varName = variable.Identifier.Text;
+                    if (_parameterNames.Contains(varName))
+                        shadowingVars.Add(varName);
+                }
+            }
+
+            if (shadowingVars.Count > 0)
+            {
+                foreach (var name in shadowingVars)
+                    _shadowedNames.Add(name);
+
+                var result = base.VisitUsingStatement(node);
+
+                foreach (var name in shadowingVars)
+                    _shadowedNames.Remove(name);
+
+                return result;
+            }
+            return base.VisitUsingStatement(node);
+        }
+
+        public override SyntaxNode? VisitIfStatement(IfStatementSyntax node)
+        {
+            // For if statements with pattern matching in the condition, the pattern variable's
+            // scope extends to the entire if body (then branch), not just the pattern expression.
+            // Example: if (value is string value) { Console.WriteLine(value.Length); }
+            // Here 'value' inside the block refers to the pattern variable, not the parameter.
+
+            var shadowingVars = CollectPatternVariablesFromExpression(node.Condition);
+
+            if (shadowingVars.Count > 0)
+            {
+                // Visit condition first (pattern is defined here)
+                var newCondition = (ExpressionSyntax?)Visit(node.Condition);
+
+                // Add shadowing for the statement body
+                foreach (var name in shadowingVars)
+                    _shadowedNames.Add(name);
+
+                // Visit the statement body with shadowing active
+                var newStatement = (StatementSyntax?)Visit(node.Statement);
+
+                // Remove shadowing before visiting else clause (pattern vars not in scope there)
+                foreach (var name in shadowingVars)
+                    _shadowedNames.Remove(name);
+
+                // Visit else clause without the pattern variable shadowing
+                var newElse = node.Else != null ? (ElseClauseSyntax?)Visit(node.Else) : null;
+
+                return node
+                    .WithCondition(newCondition ?? node.Condition)
+                    .WithStatement(newStatement ?? node.Statement)
+                    .WithElse(newElse);
+            }
+
+            return base.VisitIfStatement(node);
+        }
+
+        public override SyntaxNode? VisitIsPatternExpression(IsPatternExpressionSyntax node)
+        {
+            // Note: Pattern variables introduced in IsPatternExpression have their scope
+            // handled by VisitIfStatement when this is the condition of an if statement.
+            // This override handles nested patterns or patterns not in an if condition.
+            return base.VisitIsPatternExpression(node);
+        }
+
+        public override SyntaxNode? VisitSwitchExpressionArm(SwitchExpressionArmSyntax node)
+        {
+            // Collect variables from switch arm pattern that shadow method parameters
+            var shadowingVars = CollectPatternVariables(node.Pattern);
+
+            if (shadowingVars.Count > 0)
+            {
+                foreach (var name in shadowingVars)
+                    _shadowedNames.Add(name);
+
+                var result = base.VisitSwitchExpressionArm(node);
+
+                foreach (var name in shadowingVars)
+                    _shadowedNames.Remove(name);
+
+                return result;
+            }
+            return base.VisitSwitchExpressionArm(node);
+        }
+
+        public override SyntaxNode? VisitCasePatternSwitchLabel(CasePatternSwitchLabelSyntax node)
+        {
+            // Collect variables from case pattern that shadow method parameters
+            var shadowingVars = CollectPatternVariables(node.Pattern);
+
+            if (shadowingVars.Count > 0)
+            {
+                foreach (var name in shadowingVars)
+                    _shadowedNames.Add(name);
+
+                var result = base.VisitCasePatternSwitchLabel(node);
+
+                foreach (var name in shadowingVars)
+                    _shadowedNames.Remove(name);
+
+                return result;
+            }
+            return base.VisitCasePatternSwitchLabel(node);
+        }
+
+        /// <summary>
+        /// Collects pattern variables from an expression (e.g., if condition with is pattern).
+        /// </summary>
+        private List<string> CollectPatternVariablesFromExpression(ExpressionSyntax expression)
+        {
+            var result = new List<string>();
+
+            // Find all IsPatternExpression nodes in the expression
+            foreach (var isPattern in expression.DescendantNodesAndSelf().OfType<IsPatternExpressionSyntax>())
+            {
+                CollectPatternVariablesRecursive(isPattern.Pattern, result);
+            }
+
+            return result.Where(name => _parameterNames.Contains(name)).ToList();
+        }
+
+        /// <summary>
+        /// Recursively collects variable names from pattern syntax nodes.
+        /// </summary>
+        private List<string> CollectPatternVariables(PatternSyntax pattern)
+        {
+            var result = new List<string>();
+            CollectPatternVariablesRecursive(pattern, result);
+            return result.Where(name => _parameterNames.Contains(name)).ToList();
+        }
+
+        private void CollectPatternVariablesRecursive(PatternSyntax pattern, List<string> result)
+        {
+            switch (pattern)
+            {
+                case DeclarationPatternSyntax declPattern:
+                    if (declPattern.Designation is SingleVariableDesignationSyntax singleVar)
+                        result.Add(singleVar.Identifier.Text);
+                    break;
+
+                case VarPatternSyntax varPattern:
+                    if (varPattern.Designation is SingleVariableDesignationSyntax varSingleVar)
+                        result.Add(varSingleVar.Identifier.Text);
+                    break;
+
+                case RecursivePatternSyntax recursivePattern:
+                    if (recursivePattern.Designation is SingleVariableDesignationSyntax recVar)
+                        result.Add(recVar.Identifier.Text);
+                    if (recursivePattern.PropertyPatternClause != null)
+                    {
+                        foreach (var subPattern in recursivePattern.PropertyPatternClause.Subpatterns)
+                        {
+                            if (subPattern.Pattern != null)
+                                CollectPatternVariablesRecursive(subPattern.Pattern, result);
+                        }
+                    }
+                    if (recursivePattern.PositionalPatternClause != null)
+                    {
+                        foreach (var subPattern in recursivePattern.PositionalPatternClause.Subpatterns)
+                        {
+                            if (subPattern.Pattern != null)
+                                CollectPatternVariablesRecursive(subPattern.Pattern, result);
+                        }
+                    }
+                    break;
+
+                case BinaryPatternSyntax binaryPattern:
+                    CollectPatternVariablesRecursive(binaryPattern.Left, result);
+                    CollectPatternVariablesRecursive(binaryPattern.Right, result);
+                    break;
+
+                case ParenthesizedPatternSyntax parenPattern:
+                    CollectPatternVariablesRecursive(parenPattern.Pattern, result);
+                    break;
+
+                case UnaryPatternSyntax unaryPattern:
+                    CollectPatternVariablesRecursive(unaryPattern.Pattern, result);
+                    break;
+            }
         }
     }
 
