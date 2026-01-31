@@ -1522,6 +1522,183 @@ public class Service
         result.RefactoredCode.Should().Contain("input.Y");
     }
 
+    [Fact]
+    public void Execute_WithSwitchExpressionPatternShadowing_ShouldNotReplacePatternVariable()
+    {
+        // Arrange - Test PR #156 fix: switch expression pattern variable shadowing parameter
+        var sourceCode = @"
+public class Service
+{
+    public string Process(object value, int mode)
+    {
+        return value switch
+        {
+            string value => value.ToUpper(), // 'value' shadows parameter
+            int value => value.ToString(),   // 'value' shadows parameter
+            _ => """"
+        };
+    }
+
+    public void Test()
+    {
+        Process(""test"", 1);
+    }
+}";
+        var refactoring = new IntroduceParameterObject();
+
+        // Act
+        var result = refactoring.Execute(
+            sourceCode,
+            "Service",
+            "Process",
+            new[] { "value", "mode" },
+            "Input",
+            "net8.0");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("public record Input(object Value, int Mode);");
+        result.RefactoredCode.Should().Contain("Process(Input input)");
+        // Pattern variables should NOT be transformed
+        result.RefactoredCode.Should().Contain("string value => value.ToUpper()");
+        result.RefactoredCode.Should().Contain("int value => value.ToString()");
+        result.RefactoredCode.Should().NotContain("input.Value.ToUpper()");
+        result.RefactoredCode.Should().NotContain("input.Value.ToString()");
+    }
+
+    [Fact]
+    public void Execute_WithSwitchStatementPatternShadowing_ShouldNotReplacePatternVariable()
+    {
+        // Arrange - Test PR #156 fix: switch statement case pattern variable shadowing parameter
+        var sourceCode = @"
+public class Service
+{
+    public void Process(object value, int mode)
+    {
+        switch (value)
+        {
+            case string value: // Pattern introduces 'value' for entire case body
+                Console.WriteLine(value.Length); // Should NOT become input.Value
+                break;
+            case int value:
+                Console.WriteLine(value * 2);
+                break;
+        }
+        Console.WriteLine(mode);
+    }
+
+    public void Test()
+    {
+        Process(""test"", 1);
+    }
+}";
+        var refactoring = new IntroduceParameterObject();
+
+        // Act
+        var result = refactoring.Execute(
+            sourceCode,
+            "Service",
+            "Process",
+            new[] { "value", "mode" },
+            "Input",
+            "net8.0");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("public record Input(object Value, int Mode);");
+        result.RefactoredCode.Should().Contain("Process(Input input)");
+        // Pattern variables in case body should NOT be transformed
+        result.RefactoredCode.Should().Contain("value.Length");
+        result.RefactoredCode.Should().Contain("value * 2");
+        result.RefactoredCode.Should().NotContain("input.Value.Length");
+        result.RefactoredCode.Should().NotContain("input.Value * 2");
+        // Outside switch, 'mode' should be transformed
+        result.RefactoredCode.Should().Contain("input.Mode");
+    }
+
+    [Fact]
+    public void Execute_WithLinqFromClauseShadowing_ShouldNotReplaceLinqVariable()
+    {
+        // Arrange - Test PR #156 fix: LINQ from clause variable shadowing parameter
+        var sourceCode = @"
+using System.Linq;
+public class Service
+{
+    public void Process(int value, string[] items)
+    {
+        var result = from value in items // 'value' shadows parameter
+                     select value.Length; // Should NOT become input.Value
+        Console.WriteLine(result.Sum());
+    }
+
+    public void Test()
+    {
+        Process(5, new[] { ""a"", ""bb"" });
+    }
+}";
+        var refactoring = new IntroduceParameterObject();
+
+        // Act
+        var result = refactoring.Execute(
+            sourceCode,
+            "Service",
+            "Process",
+            new[] { "value", "items" },
+            "Input",
+            "net8.0");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("public record Input(int Value, string[] Items);");
+        result.RefactoredCode.Should().Contain("Process(Input input)");
+        // LINQ from variable should NOT be transformed
+        result.RefactoredCode.Should().Contain("from value in");
+        result.RefactoredCode.Should().Contain("select value.Length");
+        result.RefactoredCode.Should().NotContain("select input.Value.Length");
+    }
+
+    [Fact]
+    public void Execute_WithLinqLetClauseShadowing_ShouldNotReplaceLetVariable()
+    {
+        // Arrange - Test PR #156 fix: LINQ let clause variable shadowing parameter
+        var sourceCode = @"
+using System.Linq;
+public class Service
+{
+    public void Process(string data, int[] numbers)
+    {
+        var result = from n in numbers
+                     let data = n.ToString() // 'data' shadows parameter
+                     select data.Length; // Should NOT become input.Data
+        Console.WriteLine(result.Sum());
+    }
+
+    public void Test()
+    {
+        Process(""test"", new[] { 1, 2, 3 });
+    }
+}";
+        var refactoring = new IntroduceParameterObject();
+
+        // Act
+        var result = refactoring.Execute(
+            sourceCode,
+            "Service",
+            "Process",
+            new[] { "data", "numbers" },
+            "Input",
+            "net8.0");
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.RefactoredCode.Should().Contain("public record Input(string Data, int[] Numbers);");
+        result.RefactoredCode.Should().Contain("Process(Input input)");
+        // LINQ let variable should NOT be transformed
+        result.RefactoredCode.Should().Contain("let data = n.ToString()");
+        result.RefactoredCode.Should().Contain("select data.Length");
+        result.RefactoredCode.Should().NotContain("select input.Data.Length");
+    }
+
     // ============================================================================
     // INVOCATION MATCHING TESTS (PR #146 Code Review - Issue #2)
     // These tests verify that InvocationRewriter correctly matches only the target

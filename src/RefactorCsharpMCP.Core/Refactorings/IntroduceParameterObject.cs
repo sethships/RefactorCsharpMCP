@@ -828,14 +828,6 @@ public class IntroduceParameterObject : RefactoringBase
             return base.VisitIfStatement(node);
         }
 
-        public override SyntaxNode? VisitIsPatternExpression(IsPatternExpressionSyntax node)
-        {
-            // Note: Pattern variables introduced in IsPatternExpression have their scope
-            // handled by VisitIfStatement when this is the condition of an if statement.
-            // This override handles nested patterns or patterns not in an if condition.
-            return base.VisitIsPatternExpression(node);
-        }
-
         public override SyntaxNode? VisitSwitchExpressionArm(SwitchExpressionArmSyntax node)
         {
             // Collect variables from switch arm pattern that shadow method parameters
@@ -856,24 +848,100 @@ public class IntroduceParameterObject : RefactoringBase
             return base.VisitSwitchExpressionArm(node);
         }
 
-        public override SyntaxNode? VisitCasePatternSwitchLabel(CasePatternSwitchLabelSyntax node)
+        public override SyntaxNode? VisitSwitchSection(SwitchSectionSyntax node)
         {
-            // Collect variables from case pattern that shadow method parameters
-            var shadowingVars = CollectPatternVariables(node.Pattern);
+            // Collect all pattern variables from case labels in this section
+            // Pattern variables' scope extends to the entire switch section (case body),
+            // not just the label, so we must shadow at the section level.
+            var shadowingVars = new List<string>();
+            foreach (var label in node.Labels.OfType<CasePatternSwitchLabelSyntax>())
+            {
+                shadowingVars.AddRange(CollectPatternVariables(label.Pattern));
+            }
 
             if (shadowingVars.Count > 0)
             {
                 foreach (var name in shadowingVars)
                     _shadowedNames.Add(name);
 
-                var result = base.VisitCasePatternSwitchLabel(node);
+                var result = base.VisitSwitchSection(node);
 
                 foreach (var name in shadowingVars)
                     _shadowedNames.Remove(name);
 
                 return result;
             }
-            return base.VisitCasePatternSwitchLabel(node);
+            return base.VisitSwitchSection(node);
+        }
+
+        public override SyntaxNode? VisitQueryExpression(QueryExpressionSyntax node)
+        {
+            // LINQ query expressions introduce range variables whose scope extends to the
+            // entire query body. We need to collect all such variables upfront and shadow
+            // them for the entire query expression.
+            var shadowingVars = CollectLinqRangeVariables(node);
+
+            if (shadowingVars.Count > 0)
+            {
+                foreach (var name in shadowingVars)
+                    _shadowedNames.Add(name);
+
+                var result = base.VisitQueryExpression(node);
+
+                foreach (var name in shadowingVars)
+                    _shadowedNames.Remove(name);
+
+                return result;
+            }
+            return base.VisitQueryExpression(node);
+        }
+
+        /// <summary>
+        /// Collects all range variables introduced in a LINQ query expression that shadow method parameters.
+        /// This includes from clauses, let clauses, join clauses (including into), and query continuations.
+        /// </summary>
+        private List<string> CollectLinqRangeVariables(QueryExpressionSyntax query)
+        {
+            var rangeVars = new List<string>();
+
+            // Collect from the initial from clause
+            rangeVars.Add(query.FromClause.Identifier.Text);
+
+            // Collect from body clauses and continuations
+            CollectLinqRangeVariablesFromBody(query.Body, rangeVars);
+
+            // Filter to only those that shadow method parameters
+            rangeVars.RemoveAll(name => !_parameterNames.Contains(name));
+            return rangeVars;
+        }
+
+        private void CollectLinqRangeVariablesFromBody(QueryBodySyntax body, List<string> rangeVars)
+        {
+            // Collect from body clauses (from, let, join, where, orderby)
+            foreach (var clause in body.Clauses)
+            {
+                switch (clause)
+                {
+                    case FromClauseSyntax fromClause:
+                        rangeVars.Add(fromClause.Identifier.Text);
+                        break;
+                    case LetClauseSyntax letClause:
+                        rangeVars.Add(letClause.Identifier.Text);
+                        break;
+                    case JoinClauseSyntax joinClause:
+                        rangeVars.Add(joinClause.Identifier.Text);
+                        if (joinClause.Into != null)
+                            rangeVars.Add(joinClause.Into.Identifier.Text);
+                        break;
+                }
+            }
+
+            // Collect from query continuation (into ... select/group)
+            if (body.Continuation != null)
+            {
+                rangeVars.Add(body.Continuation.Identifier.Text);
+                CollectLinqRangeVariablesFromBody(body.Continuation.Body, rangeVars);
+            }
         }
 
         /// <summary>
@@ -889,7 +957,9 @@ public class IntroduceParameterObject : RefactoringBase
                 CollectPatternVariablesRecursive(isPattern.Pattern, result);
             }
 
-            return result.Where(name => _parameterNames.Contains(name)).ToList();
+            // Filter in-place to avoid additional allocation
+            result.RemoveAll(name => !_parameterNames.Contains(name));
+            return result;
         }
 
         /// <summary>
@@ -899,7 +969,9 @@ public class IntroduceParameterObject : RefactoringBase
         {
             var result = new List<string>();
             CollectPatternVariablesRecursive(pattern, result);
-            return result.Where(name => _parameterNames.Contains(name)).ToList();
+            // Filter in-place to avoid additional allocation
+            result.RemoveAll(name => !_parameterNames.Contains(name));
+            return result;
         }
 
         private void CollectPatternVariablesRecursive(PatternSyntax pattern, List<string> result)
