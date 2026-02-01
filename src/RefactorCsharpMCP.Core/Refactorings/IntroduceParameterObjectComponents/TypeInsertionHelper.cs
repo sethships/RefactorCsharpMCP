@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -60,7 +61,11 @@ public class TypeInsertionHelper
             }
         }
 
-        // Fallback: append to end if we can't find the class (shouldn't happen)
+        // Fallback: append to end if we can't find the class
+        // This should never happen in normal operation - indicates a bug in caller
+        Debug.Assert(false,
+            $"TypeInsertionHelper: Could not find target class '{targetClass.Identifier.Text}' in syntax tree. " +
+            "This indicates the targetClass was not found in the provided root.");
         return root.WithMembers(root.Members.Add(parameterObjectClass));
     }
 }

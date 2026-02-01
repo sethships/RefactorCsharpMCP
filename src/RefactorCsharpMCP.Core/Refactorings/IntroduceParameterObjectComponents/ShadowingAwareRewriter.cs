@@ -22,6 +22,14 @@ namespace RefactorCsharpMCP.Core.Refactorings.IntroduceParameterObjectComponents
 /// 7. Using statement variables
 /// 8. Pattern matching variables (if, switch expression, switch section)
 /// 9. LINQ range variables (from, let, join, into)
+///
+/// <para>
+/// <strong>Note on Local Variable Shadowing:</strong>
+/// This class does NOT implement <c>VisitLocalDeclarationStatement</c> for local variable shadowing
+/// because the C# compiler already prevents declaring a local variable with the same name as a parameter
+/// (CS0136: "A local or parameter named 'x' cannot be declared in this scope"). The <see cref="IsDeclarationIdentifier"/>
+/// method provides additional defensive protection by skipping transformation of declaration identifiers.
+/// </para>
 /// </summary>
 public class ShadowingAwareRewriter : CSharpSyntaxRewriter
 {
@@ -355,39 +363,52 @@ public class ShadowingAwareRewriter : CSharpSyntaxRewriter
     /// <summary>
     /// Collects all range variables introduced in a LINQ query expression that shadow method parameters.
     /// This includes from clauses, let clauses, join clauses (including into), and query continuations.
+    /// Optimized to filter during collection rather than after, reducing allocations for queries
+    /// where most range variables don't shadow method parameters.
     /// </summary>
     private List<string> CollectLinqRangeVariables(QueryExpressionSyntax query)
     {
         var rangeVars = new List<string>();
 
-        // Collect from the initial from clause
-        rangeVars.Add(query.FromClause.Identifier.Text);
+        // Collect from the initial from clause (filter during collection for performance)
+        var fromName = query.FromClause.Identifier.Text;
+        if (_parameterNames.Contains(fromName))
+            rangeVars.Add(fromName);
 
-        // Collect from body clauses and continuations
+        // Collect from body clauses and continuations (also filters during collection)
         CollectLinqRangeVariablesFromBody(query.Body, rangeVars);
 
-        // Filter to only those that shadow method parameters
-        rangeVars.RemoveAll(name => !_parameterNames.Contains(name));
         return rangeVars;
     }
 
     private void CollectLinqRangeVariablesFromBody(QueryBodySyntax body, List<string> rangeVars)
     {
         // Collect from body clauses (from, let, join, where, orderby)
+        // Filter during collection to avoid post-processing allocation
         foreach (var clause in body.Clauses)
         {
             switch (clause)
             {
                 case FromClauseSyntax fromClause:
-                    rangeVars.Add(fromClause.Identifier.Text);
+                    var fromName = fromClause.Identifier.Text;
+                    if (_parameterNames.Contains(fromName))
+                        rangeVars.Add(fromName);
                     break;
                 case LetClauseSyntax letClause:
-                    rangeVars.Add(letClause.Identifier.Text);
+                    var letName = letClause.Identifier.Text;
+                    if (_parameterNames.Contains(letName))
+                        rangeVars.Add(letName);
                     break;
                 case JoinClauseSyntax joinClause:
-                    rangeVars.Add(joinClause.Identifier.Text);
+                    var joinName = joinClause.Identifier.Text;
+                    if (_parameterNames.Contains(joinName))
+                        rangeVars.Add(joinName);
                     if (joinClause.Into != null)
-                        rangeVars.Add(joinClause.Into.Identifier.Text);
+                    {
+                        var intoName = joinClause.Into.Identifier.Text;
+                        if (_parameterNames.Contains(intoName))
+                            rangeVars.Add(intoName);
+                    }
                     break;
             }
         }
@@ -395,7 +416,9 @@ public class ShadowingAwareRewriter : CSharpSyntaxRewriter
         // Collect from query continuation (into ... select/group)
         if (body.Continuation != null)
         {
-            rangeVars.Add(body.Continuation.Identifier.Text);
+            var contName = body.Continuation.Identifier.Text;
+            if (_parameterNames.Contains(contName))
+                rangeVars.Add(contName);
             CollectLinqRangeVariablesFromBody(body.Continuation.Body, rangeVars);
         }
     }

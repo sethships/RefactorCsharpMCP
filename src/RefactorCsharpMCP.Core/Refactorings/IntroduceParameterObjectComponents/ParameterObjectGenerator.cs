@@ -91,8 +91,10 @@ public class ParameterObjectGenerator
         foreach (var param in parameters)
         {
             var propertyName = NamingHelper.ToPascalCase(param.Identifier.Text);
+            // Type should always be present for valid C# parameter syntax
+            // The null-forgiving operator makes this explicit rather than silently falling back
             var property = SyntaxFactory.PropertyDeclaration(
-                param.Type ?? SyntaxFactory.ParseTypeName("object"),
+                param.Type!,
                 propertyName)
                 .WithModifiers(SyntaxFactory.TokenList(
                     SyntaxFactory.Token(
