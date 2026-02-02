@@ -292,7 +292,6 @@ public class NuGetClientWrapperTests
     {
         // Arrange
         using var client = new NuGetClientWrapper(NullLogger<NuGetClientWrapper>.Instance);
-        bool metadataCallCompleted = false;
 
         // Act
         try
@@ -302,7 +301,6 @@ public class NuGetClientWrapperTests
                 "13.0.3",
                 CancellationToken.None,
                 timeoutSeconds: 5);
-            metadataCallCompleted = true;
         }
         catch
         {

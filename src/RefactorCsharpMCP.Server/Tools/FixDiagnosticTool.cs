@@ -93,6 +93,7 @@ public class FixDiagnosticTool
                 // - CA diagnostics: Code analysis rules
                 // See https://github.com/sethb75/RefactorCsharpMCP/issues/49
                 _ => RefactoringResult.Failure(
+                    ErrorCode.REFACTORING_FAILED,
                     $"No refactoring available for diagnostic '{diagnosticId}'. " +
                     $"Supported diagnostics: IDE0005 (unused usings), CS8019 (unused usings), IDE0044 (readonly fields). " +
                     "See documentation for planned diagnostic support.")
@@ -163,6 +164,7 @@ public class FixDiagnosticTool
         if (linePosition.Line < 0 || linePosition.Line >= lines.Count)
         {
             return RefactoringResult.Failure(
+                ErrorCode.INVALID_LINE_NUMBER,
                 $"Line {line} is out of range. File has {lines.Count} line(s).");
         }
 
@@ -171,6 +173,7 @@ public class FixDiagnosticTool
         if (linePosition.Character < 0 || linePosition.Character > targetLine.Span.Length)
         {
             return RefactoringResult.Failure(
+                ErrorCode.INVALID_COLUMN_NUMBER,
                 $"Column {column} is out of range for line {line} (line length: {targetLine.Span.Length}).");
         }
 
@@ -183,6 +186,7 @@ public class FixDiagnosticTool
         if (fieldDeclaration == null)
         {
             return RefactoringResult.Failure(
+                ErrorCode.REFACTORING_FAILED,
                 $"Could not find field declaration at line {line}, column {column}. " +
                 "The diagnostic location must point to a field declaration.");
         }
@@ -192,6 +196,7 @@ public class FixDiagnosticTool
         if (variable == null)
         {
             return RefactoringResult.Failure(
+                ErrorCode.REFACTORING_FAILED,
                 "Field declaration has no variables. This should not happen.");
         }
 
@@ -202,6 +207,7 @@ public class FixDiagnosticTool
         if (classDeclaration == null)
         {
             return RefactoringResult.Failure(
+                ErrorCode.REFACTORING_FAILED,
                 $"Could not find containing class for field '{fieldName}'. " +
                 "The field must be declared inside a class.");
         }
