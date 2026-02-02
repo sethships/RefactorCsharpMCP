@@ -1,5 +1,6 @@
 using FluentAssertions;
 using RefactorCsharpMCP.Core.Refactorings;
+using RefactorCsharpMCP.Core.Validation;
 
 namespace RefactorCsharpMCP.Tests.Refactorings;
 
@@ -134,7 +135,7 @@ public class ExtractMethodTests
     public void RefactoringResult_Failure_ShouldHaveCorrectProperties()
     {
         // Act
-        var result = RefactoringResult.Failure("Error occurred");
+        var result = RefactoringResult.Failure(ErrorCode.REFACTORING_FAILED, "Error occurred");
 
         // Assert
         result.IsSuccess.Should().BeFalse();

@@ -1158,7 +1158,7 @@ public class Calculator
         result.IsSuccess.Should().BeTrue();
 
         // Verify compilation
-        var compilation = CreateCompilation(result.RefactoredCode);
+        var compilation = CreateCompilation(result.RefactoredCode!);
         var diagnostics = compilation.GetDiagnostics()
             .Where(d => d.Severity == DiagnosticSeverity.Error);
 
@@ -1199,7 +1199,7 @@ public class Service
         result.IsSuccess.Should().BeTrue();
 
         // Verify compilation
-        var compilation = CreateCompilation(result.RefactoredCode, LanguageVersion.CSharp7_3);
+        var compilation = CreateCompilation(result.RefactoredCode!, LanguageVersion.CSharp7_3);
         var diagnostics = compilation.GetDiagnostics()
             .Where(d => d.Severity == DiagnosticSeverity.Error);
 
@@ -1247,7 +1247,7 @@ public class MathService
         result.IsSuccess.Should().BeTrue();
 
         // Verify compilation
-        var compilation = CreateCompilation(result.RefactoredCode);
+        var compilation = CreateCompilation(result.RefactoredCode!);
         var diagnostics = compilation.GetDiagnostics()
             .Where(d => d.Severity == DiagnosticSeverity.Error);
 
@@ -1289,7 +1289,7 @@ public class DataService
         result.IsSuccess.Should().BeTrue();
 
         // Verify compilation
-        var compilation = CreateCompilation(result.RefactoredCode);
+        var compilation = CreateCompilation(result.RefactoredCode!);
         var diagnostics = compilation.GetDiagnostics()
             .Where(d => d.Severity == DiagnosticSeverity.Error);
 
@@ -1331,7 +1331,7 @@ public class GenericService
         result.IsSuccess.Should().BeTrue();
 
         // Verify compilation
-        var compilation = CreateCompilation(result.RefactoredCode);
+        var compilation = CreateCompilation(result.RefactoredCode!);
         var diagnostics = compilation.GetDiagnostics()
             .Where(d => d.Severity == DiagnosticSeverity.Error);
 

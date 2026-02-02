@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.ExceptionServices;
 using System.Security;
 using System.Text;
 using Microsoft.Extensions.Logging;
@@ -128,8 +129,8 @@ public class BuildValidator
                         // Verify it's actually a directory (not just a file with no extension)
                         if (File.Exists(validatedPath))
                         {
-                            // It's a file, not a directory - re-throw original SecurityException
-                            throw ex;
+                            // It's a file, not a directory - re-throw original SecurityException preserving stack trace
+                            ExceptionDispatchInfo.Capture(ex).Throw();
                         }
                     }
                     catch (SecurityException)
@@ -139,7 +140,7 @@ public class BuildValidator
                     catch
                     {
                         // ValidateDirectoryPath failed for other reasons - re-throw original exception
-                        throw ex;
+                        throw;
                     }
                 }
             }

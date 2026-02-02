@@ -61,6 +61,7 @@ public class SdkStyleConverter : ProjectRefactoringBase
             if (context.ProjectType == ProjectType.AspNetWebApp && !allowWebApps)
             {
                 return RefactoringResult.Failure(
+                    ErrorCode.REFACTORING_FAILED,
                     "ASP.NET Web Application detected. These require manual migration to ASP.NET Core. " +
                     "Set allowWebApps=true to force conversion, but manual adjustments will be required.");
             }
@@ -360,7 +361,7 @@ public class SdkStyleConverter : ProjectRefactoringBase
     /// <summary>
     /// Migrates packages.config to PackageReference format.
     /// </summary>
-    private async Task MigratePackagesConfigAsync(
+    private Task MigratePackagesConfigAsync(
         string projectPath,
         XDocument sdkDocument,
         CancellationToken cancellationToken)
@@ -370,7 +371,7 @@ public class SdkStyleConverter : ProjectRefactoringBase
 
         if (!File.Exists(packagesConfigPath))
         {
-            return;
+            return Task.CompletedTask;
         }
 
         try
@@ -444,6 +445,8 @@ public class SdkStyleConverter : ProjectRefactoringBase
         {
             Logger?.LogWarning(ex, "Failed to migrate packages.config, keeping original file");
         }
+
+        return Task.CompletedTask;
     }
 }
 

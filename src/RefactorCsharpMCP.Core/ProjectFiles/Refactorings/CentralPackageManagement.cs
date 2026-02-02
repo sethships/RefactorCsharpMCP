@@ -63,6 +63,7 @@ public class CentralPackageManagement : ProjectRefactoringBase
             if (File.Exists(directoryPackagesProps) && !options.DryRun)
             {
                 return RefactoringResult.Failure(
+                    ErrorCode.ALREADY_CPM_ENABLED,
                     $"Central Package Management already enabled (Directory.Packages.props exists)");
             }
 

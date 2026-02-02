@@ -137,6 +137,7 @@ public class PackageReferenceManager : ProjectRefactoringBase
                 {
                     Rollback(projectPath);
                     return RefactoringResult.Failure(
+                        ErrorCode.REFACTORING_FAILED,
                         $"Package {packageId} {version} is not compatible with {targetFramework}");
                 }
             }
@@ -291,6 +292,7 @@ public class PackageReferenceManager : ProjectRefactoringBase
                 CleanupBackups(options.CreateBackup);
 
                 return RefactoringResult.Failure(
+                    ErrorCode.REFACTORING_FAILED,
                     $"Batch operation failed: {result.Summary}\n\nErrors:\n{string.Join("\n", result.Failed.Select(f => $"- {f.Key}: {f.Value}"))}");
             }
 
@@ -302,6 +304,7 @@ public class PackageReferenceManager : ProjectRefactoringBase
                 {
                     CleanupBackups(options.CreateBackup);
                     return RefactoringResult.Failure(
+                        ErrorCode.REFACTORING_FAILED,
                         $"Build validation failed: {buildResult.Summary}");
                 }
             }
@@ -331,7 +334,7 @@ public class PackageReferenceManager : ProjectRefactoringBase
     /// <summary>
     /// Previews changes in dry-run mode.
     /// </summary>
-    private async Task<RefactoringResult> PreviewChangesAsync(
+    private Task<RefactoringResult> PreviewChangesAsync(
         List<string> projectPaths,
         PackageOperation operation,
         string packageId,
@@ -361,7 +364,7 @@ public class PackageReferenceManager : ProjectRefactoringBase
         }
 
         var previewText = string.Join("\n", preview);
-        return RefactoringResult.Success(string.Empty, $"DRY RUN Preview:\n{previewText}");
+        return Task.FromResult(RefactoringResult.Success(string.Empty, $"DRY RUN Preview:\n{previewText}"));
     }
 
     /// <summary>
@@ -405,6 +408,7 @@ public class PackageReferenceManager : ProjectRefactoringBase
             if (!NuGetVersion.TryParse(version, out _))
             {
                 return RefactoringResult.Failure(
+                    ErrorCode.REFACTORING_FAILED,
                     $"Invalid NuGet version format: '{version}'. " +
                     "Use semantic versioning (e.g., 1.2.3, 2.0.0-beta, 1.0.0+build123).");
             }
@@ -416,7 +420,7 @@ public class PackageReferenceManager : ProjectRefactoringBase
     /// <summary>
     /// Discovers projects to operate on (single project or all projects in solution).
     /// </summary>
-    private async Task<List<string>> DiscoverProjectsAsync(
+    private Task<List<string>> DiscoverProjectsAsync(
         string projectPath,
         ProjectRefactoringOptions options,
         CancellationToken cancellationToken)
@@ -441,7 +445,7 @@ public class PackageReferenceManager : ProjectRefactoringBase
             }
         }
 
-        return projects;
+        return Task.FromResult(projects);
     }
 
     /// <summary>
